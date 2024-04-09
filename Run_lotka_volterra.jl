@@ -64,14 +64,14 @@ function grad_loss(_p, oprob, data, solver, sensealg, abstol, reltol, imap)
     runtime = 0
     if sensealg === :ForwardDiff
         grad = ForwardDiff.gradient(_loss, p)
-        runtime = @benchmark _ = $ForwardDiff.gradient($_loss, $p)
+        runtime = @benchmark _ = $ForwardDiff.gradient($_loss, $p) samples=1 evals=100
         runtime = median(runtime.times) / 1e9
     elseif sensealg === :FiniteDiff
         grad = FiniteDifferences.grad(central_fdm(5, 1), _loss, p)[1]
         runtime = 0.0
     else
         grad = Zygote.gradient(_loss, p)[1]
-        runtime = @benchmark _ = $Zygote.gradient($_loss, $p)
+        runtime = @benchmark _ = $Zygote.gradient($_loss, $p) samples=1 evals=100
         runtime = median(runtime.times) / 1e9
     end
     # We want time in seconds
