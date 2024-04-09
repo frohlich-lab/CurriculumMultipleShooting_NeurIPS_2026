@@ -125,9 +125,11 @@ def run_benchmark(path_dir):
                                 'method' : ["Diffrax"]})
         if os.path.isfile(dir_save + "Runtime.csv"):
             mode = "a"
+            header = False
         else:
             mode = "w"
-        df_runtime.to_csv(dir_save + "Runtime.csv", mode=mode)
+            header = True
+        df_runtime.to_csv(dir_save + "Runtime.csv", mode=mode, header=header)
 
     return None
 
