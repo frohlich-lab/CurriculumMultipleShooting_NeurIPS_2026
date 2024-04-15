@@ -50,7 +50,7 @@ class UDEProblem(eqx.Module):
 
     func: UDEFunction
 
-    def __init__(self, u0, dynamic_parameters, mlp, **kwargs):
+    def __init__(self, dynamic_parameters, mlp, **kwargs):
         """
         Parameters
         ----------
@@ -65,14 +65,14 @@ class UDEProblem(eqx.Module):
         mlp : eqx.nn.MLP
             An equinox Standard Multi-Layer Perceptron (MLP) network. If set to 
             None path_meta must be provided.
-        controller : diffrax.PIDController
-            
+        controller : diffrax.PIDController 
         """
         super().__init__(**kwargs)        
         self.func = UDEFunction(dynamic_parameters, mlp)
 
     def solve(self, solver, u0, t_save, t_span, 
-              controller = diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8)):
+              controller = diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8), 
+              adjoint=diffrax.RecursiveCheckpointAdjoint()):
         t0, t1 = t_span
         sol = diffrax.diffeqsolve(diffrax.ODETerm(self.func),
                                   solver,
@@ -82,7 +82,8 @@ class UDEProblem(eqx.Module):
                                   u0,
                                   saveat=t_save, 
                                   throw=False,
-                                  stepsize_controller=controller)
+                                  stepsize_controller=controller,
+                                  adjoint=adjoint)
         return sol
 
 @eqx.filter_value_and_grad
