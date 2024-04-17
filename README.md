@@ -6,6 +6,10 @@ This repository provides example models for training Universal Differential Equa
 2. Evaluate various training schemes for UDE models. Lessons learned from this will likely aid in training other models that incorporate both mechanistic and data-driven components.
 3. Develop a PEtab extension to support UDEs, compatible with Diffrax, PEtab.jl, and AMICI.
 
+## SciML PEtab extension
+
+The draft for the PEtab SciML extension can be found [here](https://docs.google.com/document/d/1TKB3rbUShur5KIOuj9r2XdQ6k5acrkkdcWQYK3jDA5U/edit).
+
 ## Models
 
 ### Lotka volterra
