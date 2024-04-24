@@ -18,6 +18,28 @@ def flatten(v):
   out, pullback = jax.vjp(f, v)
   return out, lambda x: pullback(x)[0]
 
+
+def build_MLP(in_size, out_size, width_size, hidden_layers, key, activation=jax.nn.tanh):
+    mlp = eqx.nn.MLP(in_size=in_size,
+                     out_size=out_size,
+                     width_size=width_size,
+                     depth=hidden_layers,
+                     activation=activation,
+                     key=key)
+    return mlp
+
+
+def get_training_validation_data():
+    # Read training and validation data
+    train_data_df = pd.read_csv(os.path.join("Intermediate", "Lotka_volterra", "Train_data.csv"))
+    train_data = jnp.array(train_data_df[["u1", "u2"]].values)
+    t_save_train = diffrax.SaveAt(ts=train_data_df["t"].values)
+    validation_data_df = pd.read_csv(os.path.join("Intermediate", "Lotka_volterra", "Validation_data.csv"))
+    validation_data = jnp.array(validation_data_df[["u1", "u2"]].values)
+    t_save_validation = diffrax.SaveAt(ts=validation_data_df["t"].values)
+    return train_data, t_save_train, validation_data, t_save_validation
+
+
 # Setup the model (this mlp was used in the paper)
 width_size = 5
 hidden_layers = 1

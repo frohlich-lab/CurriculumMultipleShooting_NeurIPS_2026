@@ -4,11 +4,12 @@ import diffrax
 import equinox as eqx 
 import jax
 
-import lotka_volterra.common as common
+import common as common
 
 # Technically Float32 should work, but for consistency between the benchmarks
 # I think we should use Float64
 jax.config.update("jax_enable_x64", True)
+
 
 class UDEFunction(eqx.Module):
     """
@@ -86,10 +87,12 @@ class UDEProblem(eqx.Module):
                                   adjoint=adjoint)
         return sol
 
+
 @eqx.filter_value_and_grad
 def compute_loss_grad(prob, u0, t_save, t_span, data):
     u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
     return jnp.sum((u_pred.ys - data)**2)
+
 
 @eqx.filter_jit
 def compute_loss(prob, u0, t_save, t_span, data):

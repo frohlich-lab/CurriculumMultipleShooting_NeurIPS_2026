@@ -1,7 +1,9 @@
+import dataclasses
 import equinox as eqx
 import jax.numpy as jnp
 import jax.nn as jnn
 import jax
+
 
 def _init_glorot(scale, shape, key):
     init = jnn.initializers.variance_scaling(scale, "fan_avg", "uniform")
@@ -29,3 +31,20 @@ def set_weight_bias(mlp, scale, key):
     mlp = eqx.tree_at(_get_bias, mlp, bias_new)
     mlp = eqx.tree_at(_get_weight, mlp, weight_new)
     return mlp
+
+
+@dataclasses.dataclass
+class Conf(dict):
+    dynamical_model: str
+    mlp_layer_width: int
+    mlp_depth: int
+    activation_fn_name: str = "relu"
+    optimiser_learning_rate: float = 1e-3
+
+
+
+@dataclasses.dataclass
+class EarlyStoppingParams(dict):
+    use_early_stopping: bool = True
+    patience: int = 9
+    min_improvement: float = 0
