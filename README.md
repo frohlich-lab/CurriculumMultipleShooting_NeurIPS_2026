@@ -17,6 +17,7 @@ This example replicates the scenario described in the UDE [paper](https://arxiv.
 Briefly, the model is given by:
 
 $$\frac{\mathrm{d} prey}{\mathrm{d} t} = \alpha * prey + N[1] $$
+
 $$\frac{\mathrm{d} predator}{\mathrm{d} t} = N[2] - \delta * predator$$
 
 Where $N$ here is the output of a small feed-forward neural network that takes $prey$ and $predator$ as input.
@@ -32,9 +33,13 @@ This example mimics the scenario described in this [paper](https://www.sciencedi
 Briefly the model is given by:
 
 $$\frac{\mathrm{d}S}{\mathrm{d}t} = -\frac{\beta * S * I}{N}$$
+
 $$\frac{\mathrm{d}I}{\mathrm{d}t} = \frac{\beta * S * I}{N} - (\gamma + Q) * I$$
+
 $$\frac{\mathrm{d}R}{\mathrm{d}t} = \gamma I + \delta T$$
+
 $$\frac{\mathrm{d}T}{\mathrm{d}t} = Q * I - \delta * T$$
+
 $$Q = NN\left(S, I, R\right)$$
 
 In this model, $S$ represents the susceptible population, $I$ denotes the infected individuals, $R$ is for the recovered group, and $T$ indicates the quarantine population. The term $Q$, which represents the quarantine strength, is derived from a data-driven model because according to the authors it does not naturally arise from first principles.
