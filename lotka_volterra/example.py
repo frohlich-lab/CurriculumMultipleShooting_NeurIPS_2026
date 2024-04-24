@@ -6,7 +6,7 @@ import equinox as eqx
 import jax.numpy as jnp
 import jax
 
-import lotka_volterra.common as common
+import common
 import lotka_volterra.setup_diffrax_model as setup_lv
 
 # Flatten a tree to an array to allow gradient and Hessian functions to 
