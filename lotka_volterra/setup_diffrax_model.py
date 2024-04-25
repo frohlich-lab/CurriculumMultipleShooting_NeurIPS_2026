@@ -36,7 +36,8 @@ class UDEFunction(eqx.Module):
         d_prey = α*prey + nn_out[0]
         d_predator = nn_out[1] - δ*predator
         return jnp.array([d_prey, d_predator])
-    
+
+
 class UDEProblem(eqx.Module):
     """
     Class to solve the UDEProblem with a chosen ODE-solver
@@ -71,9 +72,15 @@ class UDEProblem(eqx.Module):
         super().__init__(**kwargs)        
         self.func = UDEFunction(dynamic_parameters, mlp)
 
-    def solve(self, solver, u0, t_save, t_span, 
-              controller = diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8), 
-              adjoint=diffrax.RecursiveCheckpointAdjoint()):
+    def solve(
+            self,
+            solver,
+            u0,
+            t_save,
+            t_span,
+            controller=diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8),
+            adjoint=diffrax.RecursiveCheckpointAdjoint()
+    ):
         t0, t1 = t_span
         sol = diffrax.diffeqsolve(diffrax.ODETerm(self.func),
                                   solver,

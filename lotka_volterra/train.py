@@ -11,6 +11,15 @@ from training import train
 
 conf = fire.Fire(Conf)
 
+# Dictionary of activation functions to choose from
+activation_functions = {
+    "tanh": jnn.tanh,
+    "relu": jnn.relu,
+    "swish": jnn.swish,
+    "elu": jnn.elu,
+    "gelu": jnn.gelu,
+}
+
 # Get training and validation data
 # TODO @GiacomoFabrini find better way to express filepath and pass it as argument
 train_data, t_save_train, validation_data, t_save_validation = get_training_validation_data()
@@ -19,15 +28,15 @@ key = jr.PRNGKey(123)
 key_mlp, key_init = jr.split(key, 2)
 # Setup MLP (same as the original paper for now)
 mlp = build_MLP(
-    in_size=2,
-    out_size=2,
+    in_size=2,  # model state (prey, predator)
+    out_size=2,  # model state (prey, predator)
     width_size=conf.mlp_layer_width,
     hidden_layers=conf.mlp_depth,
     key=key_mlp,
-    activation=jnn.tanh
+    activation=activation_functions[conf.activation_fn_name],
 )
 # Initialise weights and biases of MLP
-mlp = set_weight_bias(mlp, 0.1, key_init)
+mlp = set_weight_bias(mlp, conf.init_scale, key_init)
 # Get u0
 u0 = jnp.array([0.44249296, 4.6280594])
 # Get dynamic parameters (for now true ones are used)
