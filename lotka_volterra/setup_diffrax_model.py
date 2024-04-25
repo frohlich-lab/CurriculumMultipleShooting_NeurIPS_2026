@@ -9,6 +9,7 @@ import pandas as pd
 # I think we should use Float64
 jax.config.update("jax_enable_x64", True)
 
+
 class UDEFunction(eqx.Module):
     """
     Class to evaluate right hand side (vector field) of an UDEModel
@@ -31,9 +32,10 @@ class UDEFunction(eqx.Module):
         α, δ = self.dynamic_parameters
         prey, predator = u
         nn_out = self.mlp(u)
-        d_prey = α*prey + nn_out[0]
-        d_predator = nn_out[1] - δ*predator
+        d_prey = α * prey + nn_out[0]
+        d_predator = nn_out[1] - δ * predator
         return jnp.array([d_prey, d_predator])
+
 
 class UDEProblem(eqx.Module):
     """
@@ -70,7 +72,7 @@ class UDEProblem(eqx.Module):
         self.func = UDEFunction(dynamic_parameters, mlp)
 
     def solve(self, solver, u0, t_save, t_span,
-              controller = diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8),
+              controller=diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8),
               adjoint=diffrax.RecursiveCheckpointAdjoint()):
         t0, t1 = t_span
         sol = diffrax.diffeqsolve(diffrax.ODETerm(self.func),
@@ -85,42 +87,53 @@ class UDEProblem(eqx.Module):
                                   adjoint=adjoint)
         return sol
 
+
 @eqx.filter_value_and_grad
 def compute_loss_grad(prob, u0, t_save, t_span, data):
     u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
-    return jnp.sum((u_pred.ys - data)**2)
+    return jnp.sum((u_pred.ys - data) ** 2)
+
 
 @eqx.filter_jit
 def compute_loss(prob, u0, t_save, t_span, data):
     u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
-    return jnp.sum((u_pred.ys - data)**2)
+    return jnp.sum((u_pred.ys - data) ** 2)
+
 
 def get_result_plot(prob, u0, t_save, t_span, data):
-    '''
+    """
     Transform observed and model prediction data into pd.DataFrames that
     easily can be plotted with plotnine
-    '''
+    """
     # Model prediction
     u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
-    df_pred1 = pd.DataFrame({"time" : u_pred.ts,
-                             "value" : u_pred.ys[:, 0],
-                             "id" : "prey",
-                             "datasource" : "model"})
-    df_pred2 = pd.DataFrame({"time" : u_pred.ts,
-                             "value" : u_pred.ys[:, 1],
-                             "id" : "predator",
-                             "datasource" : "model"})
+    df_pred1 = pd.DataFrame({"time": u_pred.ts,
+                             "value": u_pred.ys[:, 0],
+                             "id": "prey",
+                             "datasource": "model"})
+    df_pred2 = pd.DataFrame({"time": u_pred.ts,
+                             "value": u_pred.ys[:, 1],
+                             "id": "predator",
+                             "datasource": "model"})
     df_predict = pd.concat([df_pred1, df_pred2], names=False)
 
     # Observed data
-    df_obs1 = pd.DataFrame({"time" : u_pred.ts,
-                            "value" : data[:, 0],
-                            "id" : "prey",
-                            "datasource" : "observed"})
-    df_obs2 = pd.DataFrame({"time" : u_pred.ts,
-                            "value" : data[:, 1],
-                            "id" : "predator",
-                            "datasource" : "observed"})
+    df_obs1 = pd.DataFrame({"time": u_pred.ts,
+                            "value": data[:, 0],
+                            "id": "prey",
+                            "datasource": "observed"})
+    df_obs2 = pd.DataFrame({"time": u_pred.ts,
+                            "value": data[:, 1],
+                            "id": "predator",
+                            "datasource": "observed"})
     df_obs = pd.concat([df_obs1, df_obs2], names=False)
 
     return df_predict, df_obs
+
+
+# Idea: evaluate whether the output of the NN component learns the shape of prey*predator term (linear in both)
+# STILL TO BE TESTED!
+# @eqx.filter_jit
+# def compute_corr(prob, data):
+#     nn_out = prob.func.mlp(data.T)  # shape mismatch - how do I overcome this?
+#     return jnp.corrcoef(nn_out, data)
