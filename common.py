@@ -38,9 +38,7 @@ class Conf(dict):
     dynamical_model: str
     mlp_layer_width: int
     mlp_depth: int
-    init_scale: float = 0.1
-    activation_fn_name: str = "tanh"
-    optimiser: str = "adam"
+    activation_fn_name: str = "relu"
     optimiser_learning_rate: float = 1e-3
 
 

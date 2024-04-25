@@ -1,24 +1,22 @@
-import common
-import diffrax
-import equinox as eqx
-import jax
-import jax.numpy as jnp
 import jax.random as jr
 import os
 import pandas as pd
+import diffrax
+import equinox as eqx
+import jax.numpy as jnp
+import jax
 
+import common
 import lotka_volterra.setup_diffrax_model as setup_lv
-
 
 # Flatten a tree to an array to allow gradient and Hessian functions to 
 # produce Array output
 def flatten(v):
-    def f(v):
-        leaves, _ = jax.tree_util.tree_flatten(v)
-        return jnp.concatenate([x.ravel() for x in leaves])
-
-    out, pullback = jax.vjp(f, v)
-    return out, lambda x: pullback(x)[0]
+  def f(v):
+    leaves, _ = jax.tree_util.tree_flatten(v)
+    return jnp.concatenate([x.ravel() for x in leaves])
+  out, pullback = jax.vjp(f, v)
+  return out, lambda x: pullback(x)[0]
 
 
 def build_MLP(in_size, out_size, width_size, hidden_layers, key, activation=jax.nn.tanh):
@@ -70,18 +68,17 @@ uprob = setup_lv.UDEProblem(dynamic_parameters, mlp)
 # Read training and validation data
 train_data_df = pd.read_csv(os.path.join("Intermediate", "Lotka_volterra", "Train_data.csv"))
 train_data = jnp.array(train_data_df[["u1", "u2"]].values)
-t_save_train = diffrax.SaveAt(ts=train_data_df["t"].values)
+t_save_train = diffrax.SaveAt(ts = train_data_df["t"].values)
 validation_data_df = pd.read_csv(os.path.join("Intermediate", "Lotka_volterra", "Validation_data.csv"))
 validation_data = jnp.array(validation_data_df[["u1", "u2"]].values)
-t_save_validation = diffrax.SaveAt(ts=validation_data_df["t"].values)
+t_save_validation = diffrax.SaveAt(ts = validation_data_df["t"].values)
 
 # Compute loss and gradient
 loss, grad = setup_lv.compute_loss_grad(uprob, u0, t_save_train, [0.0, 10.0], train_data)
 # Compute validation loss
 loss_validation = setup_lv.compute_loss(uprob, u0, t_save_validation, [0.0, 20.0], validation_data)
 
-
-# Something fun, let us try the Hessian. Here we must use partition for not
+# Something fun, let us try the Hessian. Here we must use partition for not 
 # run into Jax problems. I have also created two Hessian functions, one that 
 # outputs the Hessian as a Matrix, and one as a PyTree. This because a lot 
 # of the nice abstractions with PyTree quickly become complicated when 
@@ -90,25 +87,23 @@ loss_validation = setup_lv.compute_loss(uprob, u0, t_save_validation, [0.0, 20.0
 @jax.hessian
 def compute_hess(prob_params, prob_static, u0, t_save, t_span, data, adjoint):
     prob = eqx.combine(prob_params, prob_static)
-    u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span,
+    u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span, 
                         adjoint=adjoint)
-    return jnp.sum((u_pred.ys - data) ** 2)
-
+    return jnp.sum((u_pred.ys - data)**2)
 
 @eqx.filter_jit
 @jax.hessian
 def compute_hess_array(flat_p, unflatten_p, prob_static, u0, t_save, t_span, data, adjoint):
     prob_params = unflatten_p(flat_p)
     prob = eqx.combine(prob_params, prob_static)
-    u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span,
+    u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span, 
                         adjoint=adjoint)
-    return jnp.sum((u_pred.ys - data) ** 2)
-
+    return jnp.sum((u_pred.ys - data)**2)
 
 params, static = eqx.partition(uprob, eqx.is_array)
-hess = compute_hess(params, static, u0, t_save_train, [0.0, 10.0], train_data,
+hess = compute_hess(params, static, u0, t_save_train, [0.0, 10.0], train_data, 
                     diffrax.DirectAdjoint())
 
 flat_p, unflatten_p = flatten(params)
-hess = compute_hess_array(flat_p, unflatten_p, static, u0, t_save_train, [0.0, 10.0], train_data,
+hess = compute_hess_array(flat_p, unflatten_p, static, u0, t_save_train, [0.0, 10.0], train_data, 
                           diffrax.DirectAdjoint())

@@ -1,24 +1,23 @@
+import diffrax
 import equinox as eqx
 import git
-import itertools as itt
+import jax
 import jax.numpy as jnp
+import jax.random as jr
 import jax
 import numpy as np
-import optax
+import pandas as pd
+import os
 import wandb
+
+import lotka_volterra.setup_diffrax_model as setup_lv
 
 from common import Conf, EarlyStoppingParams
 from flax.training.early_stopping import EarlyStopping
 from jaxtyping import Array, Float, PyTree
+from optax import adam, linear_schedule
 from setup_diffrax_model import UDEProblem, compute_loss_grad, compute_loss
 from typing import Dict, List
-
-
-# Optimisers to choose from
-optimisers = {
-    "adam": optax.adam,
-    "adamw": optax.adamw,
-}
 
 
 def train(
@@ -67,19 +66,62 @@ def train(
 
     """
 
-    # Initialise wandb and define metrics
-    initialise_wandb(
-        conf=conf,
-        early_stopping_params=early_stopping_params,
-        schedule_config=schedule_config,
-        model=model,
+    repo = git.Repo(search_parent_directories=True)
+
+    wandb.init(
+        project=f"TestUDE.{conf['dynamical_model']}",
+        group=f"{conf['dynamical_model']}",
+        config={
+            **conf,
+            "use_early_stopping": early_stopping_params.use_early_stopping,  # early-stopping enabled/disabled
+            "patience": early_stopping_params.patience
+            if early_stopping_params.use_early_stopping else None,
+            "min_improvement": early_stopping_params.min_improvement
+            if early_stopping_params.use_early_stopping else None,
+            "schedule_config": schedule_config,
+            "optimizer": "adam",
+            "scheduler": "linear",
+        },
+        name="__".join(
+            str(tag)
+            for tag in (
+                conf["dynamical_model"],
+                conf["mlp_layer_width"],
+                conf["mlp_depth"],
+                conf["activation_fn_name"],
+                conf["optimiser_learning_rate"],
+            )
+        ),
+        settings=wandb.Settings(
+            start_method="fork",
+            git_commit=repo.head.object.hexsha,
+            git_remote_url=repo.remotes.origin.url,
+        ),
+        tags=[
+            "early_stop" if early_stopping_params.use_early_stopping else "no_early_stop",
+        ]
     )
 
+    # Define W&B metrics in modular fashion
+    metrics = {
+        "loss_train": "min",
+        "loss_val": "min",
+        "patience_counter": None,
+    }
+    for metric in metrics.keys():
+        # if metric summary not specified
+        if metrics[metric] is None:
+            wandb.define_metric(metric)
+        else:
+            wandb.define_metric(metric, summary=metrics[metric])
+
     # Optimiser and related schedule defined here
-    # TODO @GiacomoFabrini: enable tunable schedule options
-    schedule = optax.linear_schedule(**schedule_config)
-    opt = optimisers[conf["optimiser"]](schedule)
+    # TODO @GiacomoFabrini: shall we tune optimiser and schedule? (later)
+    schedule = linear_schedule(**schedule_config)
+    opt = adam(schedule)
     opt_state = opt.init(eqx.filter(model, eqx.is_array))
+
+    # loss_val_min = np.inf
 
     # Check Early-stopping parameters have been set correctly and instantiate early stopper
     if early_stopping_params.use_early_stopping:
@@ -93,7 +135,8 @@ def train(
                 patience=early_stopping_params.patience
             )
 
-    @eqx.filter_jit
+    # TODO @GiacomoFabrini restore jitting once debugged
+    #@eqx.filter_jit
     def make_step(
             model: UDEProblem,
             opt_state: PyTree,
@@ -114,11 +157,11 @@ def train(
         )
         updates, opt_state = opt.update(grads, opt_state, model)
         model = eqx.apply_updates(model, updates)
-        return model, opt_state, loss_value, grads
+        return model, opt_state, loss_value
 
     # Training loop
     for epoch in range(n_epochs + 1):
-        model, opt_state, loss_train, grads = make_step(
+        model, opt_state, loss_train = make_step(
             model=model,
             opt_state=opt_state,
             input_data=training_data,
@@ -135,16 +178,17 @@ def train(
             validation_data,
         )
 
-        # Log loss values on training and validation dataset + learning rate (useful to inspect schedules)
+        # Log loss values on training and validation dataset
         wandb.log(
             {
                 "loss_train": loss_train,
                 "loss_val": loss_val,
-                "learning_rate": schedule(epoch),
-                **log_layer_stats(model.func.mlp, grads.func.mlp),
             },
             step=epoch
         )
+        #
+        # if loss_val < loss_val_min:
+        #     loss_val_min = loss_val
 
         if early_stopping_params.use_early_stopping:
             # Update early stopper
@@ -171,108 +215,3 @@ def train(
     wandb.log({"final_epoch": epoch})
     wandb.finish()
     return model
-
-
-# from Fabian's NeuralCoarseGraining
-def log_layer_stats(
-        model: eqx.nn.MLP,
-        grad: eqx.nn.MLP,
-):
-    """
-    Log the layer statistics to wandb.
-
-    :param model: model containing weight information
-    :param grad: model containing gradient information
-    """
-    layers = [
-        (par_layer, grad_layer)
-        for par_layer, grad_layer in zip(
-            model.layers, grad.layers, strict=False
-        )
-        if isinstance(par_layer, eqx.nn.Linear)
-    ]
-    stats = {
-        f'layer{ilayer}.{par_label}_{value_label}': wandb.Histogram(
-            np.log10(np.abs(np.array(par_vals[par_vals != 0])))
-        )
-        if value_label == 'grads'
-        else wandb.Histogram(list(par_vals))
-        for ilayer, (par_layer, grad_layer) in enumerate(layers)
-        for value_label, layer in zip(
-            ('vals', 'grads'), (par_layer, grad_layer), strict=False
-        )
-        for par_label, par_vals in zip(
-            ('w', 'b'),
-            (layer.weight.ravel(), layer.bias.ravel()),
-            strict=False,
-        )
-    }
-    return stats
-
-
-def initialise_wandb(
-        conf: Conf,
-        schedule_config: Dict,
-        early_stopping_params: EarlyStoppingParams,
-        model: UDEProblem,
-):
-    # Link to repo
-    repo = git.Repo(search_parent_directories=True)
-    # Initialise run
-    wandb.init(
-        project=f"TestUDE.{conf['dynamical_model']}",
-        group=f"{conf['dynamical_model']}",
-        config={
-            **conf,
-            "use_early_stopping": early_stopping_params.use_early_stopping,  # early-stopping enabled/disabled
-            "patience": early_stopping_params.patience
-            if early_stopping_params.use_early_stopping else None,
-            "min_improvement": early_stopping_params.min_improvement
-            if early_stopping_params.use_early_stopping else None,
-            "schedule_config": schedule_config,
-            "optimizer": conf["optimiser"],
-            "scheduler": "linear",
-        },
-        name="__".join(
-            str(tag)
-            for tag in (
-                conf["dynamical_model"],
-                conf["mlp_layer_width"],
-                conf["mlp_depth"],
-                conf["init_scale"],
-                conf["activation_fn_name"],
-                conf["optimiser"],
-                conf["optimiser_learning_rate"],
-            )
-        ),
-        settings=wandb.Settings(
-            start_method="fork",
-            git_commit=repo.head.object.hexsha,
-            git_remote_url=repo.remotes.origin.url,
-        ),
-        tags=[
-            "early_stop" if early_stopping_params.use_early_stopping else "no_early_stop",
-        ]
-    )
-
-    # Define some metrics
-    metrics = {
-        "loss_train": "min",
-        "loss_val": "min",
-        "learning_rate": None,
-        "patience_counter": None,
-    }
-    for metric in metrics.keys():
-        # if metric summary not specified
-        if metrics[metric] is None:
-            wandb.define_metric(metric)
-        else:
-            wandb.define_metric(metric, summary=metrics[metric])
-    # Define layer statistics (weight/bias value and grads)
-    # from Fabian's NeuralCoarseGraining
-    for il, _ in enumerate(model.func.mlp.layers):
-        for par_label, val_label in itt.product(('w', 'b'), ('vals', 'grads')):
-            wandb.define_metric(
-                f'layer{il}.{par_label}_{val_label}',
-                summary='last',
-            )
