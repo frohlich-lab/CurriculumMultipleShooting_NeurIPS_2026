@@ -4,7 +4,7 @@ import diffrax
 import equinox as eqx 
 import jax
 
-import lotka_volterra.common as common
+import common
 
 # Technically Float32 should work, but for consistency between the benchmarks
 # I think we should use Float64
