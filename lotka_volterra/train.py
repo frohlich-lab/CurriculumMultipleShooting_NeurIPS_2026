@@ -53,7 +53,7 @@ schedule_config = dict(
 )
 
 early_stopping_params = EarlyStoppingParams(
-    use_early_stopping=True,  # enables flax.training.early_stopping
+    use_early_stopping=conf.use_early_stop,  # enables flax.training.early_stopping
     patience=50,  # number of consecutive epochs where we tolerate loss_val not improving by at least min_improvement
     min_improvement=0,  # absolute improvement in loss_val to consider as improvement
 )

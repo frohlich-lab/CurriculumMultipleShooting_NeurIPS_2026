@@ -105,3 +105,10 @@ def compute_loss_grad(prob, u0, t_save, t_span, data):
 def compute_loss(prob, u0, t_save, t_span, data):
     u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
     return jnp.sum((u_pred.ys - data)**2)
+
+# Idea: evaluate whether the output of the NN component learns the shape of prey*predator term (linear in both)
+# STILL TO BE TESTED!
+@eqx.filter_jit
+def compute_corr(prob, data):
+    nn_out = prob.func.mlp(data.T)  # shape mismatch - how do I overcome this?
+    return jnp.corrcoef(nn_out, data)

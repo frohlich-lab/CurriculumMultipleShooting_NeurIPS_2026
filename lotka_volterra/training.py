@@ -10,7 +10,7 @@ import wandb
 from common import Conf, EarlyStoppingParams
 from flax.training.early_stopping import EarlyStopping
 from jaxtyping import Array, Float, PyTree
-from setup_diffrax_model import UDEProblem, compute_loss_grad, compute_loss
+from setup_diffrax_model import UDEProblem, compute_loss_grad, compute_loss, compute_corr
 from typing import Dict, List
 
 
@@ -141,10 +141,18 @@ def train(
                 "loss_train": loss_train,
                 "loss_val": loss_val,
                 "learning_rate": schedule(epoch),
-                **log_layer_stats(model.func.mlp, grads.func.mlp),
             },
             step=epoch
         )
+
+        # log param values and grads every 5 epochs
+        if epoch % 5 == 0:
+            wandb.log(
+                {
+                    **log_layer_stats(model.func.mlp, grads.func.mlp),
+                },
+                step=epoch
+            )
 
         if early_stopping_params.use_early_stopping:
             # Update early stopper
@@ -224,11 +232,11 @@ def initialise_wandb(
         group=f"{conf['dynamical_model']}",
         config={
             **conf,
-            "use_early_stopping": early_stopping_params.use_early_stopping,  # early-stopping enabled/disabled
+            "use_early_stopping": conf["use_early_stop"],  # early-stopping enabled/disabled
             "patience": early_stopping_params.patience
-            if early_stopping_params.use_early_stopping else None,
+            if conf["use_early_stop"] else None,
             "min_improvement": early_stopping_params.min_improvement
-            if early_stopping_params.use_early_stopping else None,
+            if conf["use_early_stop"] else None,
             "schedule_config": schedule_config,
             "optimizer": conf["optimiser"],
             "scheduler": "linear",
@@ -251,7 +259,7 @@ def initialise_wandb(
             git_remote_url=repo.remotes.origin.url,
         ),
         tags=[
-            "early_stop" if early_stopping_params.use_early_stopping else "no_early_stop",
+            "early_stop" if conf["use_early_stop"] else "no_early_stop",
         ]
     )
 

@@ -42,6 +42,7 @@ class Conf(dict):
     activation_fn_name: str = "tanh"
     optimiser: str = "adam"
     optimiser_learning_rate: float = 1e-3
+    use_early_stop: bool = True
 
 
 
