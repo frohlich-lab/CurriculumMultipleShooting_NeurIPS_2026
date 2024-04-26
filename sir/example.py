@@ -6,6 +6,7 @@ import equinox as eqx
 import jax.numpy as jnp
 import jax
 import timeit
+import matplotlib.pyplot as plt
 
 import common as common
 import sir.setup_diffrax as setup_sir
@@ -44,6 +45,13 @@ t_span = [0.0, max(train_data_df["time"])]
 # Compute loss and gradient
 loss = setup_sir.compute_loss(u_prob, u0, t_save, t_span, train_data)
 loss, grad = setup_sir.compute_loss_grad(u_prob, u0, t_save, t_span, train_data)
+
+# Just as for the Lotka-Volterra model we can easily plot the results. Note, the 
+# observables are on log-scale for this model
+df_obs, df_pred = setup_sir.get_result_plot(u_prob, u0, t_save, t_span, train_data)
+p = common.plot_fit(df_obs, df_pred)
+p
+plt.show()
 
 # Something fun, let us try the Hessian. Here we must use partition for not 
 # run into Jax problems. I have also created two Hessian functions, one that 
