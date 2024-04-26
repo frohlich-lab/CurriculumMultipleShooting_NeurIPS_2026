@@ -3,6 +3,7 @@ import jax.numpy as jnp
 import diffrax
 import equinox as eqx 
 import jax
+import pandas as pd
 
 import common as common
 
@@ -110,3 +111,34 @@ def _compute_loss(sol, data):
     loss1 = jnp.sum( (jnp.log(infected) - jnp.log(jnp.absolute(sol.ys[:, 1] + sol.ys[:, 3])))**2 )
     loss2 = jnp.sum( (jnp.log(jnp.absolute(recovered + dead)) - jnp.log(jnp.absolute(sol.ys[:, 2])))**2 )
     return loss1 + loss2
+
+def get_result_plot(prob, u0, t_save, t_span, data):
+    '''
+    Transform observed and model prediction data into pd.DataFrames that 
+    easily can be plotted with plotnine
+    '''
+    # Model prediction
+    sol = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
+    df_pred1 = pd.DataFrame({"time" : sol.ts,
+                             "value" : jnp.log(jnp.absolute(sol.ys[:, 1] + sol.ys[:, 3])),
+                             "id" : "Infected",
+                             "datasource" : "model"})
+    df_pred2 = pd.DataFrame({"time" : sol.ts,
+                             "value" : jnp.log(jnp.absolute(sol.ys[:, 2])),
+                             "id" : "Recovered + dead",
+                             "datasource" : "model"})
+    df_predict = pd.concat([df_pred1, df_pred2], names=False)
+
+    # Observed data
+    infected, dead, recovered = data[:, 0], data[:, 1], data[:, 2]
+    df_obs1 = pd.DataFrame({"time" : sol.ts,
+                            "value" : jnp.log(infected),
+                            "id" : "Infected",
+                            "datasource" : "observed"})
+    df_obs2 = pd.DataFrame({"time" : sol.ts,
+                            "value" : jnp.log(jnp.absolute(recovered + dead)),
+                            "id" : "Recovered + dead",
+                            "datasource" : "observed"})
+    df_obs = pd.concat([df_obs1, df_obs2], names=False)
+
+    return df_predict, df_obs
