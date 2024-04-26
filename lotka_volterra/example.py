@@ -95,6 +95,6 @@ params, static = eqx.partition(uprob, eqx.is_array)
 hess = compute_hess(params, static, u0, t_save_train, [0.0, 10.0], train_data, 
                     diffrax.DirectAdjoint())
 
-flat_p, unflatten_p = flatten(params)
+flat_p, unflatten_p = jax.flatten_util.ravel_pytree(params)
 hess = compute_hess_array(flat_p, unflatten_p, static, u0, t_save_train, [0.0, 10.0], train_data, 
                           diffrax.DirectAdjoint())

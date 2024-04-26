@@ -1,3 +1,4 @@
+import jax.flatten_util
 import jax.random as jr
 import os
 import pandas as pd
@@ -9,7 +10,7 @@ import timeit
 import matplotlib.pyplot as plt
 
 import common as common
-import sir.setup_diffrax as setup_sir
+import sir.setup_diffrax_model as setup_sir
 
 # Setup the model (this mlp was used in the paper)
 width_size = 10
@@ -37,18 +38,32 @@ dynamic_parameters = jnp.array([0.15, 0.013, 0.01])
 u_prob = setup_sir.UDEProblem(dynamic_parameters, mlp)
 
 # Read training and validation data
-train_data_df = pd.read_csv(os.path.join("Intermediate", "SIR", "Korea_data.csv"))
+# Training
+train_data_df = pd.read_csv(os.path.join("Intermediate", "SIR", "Korea_data_train.csv"))
 train_data = jnp.array(train_data_df[["infected", "dead", "recovered"]].values)
-t_save = diffrax.SaveAt(ts = train_data_df["time"].values)
-t_span = [0.0, max(train_data_df["time"])]
+t_save_train = diffrax.SaveAt(ts = train_data_df["time"].values)
+t_span_train = [0.0, max(train_data_df["time"])]
+# Validation
+validation_data_df = pd.read_csv(os.path.join("Intermediate", "SIR", "Korea_data_validation.csv"))
+validation_data = jnp.array(validation_data_df[["infected", "dead", "recovered"]].values)
+t_save_validation = diffrax.SaveAt(ts = validation_data_df["time"].values)
+t_span_validation = [0.0, max(validation_data_df["time"])]
 
 # Compute loss and gradient
-loss = setup_sir.compute_loss(u_prob, u0, t_save, t_span, train_data)
-loss, grad = setup_sir.compute_loss_grad(u_prob, u0, t_save, t_span, train_data)
+loss = setup_sir.compute_loss(u_prob, u0, t_save_train, t_span_train, train_data)
+loss, grad = setup_sir.compute_loss_grad(u_prob, u0, t_save_train, t_span_train, train_data)
+# Compute loss for the validation data
+loss_validation = setup_sir.compute_loss(u_prob, u0, t_save_validation, t_span_validation, validation_data)
 
 # Just as for the Lotka-Volterra model we can easily plot the results. Note, the 
 # observables are on log-scale for this model
-df_obs, df_pred = setup_sir.get_result_plot(u_prob, u0, t_save, t_span, train_data)
+# Training data
+df_obs, df_pred = setup_sir.get_result_plot(u_prob, u0, t_save_train, t_span_train, train_data)
+p = common.plot_fit(df_obs, df_pred)
+p
+plt.show()
+# Validation data
+df_obs, df_pred = setup_sir.get_result_plot(u_prob, u0, t_save_validation, t_span_validation, validation_data)
 p = common.plot_fit(df_obs, df_pred)
 p
 plt.show()
@@ -60,35 +75,35 @@ plt.show()
 # dealing with the second derivative matrix
 @eqx.filter_jit
 @jax.hessian
-def compute_hess(prob_params, prob_static, u0, t_save, t_span, data, adjoint):
+def compute_hess(prob_params, prob_static, u0, t_save_train, t_span_train, data, adjoint):
     prob = eqx.combine(prob_params, prob_static)
-    sol = prob.solve(diffrax.Tsit5(), u0, t_save, t_span, adjoint=adjoint)
+    sol = prob.solve(diffrax.Tsit5(), u0, t_save_train, t_span_train, adjoint=adjoint)
     return setup_sir._compute_loss(sol, data)
 
 @eqx.filter_jit
 @jax.hessian
-def compute_hess_array(flat_p, unflatten_p, prob_static, u0, t_save, t_span, data, adjoint):
+def compute_hess_array(flat_p, unflatten_p, prob_static, u0, t_save_train, t_span_train, data, adjoint):
     prob_params = unflatten_p(flat_p)
     prob = eqx.combine(prob_params, prob_static)
     prob = eqx.combine(prob_params, prob_static)
-    sol = prob.solve(diffrax.Tsit5(), u0, t_save, t_span, adjoint=adjoint)
+    sol = prob.solve(diffrax.Tsit5(), u0, t_save_train, t_span_train, adjoint=adjoint)
     return setup_sir._compute_loss(sol, data)
 
 params, static = eqx.partition(u_prob, eqx.is_array)
-hess = compute_hess(params, static, u0, t_save, t_span, train_data, 
+hess = compute_hess(params, static, u0, t_save_train, t_span_train, train_data, 
                     diffrax.DirectAdjoint())
 
-flat_p, unflatten_p = common.flatten(params)
-hess = compute_hess_array(flat_p, unflatten_p, static, u0, t_save, t_span, train_data, 
+flat_p, unflatten_p = jax.flatten_util.ravel_pytree(params)
+hess = compute_hess_array(flat_p, unflatten_p, static, u0, t_save_train, t_span_train, train_data, 
                           diffrax.DirectAdjoint())
 
 # We can run some fun timing 
 def time_stuff():
     def _grad():
-        loss, grad = setup_sir.compute_loss_grad(u_prob, u0, t_save, t_span, train_data)
+        loss, grad = setup_sir.compute_loss_grad(u_prob, u0, t_save_train, t_span_train, train_data)
 
     def _hess():
-        hess = compute_hess_array(flat_p, unflatten_p, static, u0, t_save, t_span, 
+        hess = compute_hess_array(flat_p, unflatten_p, static, u0, t_save_train, t_span_train, 
                                   train_data, diffrax.DirectAdjoint())
     duration1 = timeit.Timer(_grad).repeat(100, number=1)
     duration2 = timeit.Timer(_hess).repeat(100, number=1)
