@@ -4,7 +4,7 @@ import jax.nn as jnn
 import jax.numpy as jnp
 import lotka_volterra.setup_diffrax_model as setup_lv
 
-from common import build_MLP, Conf, EarlyStoppingParams, get_training_validation_data, set_weight_bias
+from common import build_MLP, Conf, EarlyStoppingParams, set_weight_bias
 from training import train
 # from training_configuration import DYNAMICAL_MODEL, MLP_WIDTH, MLP_DEPTH
 
@@ -21,7 +21,7 @@ activation_functions = {
 
 # Get training and validation data
 # TODO @GiacomoFabrini find better way to express filepath and pass it as argument
-train_data, t_save_train, validation_data, t_save_validation = get_training_validation_data()
+train_data, t_save_train, validation_data, t_save_validation = setup_lv.get_training_validation_data_lotka_volterra()
 # Key
 key = jr.PRNGKey(123)
 key_mlp, key_init = jr.split(key, 2)

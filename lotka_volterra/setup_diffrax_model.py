@@ -116,6 +116,36 @@ def compute_loss(prob, u0, t_save, t_span, data, reg_exp, reg_strength):
     return jnp.sum((u_pred.ys - data) ** 2) + reg_strength * reg_loss
 
 
+@eqx.filter_jit
+@jax.hessian
+def compute_hess(prob_params, prob_static, u0, t_save, t_span, data, adjoint):
+    prob = eqx.combine(prob_params, prob_static)
+    u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span,
+                        adjoint=adjoint)
+    return jnp.sum((u_pred.ys - data)**2)
+
+
+@eqx.filter_jit
+@jax.hessian
+def compute_hess_array(flat_p, unflatten_p, prob_static, u0, t_save, t_span, data, adjoint):
+    prob_params = unflatten_p(flat_p)
+    prob = eqx.combine(prob_params, prob_static)
+    u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span,
+                        adjoint=adjoint)
+    return jnp.sum((u_pred.ys - data)**2)
+
+
+def get_training_validation_data_lotka_volterra():
+    # Read training and validation data
+    train_data_df = pd.read_csv(os.path.join("Intermediate", "Lotka_volterra", "Train_data.csv"))
+    train_data = jnp.array(train_data_df[["u1", "u2"]].values)
+    t_save_train = diffrax.SaveAt(ts=train_data_df["t"].values)
+    validation_data_df = pd.read_csv(os.path.join("Intermediate", "Lotka_volterra", "Validation_data.csv"))
+    validation_data = jnp.array(validation_data_df[["u1", "u2"]].values)
+    t_save_validation = diffrax.SaveAt(ts=validation_data_df["t"].values)
+    return train_data, t_save_train, validation_data, t_save_validation
+
+
 def get_result_plot(prob, u0, t_save, t_span, data):
     """
     Transform observed and model prediction data into pd.DataFrames that
@@ -182,6 +212,7 @@ def save_plot_results(
     p = plot_fit(df_obs, df_pred)
     plt.tight_layout()
     p.save(f"{dataset}_{plot_name}.{plot_fmt}")
+
 
 # Idea: evaluate whether the output of the NN component learns the shape of prey*predator term (linear in both)
 # STILL TO BE TESTED!
