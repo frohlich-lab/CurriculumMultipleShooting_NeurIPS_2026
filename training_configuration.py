@@ -1,5 +1,5 @@
 DYNAMICAL_MODEL = {
-    "lotka_volterra",
+    #"lotka_volterra",
     "SIR"
 }
 
@@ -43,7 +43,7 @@ MAX_LEARNING_RATES = {
 LEARNING_RATE_SPANS = {
     # 1e0,
     1e1,
-    # 1e2,
+    1e2,
     # 1e3,
 }
 
@@ -85,7 +85,7 @@ REG_EXPS = {
 REG_STRENGTHS = {
     1e1,
     1e2,
-    1e3,
+    # 1e3,
     # 1e4,
     # 1e5,
     # 1e6,

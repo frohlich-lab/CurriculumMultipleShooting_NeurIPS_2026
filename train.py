@@ -7,7 +7,6 @@ import sir.setup_diffrax_model as setup_sir
 
 from common import build_MLP, Conf, EarlyStoppingParams, set_weight_bias
 from training import train
-# from training_configuration import DYNAMICAL_MODEL, MLP_WIDTH, MLP_DEPTH
 
 conf = fire.Fire(Conf)
 

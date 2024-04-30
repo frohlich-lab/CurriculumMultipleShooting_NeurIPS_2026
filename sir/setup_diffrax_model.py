@@ -8,8 +8,6 @@ import pandas as pd
 from common import plot_fit
 from typing import List
 
-# import common as common
-
 # Technically Float32 should work, but for consistency between the benchmarks
 # I think we should use Float64
 jax.config.update("jax_enable_x64", True)
@@ -128,8 +126,8 @@ def _compute_loss(sol, data):
     infected = data[:, 0]
     dead = data[:, 1]
     recovered = data[:, 2]
-    loss1 = jnp.sum((jnp.log(infected) - jnp.log(jnp.absolute(sol.ys[:, 1] + sol.ys[:, 3])))**2)
-    loss2 = jnp.sum((jnp.log(jnp.absolute(recovered + dead)) - jnp.log(jnp.absolute(sol.ys[:, 2])))**2)
+    loss1 = jnp.mean((jnp.log(infected) - jnp.log(jnp.absolute(sol.ys[:, 1] + sol.ys[:, 3])))**2)
+    loss2 = jnp.mean((jnp.log(jnp.absolute(recovered + dead)) - jnp.log(jnp.absolute(sol.ys[:, 2])))**2)
     return loss1 + loss2
 
 

@@ -5,7 +5,7 @@ import jax
 import os
 import pandas as pd
 
-from common import Conf, plot_fit
+from common import plot_fit
 from typing import List
 
 # Technically Float32 should work, but for consistency between the benchmarks
@@ -121,7 +121,7 @@ def compute_hess(prob_params, prob_static, u0, t_save, t_span, data, adjoint):
     prob = eqx.combine(prob_params, prob_static)
     u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span,
                         adjoint=adjoint)
-    return jnp.sum((u_pred.ys - data)**2)
+    return jnp.mean((u_pred.ys - data)**2)
 
 
 @eqx.filter_jit
@@ -131,7 +131,7 @@ def compute_hess_array(flat_p, unflatten_p, prob_static, u0, t_save, t_span, dat
     prob = eqx.combine(prob_params, prob_static)
     u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span,
                         adjoint=adjoint)
-    return jnp.sum((u_pred.ys - data)**2)
+    return jnp.mean((u_pred.ys - data)**2)
 
 
 def get_training_validation_data():
