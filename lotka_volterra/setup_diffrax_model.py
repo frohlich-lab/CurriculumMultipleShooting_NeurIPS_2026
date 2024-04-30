@@ -3,7 +3,11 @@ import jax.numpy as jnp
 import diffrax
 import equinox as eqx
 import jax
+import matplotlib.pyplot as plt
 import pandas as pd
+
+from common import Conf, plot_fit
+from typing import List
 
 # Technically Float32 should work, but for consistency between the benchmarks
 # I think we should use Float64
@@ -89,15 +93,27 @@ class UDEProblem(eqx.Module):
 
 
 @eqx.filter_value_and_grad
-def compute_loss_grad(prob, u0, t_save, t_span, data):
+def compute_loss_grad(prob, u0, t_save, t_span, data, reg_exp, reg_strength):
     u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
-    return jnp.sum((u_pred.ys - data) ** 2)
+    reg_loss = 0
+    for layer_num in range(len(prob.func.mlp.layers)):
+        w = prob.func.mlp.layers[layer_num].weight
+        reg_loss += jnp.mean(
+            jnp.abs(w)**reg_exp
+        )
+    return jnp.sum((u_pred.ys - data) ** 2) + reg_strength * reg_loss
 
 
 @eqx.filter_jit
-def compute_loss(prob, u0, t_save, t_span, data):
+def compute_loss(prob, u0, t_save, t_span, data, reg_exp, reg_strength):
     u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
-    return jnp.sum((u_pred.ys - data) ** 2)
+    reg_loss = 0
+    for layer_num in range(len(prob.func.mlp.layers)):
+        w = prob.func.mlp.layers[layer_num].weight
+        reg_loss += jnp.mean(
+            jnp.abs(w) ** reg_exp
+        )
+    return jnp.sum((u_pred.ys - data) ** 2) + reg_strength * reg_loss
 
 
 def get_result_plot(prob, u0, t_save, t_span, data):
@@ -130,6 +146,42 @@ def get_result_plot(prob, u0, t_save, t_span, data):
 
     return df_predict, df_obs
 
+
+def get_fit_dfs(prob, u0, t_save, t_span, data):
+    # Model prediction
+    u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
+    df_pred = pd.DataFrame({"time": u_pred.ts,
+                            "prey": u_pred.ys[:, 0],
+                            "predator": u_pred.ys[:, 1],
+                            })
+    df_obs = pd.DataFrame({"time": u_pred.ts,
+                           "prey": data[:, 0],
+                           "predator": data[:, 1],
+                           })
+    return df_pred, df_obs
+
+
+def save_plot_results(
+        trained_model: UDEProblem,
+        u0: jnp.array,
+        t_save: diffrax.SaveAt,
+        t_span: List,
+        data: jnp.array,
+        conf: Conf,
+        dataset: str,
+        plot_name: str,
+        plot_fmt: str,
+):
+    df_obs, df_pred = get_result_plot(
+        trained_model,
+        u0,
+        t_save,
+        t_span,
+        data,
+    )
+    p = plot_fit(df_obs, df_pred)
+    plt.tight_layout()
+    p.save(f"{dataset}_{plot_name}.{plot_fmt}")
 
 # Idea: evaluate whether the output of the NN component learns the shape of prey*predator term (linear in both)
 # STILL TO BE TESTED!

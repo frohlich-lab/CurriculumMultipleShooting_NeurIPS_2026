@@ -1,8 +1,46 @@
+import dataclasses
+import diffrax
 import equinox as eqx
 import jax.numpy as jnp
 import jax.nn as jnn
 import jax
+import os
+import pandas as pd
 import plotnine as p9
+
+
+@dataclasses.dataclass(frozen=True, repr=True, eq=True, order=True)
+class Conf(dict):
+    dynamical_model: str = ''
+    mlp_layer_width: int = 5
+    mlp_depth: int = 1
+    init_scale: float = 0.1
+    activation_fn_name: str = "tanh"
+    optimiser: str = "adam"
+    max_lrate: float = 1e-1  # absolute maximum learning rate (max in first schedule or in all schedules without decay)
+    lrate_span: float = 1e1  # ratio between max and min learning rates in a given schedule
+    lrate_decay: float = 0.8  # if < 1, the learning rate decays between schedules
+    warmup_fct: float = 0.2  # fraction of schedule epochs to be used for warmup
+    opt_steps: int = 10  # Number of steps in the first schedule (they multiply each time in length by opt_mult)
+    opt_mult: int = 2  # Multiplier for the number of steps in each schedule
+    use_early_stop: bool = True
+    reg_exp: float = 2.0
+    reg_strength: float = 100.0
+
+    def __str__(self):
+        """
+        Return string representation of the configuration.
+
+        Note: enables printing of Conf objects in fire
+        """
+        return super().__str__()
+
+
+@dataclasses.dataclass
+class EarlyStoppingParams(dict):
+    use_early_stopping: bool = True
+    patience: int = 9
+    min_improvement: float = 0
 
 
 def _init_glorot(scale, shape, key):
@@ -52,20 +90,52 @@ def plot_fit(df_obs, df_pred):
     return p
 
 
-@dataclasses.dataclass
-class Conf(dict):
-    dynamical_model: str
-    mlp_layer_width: int
-    mlp_depth: int
-    init_scale: float = 0.1
-    activation_fn_name: str = "tanh"
-    optimiser: str = "adam"
-    optimiser_learning_rate: float = 1e-3
-    use_early_stop: bool = True
+# Flatten a tree to an array to allow gradient and Hessian functions to
+# produce Array output
+def flatten(v):
+    def f(v):
+        leaves, _ = jax.tree_util.tree_flatten(v)
+        return jnp.concatenate([x.ravel() for x in leaves])
+
+    out, pullback = jax.vjp(f, v)
+    return out, lambda x: pullback(x)[0]
 
 
-@dataclasses.dataclass
-class EarlyStoppingParams(dict):
-    use_early_stopping: bool = True
-    patience: int = 9
-    min_improvement: float = 0
+def build_MLP(in_size, out_size, width_size, hidden_layers, key, activation=jax.nn.tanh):
+    mlp = eqx.nn.MLP(in_size=in_size,
+                     out_size=out_size,
+                     width_size=width_size,
+                     depth=hidden_layers,
+                     activation=activation,
+                     key=key)
+    return mlp
+
+
+def get_training_validation_data():
+    # Read training and validation data
+    train_data_df = pd.read_csv(os.path.join("Intermediate", "Lotka_volterra", "Train_data.csv"))
+    train_data = jnp.array(train_data_df[["u1", "u2"]].values)
+    t_save_train = diffrax.SaveAt(ts=train_data_df["t"].values)
+    validation_data_df = pd.read_csv(os.path.join("Intermediate", "Lotka_volterra", "Validation_data.csv"))
+    validation_data = jnp.array(validation_data_df[["u1", "u2"]].values)
+    t_save_validation = diffrax.SaveAt(ts=validation_data_df["t"].values)
+    return train_data, t_save_train, validation_data, t_save_validation
+
+
+@eqx.filter_jit
+@jax.hessian
+def compute_hess(prob_params, prob_static, u0, t_save, t_span, data, adjoint):
+    prob = eqx.combine(prob_params, prob_static)
+    u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span,
+                        adjoint=adjoint)
+    return jnp.sum((u_pred.ys - data)**2)
+
+
+@eqx.filter_jit
+@jax.hessian
+def compute_hess_array(flat_p, unflatten_p, prob_static, u0, t_save, t_span, data, adjoint):
+    prob_params = unflatten_p(flat_p)
+    prob = eqx.combine(prob_params, prob_static)
+    u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span,
+                        adjoint=adjoint)
+    return jnp.sum((u_pred.ys - data)**2)

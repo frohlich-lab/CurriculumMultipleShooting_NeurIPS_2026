@@ -1,8 +1,8 @@
 import equinox as eqx
 import git
 import itertools as itt
-import jax.numpy as jnp
 import jax
+import jax.numpy as jnp
 import numpy as np
 import optax
 import wandb
@@ -10,9 +10,8 @@ import wandb
 from common import Conf, EarlyStoppingParams
 from flax.training.early_stopping import EarlyStopping
 from jaxtyping import Array, Float, PyTree
-from setup_diffrax_model import UDEProblem, compute_loss_grad, compute_loss, compute_corr
+from setup_diffrax_model import UDEProblem, compute_loss_grad, compute_loss, save_plot_results, get_fit_dfs
 from typing import Dict, List
-
 
 # Optimisers to choose from
 optimisers = {
@@ -31,7 +30,6 @@ def train(
         t_save_val: List,
         t_span_val: List,
         conf: Conf,
-        schedule_config: Dict,
         n_epochs: int,
         early_stopping_params: EarlyStoppingParams,
 ) -> UDEProblem:
@@ -58,8 +56,6 @@ def train(
         validation data for the model.
     :param conf:
         configuration (hyperparameters).
-    :param schedule_config:
-        optimiser schedule.
     :param n_epochs:
         Number of training iterations (epochs).
     :param early_stopping_params:
@@ -71,14 +67,13 @@ def train(
     initialise_wandb(
         conf=conf,
         early_stopping_params=early_stopping_params,
-        schedule_config=schedule_config,
         model=model,
     )
 
     # Optimiser and related schedule defined here
     # TODO @GiacomoFabrini: enable tunable schedule options
-    schedule = optax.linear_schedule(**schedule_config)
-    opt = optimisers[conf["optimiser"]](schedule)
+    schedule = get_scheduler(conf=conf, n_epochs=n_epochs)
+    opt = optimisers[conf.optimiser](schedule)
     opt_state = opt.init(eqx.filter(model, eqx.is_array))
 
     # Check Early-stopping parameters have been set correctly and instantiate early stopper
@@ -106,7 +101,9 @@ def train(
             u0,
             t_save,
             t_span,
-            input_data
+            input_data,
+            conf.reg_exp,
+            conf.reg_strength,
         )
         grads = jax.tree_map(
             lambda x: jnp.where(jnp.isfinite(x), x, jnp.zeros_like(x)),
@@ -133,6 +130,8 @@ def train(
             t_save_val,
             t_span_val,
             validation_data,
+            conf.reg_exp,
+            conf.reg_strength,
         )
 
         # Log loss values on training and validation dataset + learning rate (useful to inspect schedules)
@@ -152,6 +151,27 @@ def train(
                     **log_layer_stats(model.func.mlp, grads.func.mlp),
                 },
                 step=epoch
+            )
+
+        if epoch % 100 == 0:
+            # Plot the model prediction against the observed data -- training only
+            df_predict, df_obs = get_fit_dfs(model, u0, t_save_train, t_span_train, training_data)
+            wandb.log(
+                {
+                    "model_fit": wandb.plot.line_series(
+                        xs=df_predict["time"].values,
+                        ys=[
+                            df_predict['prey'].values,
+                            df_predict['predator'].values,
+                            df_obs['prey'].values,
+                            df_obs['predator'].values
+                        ],
+                        keys=["model_prey", "model_predator", "obs_prey", "obs_predator"],
+                        title="Model Fit - Train",
+                        xname="Time",
+                    )
+                },
+                step=epoch,
             )
 
         if early_stopping_params.use_early_stopping:
@@ -176,8 +196,38 @@ def train(
                 print(f'Met early stopping criteria, breaking at epoch {epoch}')
                 break
 
+    # Save final fit plots in PDF
+    for t_save, t_span, data, dataset in zip(
+            [t_save_train, t_save_val],
+            [t_span_train, t_span_val],
+            [training_data, validation_data],
+            ["train", "validation"],
+    ):
+        save_plot_results(
+            model,
+            u0,
+            t_save,
+            t_span,
+            data,
+            conf,
+            dataset,
+            plot_name="fit",
+            plot_fmt="pdf",
+        )
+
+        # # Instantiate artifact
+        # plot_artifact = wandb.Artifact(
+        #     name=f"fit_plot_{dataset}",
+        #     description=f"fit_plot_{dataset}",
+        #     type="plot",
+        # )
+        # # Add and log artifact
+        # plot_artifact.add_file(f"{dataset}_fit.pdf")
+        # wandb.log_artifact(plot_artifact)
+
     wandb.log({"final_epoch": epoch})
     wandb.finish()
+
     return model
 
 
@@ -220,7 +270,6 @@ def log_layer_stats(
 
 def initialise_wandb(
         conf: Conf,
-        schedule_config: Dict,
         early_stopping_params: EarlyStoppingParams,
         model: UDEProblem,
 ):
@@ -228,38 +277,23 @@ def initialise_wandb(
     repo = git.Repo(search_parent_directories=True)
     # Initialise run
     wandb.init(
-        project=f"TestUDE.{conf['dynamical_model']}",
-        group=f"{conf['dynamical_model']}",
+        project=f"TestUDE.{conf.dynamical_model}",
+        group=f"{conf.dynamical_model}",
         config={
-            **conf,
-            "use_early_stopping": conf["use_early_stop"],  # early-stopping enabled/disabled
+            **conf.__dict__,
             "patience": early_stopping_params.patience
-            if conf["use_early_stop"] else None,
+            if conf.use_early_stop else None,
             "min_improvement": early_stopping_params.min_improvement
-            if conf["use_early_stop"] else None,
-            "schedule_config": schedule_config,
-            "optimizer": conf["optimiser"],
-            "scheduler": "linear",
+            if conf.use_early_stop else None,
         },
-        name="__".join(
-            str(tag)
-            for tag in (
-                conf["dynamical_model"],
-                conf["mlp_layer_width"],
-                conf["mlp_depth"],
-                conf["init_scale"],
-                conf["activation_fn_name"],
-                conf["optimiser"],
-                conf["optimiser_learning_rate"],
-            )
-        ),
+        name=conf.__str__()[5:-1],  # skip Conf and remove ()
         settings=wandb.Settings(
             start_method="fork",
             git_commit=repo.head.object.hexsha,
             git_remote_url=repo.remotes.origin.url,
         ),
         tags=[
-            "early_stop" if conf["use_early_stop"] else "no_early_stop",
+            "early_stop" if conf.use_early_stop else "no_early_stop",
         ]
     )
 
@@ -284,3 +318,41 @@ def initialise_wandb(
                 f'layer{il}.{par_label}_{val_label}',
                 summary='last',
             )
+
+
+# Scheduler from Fabian's NeuralCoarseGraining
+def get_scheduler(
+        conf: Conf,
+        n_epochs: int,
+):
+    """Get the learning rate scheduler.
+
+    Parameters
+    ----------
+    conf : configuration object
+    n_epochs : int - total number of training epochs
+
+    Output
+    ----------
+    optax.sgdr_schedule
+        The learning rate scheduler.
+    """
+    epochs_per_schedule = np.array([
+        conf.opt_steps * (conf.opt_mult ** i)
+        for i in range(int(n_epochs // conf.opt_steps))
+        if conf.opt_steps * (conf.opt_mult ** i) <= n_epochs
+    ])
+    schedules = [
+        {
+            'init_value': conf.max_lrate / conf.lrate_span * conf.lrate_decay ** i_schedule,
+            'peak_value': conf.max_lrate * conf.lrate_decay ** i_schedule,
+            'warmup_steps': int(
+                (conf.opt_steps * (conf.opt_mult ** i_schedule))
+                * conf.warmup_fct
+            ),
+            'decay_steps': int(conf.opt_steps * (conf.opt_mult ** i_schedule)),
+            'end_value': conf.max_lrate / conf.lrate_span * conf.lrate_decay ** (i_schedule + 1),
+        }
+        for i_schedule in range(len(epochs_per_schedule))
+    ]
+    return optax.sgdr_schedule(schedules)

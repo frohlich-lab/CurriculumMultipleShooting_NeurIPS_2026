@@ -4,8 +4,7 @@ import jax.nn as jnn
 import jax.numpy as jnp
 import lotka_volterra.setup_diffrax_model as setup_lv
 
-from common import Conf, EarlyStoppingParams, set_weight_bias
-from example import build_MLP, get_training_validation_data
+from common import build_MLP, Conf, EarlyStoppingParams, get_training_validation_data, set_weight_bias
 from training import train
 # from training_configuration import DYNAMICAL_MODEL, MLP_WIDTH, MLP_DEPTH
 
@@ -45,12 +44,12 @@ dynamic_parameters = jnp.array([1.3, 1.8])
 ude_problem = setup_lv.UDEProblem(dynamic_parameters, mlp)
 
 
-# Linear schedule Fabian set up for the DMM
-schedule_config = dict(
-    init_value=conf.optimiser_learning_rate,
-    transition_steps=100,
-    end_value=conf.optimiser_learning_rate/10,
-)
+# # Linear schedule Fabian set up for the DMM -- DISABLED WITH NEW SCHEDULER
+# schedule_config = dict(
+#     init_value=conf.optimiser_learning_rate,
+#     transition_steps=100,
+#     end_value=conf.optimiser_learning_rate/10,
+# )
 
 early_stopping_params = EarlyStoppingParams(
     use_early_stopping=conf.use_early_stop,  # enables flax.training.early_stopping
@@ -67,8 +66,7 @@ trained_model = train(
     validation_data=validation_data,
     t_save_val=t_save_validation,
     t_span_val=[0.0, 20.0],
-    conf=conf.__dict__,
-    schedule_config=schedule_config,
-    n_epochs=1000,
+    conf=conf,
+    n_epochs=5000,
     early_stopping_params=early_stopping_params,
 )
