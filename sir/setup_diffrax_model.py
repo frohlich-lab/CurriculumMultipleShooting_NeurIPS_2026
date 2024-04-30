@@ -1,15 +1,19 @@
-import jax.flatten_util
-import jax.numpy as jnp
 import diffrax
 import equinox as eqx 
 import jax
+import jax.numpy as jnp
+import os
 import pandas as pd
 
-import common as common
+from common import plot_fit
+from typing import List
+
+# import common as common
 
 # Technically Float32 should work, but for consistency between the benchmarks
 # I think we should use Float64
 jax.config.update("jax_enable_x64", True)
+
 
 class UDEFunction(eqx.Module):
     """
@@ -42,7 +46,8 @@ class UDEFunction(eqx.Module):
         dT =  nn_t[0]*I/u0[0] - δ*T
 
         return jnp.array([dS, dI, dR, dT])
-    
+
+
 class UDEProblem(eqx.Module):
     """
     Class to solve the UDEProblem with a chosen ODE-solver
@@ -94,23 +99,39 @@ class UDEProblem(eqx.Module):
                                   adjoint=adjoint)
         return sol
 
+
 @eqx.filter_value_and_grad
-def compute_loss_grad(prob, u0, t_save, t_span, data):
+def compute_loss_grad(prob, u0, t_save, t_span, data, reg_exp, reg_strength):
     sol = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
-    return _compute_loss(sol, data)
+    reg_loss = 0
+    for layer_num in range(len(prob.func.mlp.layers)):
+        w = prob.func.mlp.layers[layer_num].weight
+        reg_loss += jnp.mean(
+            jnp.abs(w) ** reg_exp
+        )
+    return _compute_loss(sol, data) + reg_strength * reg_loss
+
 
 @eqx.filter_jit
-def compute_loss(prob, u0, t_save, t_span, data):
+def compute_loss(prob, u0, t_save, t_span, data, reg_exp, reg_strength):
     sol = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
-    return _compute_loss(sol, data)
+    reg_loss = 0
+    for layer_num in range(len(prob.func.mlp.layers)):
+        w = prob.func.mlp.layers[layer_num].weight
+        reg_loss += jnp.mean(
+            jnp.abs(w) ** reg_exp
+        )
+    return _compute_loss(sol, data) + reg_strength * reg_loss
+
 
 def _compute_loss(sol, data):
     infected = data[:, 0]
     dead = data[:, 1]
     recovered = data[:, 2]
-    loss1 = jnp.sum( (jnp.log(infected) - jnp.log(jnp.absolute(sol.ys[:, 1] + sol.ys[:, 3])))**2 )
-    loss2 = jnp.sum( (jnp.log(jnp.absolute(recovered + dead)) - jnp.log(jnp.absolute(sol.ys[:, 2])))**2 )
+    loss1 = jnp.sum((jnp.log(infected) - jnp.log(jnp.absolute(sol.ys[:, 1] + sol.ys[:, 3])))**2)
+    loss2 = jnp.sum((jnp.log(jnp.absolute(recovered + dead)) - jnp.log(jnp.absolute(sol.ys[:, 2])))**2)
     return loss1 + loss2
+
 
 def get_result_plot(prob, u0, t_save, t_span, data):
     '''
@@ -142,3 +163,55 @@ def get_result_plot(prob, u0, t_save, t_span, data):
     df_obs = pd.concat([df_obs1, df_obs2], names=False)
 
     return df_predict, df_obs
+
+
+def get_fit_dfs(prob, u0, t_save, t_span, data):
+    # Model prediction
+    sol = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
+    df_pred = pd.DataFrame({"time": sol.ts,
+                            "Infected": jnp.log(jnp.absolute(sol.ys[:, 1] + sol.ys[:, 3])),
+                            "Recovered + dead": jnp.log(jnp.absolute(sol.ys[:, 2])),
+                            })
+    # Observed data
+    infected, dead, recovered = data[:, 0], data[:, 1], data[:, 2]
+    df_obs = pd.DataFrame({"time": sol.ts,
+                           "Infected": jnp.log(infected),
+                           "Recovered + dead": jnp.log(jnp.absolute(recovered + dead)),
+                           })
+    return df_pred, df_obs
+
+
+def save_plot_results(
+        trained_model: UDEProblem,
+        u0: jnp.array,
+        t_save: diffrax.SaveAt,
+        t_span: List,
+        data: jnp.array,
+        dataset: str,
+        plot_name: str,
+        plot_fmt: str,
+):
+    df_obs, df_pred = get_result_plot(
+        trained_model,
+        u0,
+        t_save,
+        t_span,
+        data,
+    )
+    p = plot_fit(df_obs, df_pred)
+    p.save(f"{dataset}_{plot_name}.{plot_fmt}")
+
+
+def get_training_validation_data():
+    # Read training and validation data
+    # Training
+    train_data_df = pd.read_csv(os.path.join("Intermediate", "SIR", "Korea_data_train.csv"))
+    train_data = jnp.array(train_data_df[["infected", "dead", "recovered"]].values)
+    t_save_train = diffrax.SaveAt(ts=train_data_df["time"].values)
+    t_span_train = [0.0, max(train_data_df["time"])]
+    # Validation
+    validation_data_df = pd.read_csv(os.path.join("Intermediate", "SIR", "Korea_data_validation.csv"))
+    validation_data = jnp.array(validation_data_df[["infected", "dead", "recovered"]].values)
+    t_save_validation = diffrax.SaveAt(ts=validation_data_df["time"].values)
+    t_span_validation = [0.0, max(validation_data_df["time"])]
+    return train_data, t_save_train, t_span_train, validation_data, t_save_validation, t_span_validation

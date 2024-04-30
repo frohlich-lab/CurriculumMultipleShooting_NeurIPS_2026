@@ -10,8 +10,11 @@ import wandb
 from common import Conf, EarlyStoppingParams
 from flax.training.early_stopping import EarlyStopping
 from jaxtyping import Array, Float, PyTree
-from setup_diffrax_model import UDEProblem, compute_loss_grad, compute_loss, save_plot_results, get_fit_dfs
-from typing import Dict, List
+from lotka_volterra.setup_diffrax_model import UDEProblem as UDEProblem_lv
+from lotka_volterra.setup_diffrax_model import save_plot_results as save_plot_results_lv, get_fit_dfs as get_fit_dfs_lv
+from sir.setup_diffrax_model import UDEProblem as UDEProblem_sir
+from sir.setup_diffrax_model import save_plot_results as save_plot_results_sir, get_fit_dfs as get_fit_dfs_sir
+from typing import Callable, List
 
 # Optimisers to choose from
 optimisers = {
@@ -21,7 +24,7 @@ optimisers = {
 
 
 def train(
-        model: UDEProblem,
+        model: UDEProblem_lv | UDEProblem_sir,
         u0: jnp.ndarray,
         training_data: jnp.ndarray,
         t_save_train: List,
@@ -32,7 +35,9 @@ def train(
         conf: Conf,
         n_epochs: int,
         early_stopping_params: EarlyStoppingParams,
-) -> UDEProblem:
+        loss_fn: Callable,
+        loss_grad_fn: Callable,
+) -> UDEProblem_lv | UDEProblem_sir:
     """
     Trains the UDEmodel (`model`).
 
@@ -60,7 +65,10 @@ def train(
         Number of training iterations (epochs).
     :param early_stopping_params:
         Dictionary of parameters for Early-Stopping.
-
+    :param loss_fn:
+        Loss function to use for training.
+    :param loss_grad_fn:
+        Loss function to use for training which also enables gradient computation.
     """
 
     # Initialise wandb and define metrics
@@ -90,13 +98,13 @@ def train(
 
     @eqx.filter_jit
     def make_step(
-            model: UDEProblem,
+            model: UDEProblem_lv | UDEProblem_sir,
             opt_state: PyTree,
             input_data: Float[Array, '...'],  # TODO @GiacomoFabrini fix input data shape
             t_save: List,
             t_span: List,
     ):
-        loss_value, grads = compute_loss_grad(
+        loss_value, grads = loss_grad_fn(
             model,
             u0,
             t_save,
@@ -124,7 +132,7 @@ def train(
         )
 
         # compute validation loss
-        loss_val = compute_loss(
+        loss_val = loss_fn(
             model,
             u0,
             t_save_val,
@@ -155,24 +163,46 @@ def train(
 
         if epoch % 100 == 0:
             # Plot the model prediction against the observed data -- training only
-            df_predict, df_obs = get_fit_dfs(model, u0, t_save_train, t_span_train, training_data)
-            wandb.log(
-                {
-                    "model_fit": wandb.plot.line_series(
-                        xs=df_predict["time"].values,
-                        ys=[
-                            df_predict['prey'].values,
-                            df_predict['predator'].values,
-                            df_obs['prey'].values,
-                            df_obs['predator'].values
-                        ],
-                        keys=["model_prey", "model_predator", "obs_prey", "obs_predator"],
-                        title="Model Fit - Train",
-                        xname="Time",
-                    )
-                },
-                step=epoch,
-            )
+            if conf.dynamical_model == "lotka_volterra":
+                df_predict, df_obs = get_fit_dfs_lv(model, u0, t_save_train, t_span_train, training_data)
+                wandb.log(
+                    {
+                        "model_fit": wandb.plot.line_series(
+                            xs=df_predict["time"].values,
+                            ys=[
+                                df_predict['prey'].values,
+                                df_predict['predator'].values,
+                                df_obs['prey'].values,
+                                df_obs['predator'].values
+                            ],
+                            keys=["model_prey", "model_predator", "obs_prey", "obs_predator"],
+                            title="Model Fit - Train",
+                            xname="Time",
+                        )
+                    },
+                    step=epoch,
+                )
+            elif conf.dynamical_model == 'SIR':
+                df_predict, df_obs = get_fit_dfs_sir(model, u0, t_save_train, t_span_train, training_data)
+                wandb.log(
+                    {
+                        "model_fit": wandb.plot.line_series(
+                            xs=df_predict["time"].values,
+                            ys=[
+                                df_predict['Infected'].values,
+                                df_predict['Recovered + dead'].values,
+                                df_obs['Infected'].values,
+                                df_obs['Recovered + dead'].values
+                            ],
+                            keys=["model_infected", "model_recovered+dead", "obs_infected", "obs_recovered+dead"],
+                            title="Model Fit - Train",
+                            xname="Time",
+                        )
+                    },
+                    step=epoch,
+                )
+            else:
+                raise ValueError(f"Undefined dynamical model {conf.dynamical_model}.")
 
         if early_stopping_params.use_early_stopping:
             # Update early stopper
@@ -203,27 +233,30 @@ def train(
             [training_data, validation_data],
             ["train", "validation"],
     ):
-        save_plot_results(
-            model,
-            u0,
-            t_save,
-            t_span,
-            data,
-            conf,
-            dataset,
-            plot_name="fit",
-            plot_fmt="pdf",
-        )
-
-        # # Instantiate artifact
-        # plot_artifact = wandb.Artifact(
-        #     name=f"fit_plot_{dataset}",
-        #     description=f"fit_plot_{dataset}",
-        #     type="plot",
-        # )
-        # # Add and log artifact
-        # plot_artifact.add_file(f"{dataset}_fit.pdf")
-        # wandb.log_artifact(plot_artifact)
+        if conf.dynamical_model == "lotka_volterra":
+            save_plot_results_lv(
+                model,
+                u0,
+                t_save,
+                t_span,
+                data,
+                dataset,
+                plot_name=f"fit_{conf.dynamical_model}",
+                plot_fmt="pdf",
+            )
+        elif conf.dynamical_model == 'SIR':
+            save_plot_results_sir(
+                model,
+                u0,
+                t_save,
+                t_span,
+                data,
+                dataset,
+                plot_name=f"fit_{conf.dynamical_model}",
+                plot_fmt="pdf",
+            )
+        else:
+            raise ValueError(f"Undefined dynamical model {conf.dynamical_model}.")
 
     wandb.log({"final_epoch": epoch})
     wandb.finish()
@@ -271,7 +304,7 @@ def log_layer_stats(
 def initialise_wandb(
         conf: Conf,
         early_stopping_params: EarlyStoppingParams,
-        model: UDEProblem,
+        model: UDEProblem_lv | UDEProblem_sir,
 ):
     # Link to repo
     repo = git.Repo(search_parent_directories=True)
@@ -332,7 +365,7 @@ def get_scheduler(
     conf : configuration object
     n_epochs : int - total number of training epochs
 
-    Output
+    Returns
     ----------
     optax.sgdr_schedule
         The learning rate scheduler.

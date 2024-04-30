@@ -1,9 +1,8 @@
-import jax.flatten_util
 import jax.numpy as jnp
 import diffrax
 import equinox as eqx
 import jax
-import matplotlib.pyplot as plt
+import os
 import pandas as pd
 
 from common import Conf, plot_fit
@@ -135,15 +134,17 @@ def compute_hess_array(flat_p, unflatten_p, prob_static, u0, t_save, t_span, dat
     return jnp.sum((u_pred.ys - data)**2)
 
 
-def get_training_validation_data_lotka_volterra():
+def get_training_validation_data():
     # Read training and validation data
     train_data_df = pd.read_csv(os.path.join("Intermediate", "Lotka_volterra", "Train_data.csv"))
     train_data = jnp.array(train_data_df[["u1", "u2"]].values)
     t_save_train = diffrax.SaveAt(ts=train_data_df["t"].values)
+    t_span_train = [0.0, max(train_data_df["t"])]
     validation_data_df = pd.read_csv(os.path.join("Intermediate", "Lotka_volterra", "Validation_data.csv"))
     validation_data = jnp.array(validation_data_df[["u1", "u2"]].values)
     t_save_validation = diffrax.SaveAt(ts=validation_data_df["t"].values)
-    return train_data, t_save_train, validation_data, t_save_validation
+    t_span_validation = [0.0, max(validation_data_df["t"])]
+    return train_data, t_save_train, t_span_train, validation_data, t_save_validation, t_span_validation
 
 
 def get_result_plot(prob, u0, t_save, t_span, data):
@@ -197,7 +198,6 @@ def save_plot_results(
         t_save: diffrax.SaveAt,
         t_span: List,
         data: jnp.array,
-        conf: Conf,
         dataset: str,
         plot_name: str,
         plot_fmt: str,
@@ -210,7 +210,6 @@ def save_plot_results(
         data,
     )
     p = plot_fit(df_obs, df_pred)
-    plt.tight_layout()
     p.save(f"{dataset}_{plot_name}.{plot_fmt}")
 
 

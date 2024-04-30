@@ -1,8 +1,22 @@
-DYNAMICAL_MODEL = {"lotka_volterra"}
+DYNAMICAL_MODEL = {
+    "lotka_volterra",
+    "SIR"
+}
 
-MLP_WIDTHS = {1, 5, 10, 50}
+MLP_WIDTHS = {
+    1,
+    5,
+    10,
+    50
+}
 
-MLP_DEPTHS = {1, 2, 3, 5, 10}
+MLP_DEPTHS = {
+    1,
+    2,
+    3,
+    5,
+    # 10
+}
 
 MLP_ACTIVATIONS = {
     "tanh",
@@ -17,18 +31,19 @@ USE_EARLY_STOP = {
 
 OPTIMISERS = {
     "adam",
-    "adamw",
+    #"adamw",
 }
 
 MAX_LEARNING_RATES = {
+    1e-1,
     1e-2,
-    1e-3,
+    # 1e-3,
 }
 
 LEARNING_RATE_SPANS = {
     # 1e0,
     1e1,
-    1e2,
+    # 1e2,
     # 1e3,
 }
 
@@ -48,7 +63,19 @@ WARMUP_FCTS = {
     # 1e-3,
 }
 
-N_EPOCHS = 1000
+OPT_STEPS = {
+    1,
+    # 2,
+    10,
+}
+
+OPT_MULT = {
+    # 1,
+    2,
+    # 3,
+}
+
+N_EPOCHS = 5000
 
 REG_EXPS = {
     1.0,
@@ -59,8 +86,8 @@ REG_STRENGTHS = {
     1e1,
     1e2,
     1e3,
-    1e4,
-    1e5,
-    1e6,
+    # 1e4,
+    # 1e5,
+    # 1e6,
 }
 
