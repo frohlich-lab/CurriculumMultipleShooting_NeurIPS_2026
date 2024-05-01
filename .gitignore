@@ -2,3 +2,6 @@ wandb/*
 .idea/*
 .DS_Store
 __pycache__/*
+*.pdf
+*.svg
+*.pyc
