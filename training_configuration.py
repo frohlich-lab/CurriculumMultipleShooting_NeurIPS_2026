@@ -1,6 +1,6 @@
 DYNAMICAL_MODEL = {
-    #"lotka_volterra",
-    "SIR"
+    "lotka_volterra",
+    # "SIR"
 }
 
 MLP_WIDTHS = {
@@ -75,7 +75,9 @@ OPT_MULT = {
     # 3,
 }
 
-N_EPOCHS = 5000
+N_EPOCHS = 2000  # default from UDE paper
+
+MAX_ITER_OPTX = 10000  # default from UDE paper
 
 REG_EXPS = {
     1.0,

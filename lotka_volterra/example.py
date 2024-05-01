@@ -21,7 +21,9 @@ def flatten(v):
 
 # Setup the model (this mlp was used in the paper)
 width_size = 5
-hidden_layers = 1
+hidden_layers = 1  # I think this is 2 in the original paper
+# they say they have 2 hidden layers with 5 neurons, whereas this results in
+# an input layer, a hidden layer with 5 neurons and an output layer
 key = jr.PRNGKey(123)
 mlp = eqx.nn.MLP(in_size=2,
                  out_size=2,

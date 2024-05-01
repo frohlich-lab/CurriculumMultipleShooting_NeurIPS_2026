@@ -122,6 +122,14 @@ def compute_loss(prob, u0, t_save, t_span, data, reg_exp, reg_strength):
     return _compute_loss(sol, data) + reg_strength * reg_loss
 
 
+@eqx.filter_jit
+def compute_loss_optx(prob_params, args):
+    prob_static, u0, t_save, t_span, data = args
+    prob = eqx.combine(prob_params, prob_static)
+    sol = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
+    return _compute_loss(sol, data)
+
+
 def _compute_loss(sol, data):
     infected = data[:, 0]
     dead = data[:, 1]
@@ -188,6 +196,7 @@ def save_plot_results(
         dataset: str,
         plot_name: str,
         plot_fmt: str,
+        return_plot: bool = False,
 ):
     df_obs, df_pred = get_result_plot(
         trained_model,
@@ -197,7 +206,10 @@ def save_plot_results(
         data,
     )
     p = plot_fit(df_obs, df_pred)
-    p.save(f"{dataset}_{plot_name}.{plot_fmt}")
+    if return_plot:
+        return p
+    else:
+        p.save(f"{dataset}_{plot_name}.{plot_fmt}")
 
 
 def get_training_validation_data():

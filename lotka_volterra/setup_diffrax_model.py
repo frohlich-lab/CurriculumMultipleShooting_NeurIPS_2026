@@ -6,6 +6,7 @@ import os
 import pandas as pd
 
 from common import plot_fit
+from jaxtyping import Array
 from typing import List
 
 # Technically Float32 should work, but for consistency between the benchmarks
@@ -23,7 +24,7 @@ class UDEFunction(eqx.Module):
         Evaluates the right hand side for input vector u, at time t
     """
 
-    dynamic_parameters: jax.Array
+    dynamic_parameters: Array
     mlp: eqx.nn.MLP
 
     def __init__(self, dynamic_parameters, mlp, **kwargs):
@@ -32,11 +33,15 @@ class UDEFunction(eqx.Module):
         self.mlp = mlp
 
     def __call__(self, t, u, args):
-        α, δ = self.dynamic_parameters
+        # Unpack dynamic parameters (learnable)
+        alpha, delta = self.dynamic_parameters
+        # Unpack state variables
         prey, predator = u
+        # jax.debug.print("{u}", u=u)
         nn_out = self.mlp(u)
-        d_prey = α * prey + nn_out[0]
-        d_predator = nn_out[1] - δ * predator
+        # jax.debug.print("{nn_out}", nn_out=nn_out)
+        d_prey = alpha * prey + nn_out[0]
+        d_predator = nn_out[1] - delta * predator
         return jnp.array([d_prey, d_predator])
 
 
@@ -94,6 +99,8 @@ class UDEProblem(eqx.Module):
 @eqx.filter_value_and_grad
 def compute_loss_grad(prob, u0, t_save, t_span, data, reg_exp, reg_strength):
     u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
+    # jax.debug.print("{u_pred}", u_pred=u_pred.ys)
+    # jax.debug.print("{data}", data=data)
     reg_loss = 0
     for layer_num in range(len(prob.func.mlp.layers)):
         w = prob.func.mlp.layers[layer_num].weight
@@ -113,6 +120,14 @@ def compute_loss(prob, u0, t_save, t_span, data, reg_exp, reg_strength):
             jnp.abs(w) ** reg_exp
         )
     return jnp.sum((u_pred.ys - data) ** 2) + reg_strength * reg_loss
+
+
+@eqx.filter_jit
+def compute_loss_optx(prob_params, args):
+    prob_static, u0, t_save, t_span, data = args
+    prob = eqx.combine(prob_params, prob_static)
+    u_pred_ys = prob.solve(diffrax.Tsit5(), u0, t_save, t_span).ys
+    return jnp.sum((u_pred_ys - data) ** 2)
 
 
 @eqx.filter_jit
@@ -201,6 +216,7 @@ def save_plot_results(
         dataset: str,
         plot_name: str,
         plot_fmt: str,
+        return_plot: bool = False,
 ):
     df_obs, df_pred = get_result_plot(
         trained_model,
@@ -210,12 +226,7 @@ def save_plot_results(
         data,
     )
     p = plot_fit(df_obs, df_pred)
-    p.save(f"{dataset}_{plot_name}.{plot_fmt}")
-
-
-# Idea: evaluate whether the output of the NN component learns the shape of prey*predator term (linear in both)
-# STILL TO BE TESTED!
-# @eqx.filter_jit
-# def compute_corr(prob, data):
-#     nn_out = prob.func.mlp(data.T)  # shape mismatch - how do I overcome this?
-#     return jnp.corrcoef(nn_out, data)
+    if return_plot:
+        return p
+    else:
+        p.save(f"{dataset}_{plot_name}.{plot_fmt}")

@@ -3,18 +3,24 @@ import git
 import itertools as itt
 import jax
 import jax.numpy as jnp
+import matplotlib.pyplot as plt
 import numpy as np
 import optax
+import optimistix as optx
+import plotly  # needed to export matplotlib plots for wandb logging
 import wandb
 
 from common import Conf, EarlyStoppingParams
 from flax.training.early_stopping import EarlyStopping
 from jaxtyping import Array, Float, PyTree
 from lotka_volterra.setup_diffrax_model import UDEProblem as UDEProblem_lv
-from lotka_volterra.setup_diffrax_model import save_plot_results as save_plot_results_lv, get_fit_dfs as get_fit_dfs_lv
+from lotka_volterra.setup_diffrax_model import get_fit_dfs as get_fit_dfs_lv
+# from lotka_volterra.setup_diffrax_model import save_plot_results as save_plot_results_lv
+
 from sir.setup_diffrax_model import UDEProblem as UDEProblem_sir
-from sir.setup_diffrax_model import save_plot_results as save_plot_results_sir, get_fit_dfs as get_fit_dfs_sir
-from typing import Callable, List
+from sir.setup_diffrax_model import get_fit_dfs as get_fit_dfs_sir
+# from sir.setup_diffrax_model import save_plot_results as save_plot_results_sir
+from typing import Callable, Dict, List
 
 # Optimisers to choose from
 optimisers = {
@@ -37,6 +43,9 @@ def train(
         early_stopping_params: EarlyStoppingParams,
         loss_fn: Callable,
         loss_grad_fn: Callable,
+        loss_optx: Callable,
+        optx_config: Dict,
+        max_iter_optx: int,
 ) -> UDEProblem_lv | UDEProblem_sir:
     """
     Trains the UDEmodel (`model`).
@@ -69,6 +78,13 @@ def train(
         Loss function to use for training.
     :param loss_grad_fn:
         Loss function to use for training which also enables gradient computation.
+    :param loss_optx:
+        Loss function to be used with optimistix for further training (only takes learnable params,
+        i.e. dynamic portion of the model).
+    :param optx_config:
+        Configuration for optimistix solver (rtol, atol).
+    :param max_iter_optx:
+        Maximum number of iterations for further training via optimistix.
     """
 
     # Initialise wandb and define metrics
@@ -78,8 +94,7 @@ def train(
         model=model,
     )
 
-    # Optimiser and related schedule defined here
-    # TODO @GiacomoFabrini: enable tunable schedule options
+    # Get schedule and initialise the optimiser
     schedule = get_scheduler(conf=conf, n_epochs=n_epochs)
     opt = optimisers[conf.optimiser](schedule)
     opt_state = opt.init(eqx.filter(model, eqx.is_array))
@@ -103,6 +118,7 @@ def train(
             input_data: Float[Array, '...'],  # TODO @GiacomoFabrini fix input data shape
             t_save: List,
             t_span: List,
+            conf: Conf,
     ):
         loss_value, grads = loss_grad_fn(
             model,
@@ -129,6 +145,7 @@ def train(
             input_data=training_data,
             t_save=t_save_train,
             t_span=t_span_train,
+            conf=conf,
         )
 
         # compute validation loss
@@ -156,54 +173,12 @@ def train(
         if epoch % 5 == 0:
             wandb.log(
                 {
-                    **log_layer_stats(model.func.mlp, grads.func.mlp),
+                    **log_model_stats(model, grads),
                 },
                 step=epoch
             )
 
-        if epoch % 100 == 0:
-            # Plot the model prediction against the observed data -- training only
-            if conf.dynamical_model == "lotka_volterra":
-                df_predict, df_obs = get_fit_dfs_lv(model, u0, t_save_train, t_span_train, training_data)
-                wandb.log(
-                    {
-                        "model_fit": wandb.plot.line_series(
-                            xs=df_predict["time"].values,
-                            ys=[
-                                df_predict['prey'].values,
-                                df_predict['predator'].values,
-                                df_obs['prey'].values,
-                                df_obs['predator'].values
-                            ],
-                            keys=["model_prey", "model_predator", "obs_prey", "obs_predator"],
-                            title="Model Fit - Train",
-                            xname="Time",
-                        )
-                    },
-                    step=epoch,
-                )
-            elif conf.dynamical_model == 'SIR':
-                df_predict, df_obs = get_fit_dfs_sir(model, u0, t_save_train, t_span_train, training_data)
-                wandb.log(
-                    {
-                        "model_fit": wandb.plot.line_series(
-                            xs=df_predict["time"].values,
-                            ys=[
-                                df_predict['Infected'].values,
-                                df_predict['Recovered + dead'].values,
-                                df_obs['Infected'].values,
-                                df_obs['Recovered + dead'].values
-                            ],
-                            keys=["model_infected", "model_recovered+dead", "obs_infected", "obs_recovered+dead"],
-                            title="Model Fit - Train",
-                            xname="Time",
-                        )
-                    },
-                    step=epoch,
-                )
-            else:
-                raise ValueError(f"Undefined dynamical model {conf.dynamical_model}.")
-
+        # Check early stopping criterion
         if early_stopping_params.use_early_stopping:
             # Update early stopper
             early_stopper = early_stopper.update(loss_val)
@@ -226,37 +201,78 @@ def train(
                 print(f'Met early stopping criteria, breaking at epoch {epoch}')
                 break
 
-    # Save final fit plots in PDF
-    for t_save, t_span, data, dataset in zip(
+    # Plot fit (train/val) at end of training
+    if conf.dynamical_model == "lotka_volterra":
+        get_fit_dfs = get_fit_dfs_lv
+        labels = ['prey', 'predator']
+        colors = ['red', 'black']
+    elif conf.dynamical_model == 'SIR':
+        get_fit_dfs = get_fit_dfs_sir
+        labels = ['Infected', 'Recovered + dead']
+        colors = ['red', 'black']
+    else:
+        raise ValueError(f"Undefined dynamical model {conf.dynamical_model}.")
+    for dataset, t_save, t_span, data in zip(
+            ["train", "validation"],
             [t_save_train, t_save_val],
             [t_span_train, t_span_val],
-            [training_data, validation_data],
-            ["train", "validation"],
+            [training_data, validation_data]
     ):
-        if conf.dynamical_model == "lotka_volterra":
-            save_plot_results_lv(
+        df_predict, df_obs = get_fit_dfs(model, u0, t_save, t_span, data)
+        log_plots(df_predict, df_obs, labels, colors, f"{dataset}", epoch)
+
+    if max_iter_optx > 0:  # otherwise end training and return trained model
+        # Additional training with BFGS via optimistix
+        solver = optx.BFGS(rtol=optx_config["rtol"], atol=optx_config["atol"])
+        # Split model in learnable params and static component
+        params, static = eqx.partition(model, eqx.is_array)
+        # Minimise via Optimistix
+        sol = optx.minimise(
+            fn=loss_optx,
+            solver=solver,
+            y0=params,
+            args=(static, u0, t_save_train, t_span_train, training_data),
+            max_steps=max_iter_optx,
+        )
+        # Update model
+        params = sol.value
+        model = eqx.combine(params, static)
+        # Compute final loss_train and loss_val and log them to wandb
+        loss_dict = {
+            dataset: loss_fn(
                 model,
                 u0,
                 t_save,
                 t_span,
                 data,
-                dataset,
-                plot_name=f"fit_{conf.dynamical_model}",
-                plot_fmt="pdf",
+                conf.reg_exp,
+                conf.reg_strength,
             )
-        elif conf.dynamical_model == 'SIR':
-            save_plot_results_sir(
-                model,
-                u0,
-                t_save,
-                t_span,
-                data,
-                dataset,
-                plot_name=f"fit_{conf.dynamical_model}",
-                plot_fmt="pdf",
+            for t_save, t_span, data, dataset in zip(
+                [t_save_train, t_save_val],
+                [t_span_train, t_span_val],
+                [training_data, validation_data],
+                ["train", "validation"],
             )
-        else:
-            raise ValueError(f"Undefined dynamical model {conf.dynamical_model}.")
+        }
+
+        wandb.log(
+            {
+                "final_loss_train_optx": loss_dict["train"],
+                "final_loss_val_optx": loss_dict["validation"],
+            },
+            step=sol.stats["num_steps"],
+        )
+
+        # Log plots again after further training
+        for dataset, t_save, t_span, data in zip(
+                ["train", "validation"],
+                [t_save_train, t_save_val],
+                [t_span_train, t_span_val],
+                [training_data, validation_data]
+        ):
+            df_predict, df_obs = get_fit_dfs(model, u0, t_save, t_span, data)
+            log_plots(df_predict, df_obs, labels, colors, f"{dataset}_optx", epoch)
 
     wandb.log({"final_epoch": epoch})
     wandb.finish()
@@ -265,9 +281,9 @@ def train(
 
 
 # from Fabian's NeuralCoarseGraining
-def log_layer_stats(
-        model: eqx.nn.MLP,
-        grad: eqx.nn.MLP,
+def log_model_stats(
+        model: UDEProblem_lv | UDEProblem_sir,
+        grad: UDEProblem_lv | UDEProblem_sir,
 ):
     """
     Log the layer statistics to wandb.
@@ -278,11 +294,11 @@ def log_layer_stats(
     layers = [
         (par_layer, grad_layer)
         for par_layer, grad_layer in zip(
-            model.layers, grad.layers, strict=False
+            model.func.mlp.layers, grad.func.mlp.layers, strict=False
         )
         if isinstance(par_layer, eqx.nn.Linear)
     ]
-    stats = {
+    layer_stats = {
         f'layer{ilayer}.{par_label}_{value_label}': wandb.Histogram(
             np.log10(np.abs(np.array(par_vals[par_vals != 0])))
         )
@@ -298,6 +314,26 @@ def log_layer_stats(
             strict=False,
         )
     }
+
+    dynamic_param_stats = {
+        f'dynamic_param.{par_label}_{value_label}': wandb.Histogram(
+            np.log10(np.abs(np.array(par_val[par_val != 0])))
+        )
+        if value_label == 'grads'
+        else wandb.Histogram(par_val)
+        for value_label, par_vals in zip(
+            ('vals', 'grads'),
+            (model.func.dynamic_parameters, grad.func.dynamic_parameters),
+            strict=False
+        )
+        for par_label, par_val in zip(
+            ('alpha', 'delta'),
+            np.array(par_vals).ravel(),
+            strict=False
+        )
+    }
+
+    stats = {**layer_stats, **dynamic_param_stats}
     return stats
 
 
@@ -319,7 +355,7 @@ def initialise_wandb(
             "min_improvement": early_stopping_params.min_improvement
             if conf.use_early_stop else None,
         },
-        name=conf.__str__()[5:-1],  # skip Conf and remove ()
+        name='__'.join(field for field in conf.__str__().split('__')[1:]),  # dynamical_system info already in project
         settings=wandb.Settings(
             start_method="fork",
             git_commit=repo.head.object.hexsha,
@@ -336,6 +372,8 @@ def initialise_wandb(
         "loss_val": "min",
         "learning_rate": None,
         "patience_counter": None,
+        "final_loss_train_optx": "min",
+        "final_loss_val_optx": "min",
     }
     for metric in metrics.keys():
         # if metric summary not specified
@@ -389,3 +427,30 @@ def get_scheduler(
         for i_schedule in range(len(epochs_per_schedule))
     ]
     return optax.sgdr_schedule(schedules)
+
+
+def log_plots(df_predict, df_obs, labels, colors, plot_name, epoch):
+    plt.subplots(1, 2, figsize=(6, 4))
+    for ind, (label, color) in enumerate(zip(labels, colors)):
+        plt.subplot(1, 2, ind + 1)
+        plt.plot(
+            df_predict['time'].values,
+            df_predict[label].values,
+            color=color,
+            ls='--',
+            label=f'model_{label}',
+        )
+        plt.plot(
+            df_obs['time'].values,
+            df_obs[label].values,
+            color=color,
+            ls='',
+            marker='o',
+            label=f'obs_{label}',
+        )
+        plt.legend(frameon=False)
+        plt.xlabel('Time')
+        plt.gca().tick_params(direction='in', length=5)
+        if ind == 0:
+            plt.ylabel('Measurement')
+    wandb.log({f"fit_plot_{plot_name}": plt}, step=epoch)

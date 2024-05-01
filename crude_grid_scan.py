@@ -20,7 +20,9 @@ from training_configuration import (DYNAMICAL_MODEL,
                                     OPT_STEPS,
                                     OPT_MULT,
                                     REG_EXPS,
-                                    REG_STRENGTHS,)
+                                    REG_STRENGTHS,
+                                    N_EPOCHS,
+                                    MAX_ITER_OPTX)
 
 # Dictionary of activation functions to choose from
 activation_functions = {
@@ -55,8 +57,6 @@ out_size = {
     'lotka_volterra': 2,
     'SIR': 1,
 }
-
-N_EPOCHS = 3000
 
 for (
         dynamical_model,
@@ -107,6 +107,11 @@ for (
         ude_problem = setup_lv.UDEProblem(dynamic_parameters[conf.dynamical_model], mlp)
         loss_fn = setup_lv.compute_loss
         loss_grad_fn = setup_lv.compute_loss_grad
+        loss_optx = setup_lv.compute_loss_optx
+        optx_config = {
+            "rtol": 1e-3,
+            "atol": 1e-3,
+        }
     elif conf.dynamical_model == 'SIR':
         # TODO @GiacomoFabrini find better way to express filepath and pass it as argument - same as above
         (train_data, t_save_train, t_span_train,
@@ -115,6 +120,11 @@ for (
         ude_problem = setup_sir.UDEProblem(dynamic_parameters[conf.dynamical_model], mlp)
         loss_fn = setup_sir.compute_loss
         loss_grad_fn = setup_sir.compute_loss_grad
+        loss_optx = setup_sir.compute_loss_optx
+        optx_config = {
+            "rtol": 1e-4,
+            "atol": 1e-4,
+        }
     else:
         raise ValueError(f"Unknown dynamical model: {conf.dynamical_model}!")
 
@@ -127,7 +137,7 @@ for (
 
     early_stopping_params = EarlyStoppingParams(
         use_early_stopping=conf.use_early_stop,  # enables flax.training.early_stopping
-        patience=100,
+        patience=50,
         # number of consecutive epochs where we tolerate loss_val not improving by at least min_improvement
         min_improvement=0,  # absolute improvement in loss_val to consider as improvement
     )
@@ -146,4 +156,7 @@ for (
         early_stopping_params=early_stopping_params,
         loss_fn=loss_fn,
         loss_grad_fn=loss_grad_fn,
+        loss_optx=loss_optx,
+        optx_config=optx_config,
+        max_iter_optx=MAX_ITER_OPTX,
     )
