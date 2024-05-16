@@ -97,6 +97,10 @@ def plot_fit(df_obs, df_pred):
 # Flatten a tree to an array to allow gradient and Hessian functions to
 # produce Array output
 def flatten(v):
+    """
+    Flatten a pytree to an array. This allows for vector gradient
+    and Hessian functions to produce array output
+    """
     def f(v):
         leaves, _ = jax.tree_util.tree_flatten(v)
         return jnp.concatenate([x.ravel() for x in leaves])
@@ -105,7 +109,7 @@ def flatten(v):
     return out, lambda x: pullback(x)[0]
 
 
-def build_MLP(in_size, out_size, width_size, hidden_layers, key, activation=jax.nn.tanh):
+def build_mlp(in_size, out_size, width_size, hidden_layers, key, activation=jax.nn.tanh):
     mlp = eqx.nn.MLP(in_size=in_size,
                      out_size=out_size,
                      width_size=width_size,
@@ -113,3 +117,19 @@ def build_MLP(in_size, out_size, width_size, hidden_layers, key, activation=jax.
                      activation=activation,
                      key=key)
     return mlp
+
+
+def regularise_mlp(
+        mlp: eqx.nn.MLP,
+        reg_exp: float,
+        reg_strength: float,
+):
+    """
+    Regularise the weights of an MLP with L1/L2 regularisation depending on `reg_exp`.
+    """
+    reg_loss = 0
+    for layer in mlp.layers:
+        reg_loss += jnp.mean(jnp.abs(layer.weight) ** reg_exp)
+        if hasattr(layer, 'bias') and layer.bias is not None:
+            reg_loss += jnp.mean(jnp.abs(layer.bias) ** reg_exp)
+    return reg_strength * reg_loss

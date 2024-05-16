@@ -1,11 +1,11 @@
 import diffrax
-import equinox as eqx 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import os
 import pandas as pd
 
-from common import plot_fit
+from common import plot_fit, regularise_mlp
 from typing import List
 
 # Technically Float32 should work, but for consistency between the benchmarks
@@ -25,25 +25,24 @@ class UDEFunction(eqx.Module):
 
     dynamic_parameters: jax.Array
     mlp: eqx.nn.MLP
-    
+
     def __init__(self, dynamic_parameters, mlp, **kwargs):
         super().__init__(**kwargs)
         self.dynamic_parameters = dynamic_parameters
-        self.mlp = mlp 
-        
+        self.mlp = mlp
+
     def __call__(self, t, u, args):
-
         u0 = args
-        β, γ, δ = self.dynamic_parameters
-        S, I, R, T = u
-        nn_t = self.mlp(jnp.array([S, I, R]))
+        beta, gamma, delta = self.dynamic_parameters
+        s, i, r, t = u
+        nn_t = self.mlp(jnp.array([s, i, r]))
 
-        dS = - β*S*(I)/u0[0]
-        dI = β*S*(I)/u0[0] - γ*I - nn_t[0]*I/u0[0]
-        dR = γ*I + δ*T
-        dT =  nn_t[0]*I/u0[0] - δ*T
+        ds = - beta * s * i / u0[0]
+        di = beta * s * i / u0[0] - gamma * i - nn_t[0] * i / u0[0]
+        dr = gamma * i + delta * t
+        dt = nn_t[0] * i / u0[0] - delta * t
 
-        return jnp.array([dS, dI, dR, dT])
+        return jnp.array([ds, di, dr, dt])
 
 
 class UDEProblem(eqx.Module):
@@ -56,7 +55,7 @@ class UDEProblem(eqx.Module):
         Solve the UDE for t_span = [t0, tend] and save the solution at the 
         points in t_save using the provided solver. Controller is the adaptive 
         ODE-stepping controller (should not need to be changed)
-    """    
+    """
 
     func: UDEFunction
 
@@ -77,21 +76,21 @@ class UDEProblem(eqx.Module):
             None path_meta must be provided.
         controller : diffrax.PIDController 
         """
-        super().__init__(**kwargs)        
+        super().__init__(**kwargs)
         self.func = UDEFunction(dynamic_parameters, mlp)
 
-    def solve(self, solver, u0, t_save, t_span, 
-              controller = diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8), 
+    def solve(self, solver, u0, t_save, t_span,
+              controller=diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8),
               adjoint=diffrax.RecursiveCheckpointAdjoint()):
         t0, t1 = t_span
         sol = diffrax.diffeqsolve(diffrax.ODETerm(self.func),
                                   solver,
-                                  t0, 
-                                  t1, 
+                                  t0,
+                                  t1,
                                   None,
-                                  u0, 
-                                  args = u0,
-                                  saveat=t_save, 
+                                  u0,
+                                  args=u0,
+                                  saveat=t_save,
                                   throw=False,
                                   stepsize_controller=controller,
                                   adjoint=adjoint)
@@ -101,25 +100,13 @@ class UDEProblem(eqx.Module):
 @eqx.filter_value_and_grad
 def compute_loss_grad(prob, u0, t_save, t_span, data, reg_exp, reg_strength):
     sol = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
-    reg_loss = 0
-    for layer_num in range(len(prob.func.mlp.layers)):
-        w = prob.func.mlp.layers[layer_num].weight
-        reg_loss += jnp.mean(
-            jnp.abs(w) ** reg_exp
-        )
-    return _compute_loss(sol, data) + reg_strength * reg_loss
+    return _compute_loss(sol, data) + regularise_mlp(prob.func.mlp, reg_exp, reg_strength)
 
 
 @eqx.filter_jit
 def compute_loss(prob, u0, t_save, t_span, data, reg_exp, reg_strength):
     sol = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
-    reg_loss = 0
-    for layer_num in range(len(prob.func.mlp.layers)):
-        w = prob.func.mlp.layers[layer_num].weight
-        reg_loss += jnp.mean(
-            jnp.abs(w) ** reg_exp
-        )
-    return _compute_loss(sol, data) + reg_strength * reg_loss
+    return _compute_loss(sol, data) + regularise_mlp(prob.func.mlp, reg_exp, reg_strength)
 
 
 @eqx.filter_jit
@@ -134,38 +121,38 @@ def _compute_loss(sol, data):
     infected = data[:, 0]
     dead = data[:, 1]
     recovered = data[:, 2]
-    loss1 = jnp.mean((jnp.log(infected) - jnp.log(jnp.absolute(sol.ys[:, 1] + sol.ys[:, 3])))**2)
-    loss2 = jnp.mean((jnp.log(jnp.absolute(recovered + dead)) - jnp.log(jnp.absolute(sol.ys[:, 2])))**2)
+    loss1 = jnp.mean((jnp.log(infected) - jnp.log(jnp.absolute(sol.ys[:, 1] + sol.ys[:, 3]))) ** 2)
+    loss2 = jnp.mean((jnp.log(jnp.absolute(recovered + dead)) - jnp.log(jnp.absolute(sol.ys[:, 2]))) ** 2)
     return loss1 + loss2
 
 
 def get_result_plot(prob, u0, t_save, t_span, data):
-    '''
+    """
     Transform observed and model prediction data into pd.DataFrames that 
     easily can be plotted with plotnine
-    '''
+    """
     # Model prediction
     sol = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
-    df_pred1 = pd.DataFrame({"time" : sol.ts,
-                             "value" : jnp.log(jnp.absolute(sol.ys[:, 1] + sol.ys[:, 3])),
-                             "id" : "Infected",
-                             "datasource" : "model"})
-    df_pred2 = pd.DataFrame({"time" : sol.ts,
-                             "value" : jnp.log(jnp.absolute(sol.ys[:, 2])),
-                             "id" : "Recovered + dead",
-                             "datasource" : "model"})
+    df_pred1 = pd.DataFrame({"time": sol.ts,
+                             "value": jnp.log(jnp.absolute(sol.ys[:, 1] + sol.ys[:, 3])),
+                             "id": "Infected",
+                             "datasource": "model"})
+    df_pred2 = pd.DataFrame({"time": sol.ts,
+                             "value": jnp.log(jnp.absolute(sol.ys[:, 2])),
+                             "id": "Recovered + dead",
+                             "datasource": "model"})
     df_predict = pd.concat([df_pred1, df_pred2], names=False)
 
     # Observed data
     infected, dead, recovered = data[:, 0], data[:, 1], data[:, 2]
-    df_obs1 = pd.DataFrame({"time" : sol.ts,
-                            "value" : jnp.log(infected),
-                            "id" : "Infected",
-                            "datasource" : "observed"})
-    df_obs2 = pd.DataFrame({"time" : sol.ts,
-                            "value" : jnp.log(jnp.absolute(recovered + dead)),
-                            "id" : "Recovered + dead",
-                            "datasource" : "observed"})
+    df_obs1 = pd.DataFrame({"time": sol.ts,
+                            "value": jnp.log(infected),
+                            "id": "Infected",
+                            "datasource": "observed"})
+    df_obs2 = pd.DataFrame({"time": sol.ts,
+                            "value": jnp.log(jnp.absolute(recovered + dead)),
+                            "id": "Recovered + dead",
+                            "datasource": "observed"})
     df_obs = pd.concat([df_obs1, df_obs2], names=False)
 
     return df_predict, df_obs

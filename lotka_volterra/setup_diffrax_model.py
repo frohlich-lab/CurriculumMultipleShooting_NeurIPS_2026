@@ -5,7 +5,7 @@ import jax
 import os
 import pandas as pd
 
-from common import plot_fit
+from common import plot_fit, regularise_mlp
 from jaxtyping import Array
 from typing import List
 
@@ -99,15 +99,7 @@ class UDEProblem(eqx.Module):
 @eqx.filter_value_and_grad
 def compute_loss_grad(prob, u0, t_save, t_span, data, reg_exp, reg_strength):
     u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
-    # jax.debug.print("{u_pred}", u_pred=u_pred.ys)
-    # jax.debug.print("{data}", data=data)
-    reg_loss = 0
-    for layer_num in range(len(prob.func.mlp.layers)):
-        w = prob.func.mlp.layers[layer_num].weight
-        reg_loss += jnp.mean(
-            jnp.abs(w)**reg_exp
-        )
-    return jnp.sum((u_pred.ys - data) ** 2) + reg_strength * reg_loss
+    return jnp.sum((u_pred.ys - data) ** 2) + regularise_mlp(prob.func.mlp, reg_exp, reg_strength)
 
 
 @eqx.filter_jit
@@ -126,8 +118,8 @@ def compute_loss(prob, u0, t_save, t_span, data, reg_exp, reg_strength):
 def compute_loss_optx(prob_params, args):
     prob_static, u0, t_save, t_span, data = args
     prob = eqx.combine(prob_params, prob_static)
-    u_pred_ys = prob.solve(diffrax.Tsit5(), u0, t_save, t_span).ys
-    return jnp.sum((u_pred_ys - data) ** 2)
+    u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span).ys
+    return jnp.sum((u_pred.ys - data) ** 2)
 
 
 @eqx.filter_jit

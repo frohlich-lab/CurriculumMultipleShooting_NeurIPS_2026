@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import lotka_volterra.setup_diffrax_model as setup_lv
 import sir.setup_diffrax_model as setup_sir
 
-from common import build_MLP, Conf, EarlyStoppingParams, set_weight_bias
+from common import build_mlp, Conf, EarlyStoppingParams, set_weight_bias
 from training import train
 from training_configuration import N_EPOCHS, MAX_ITER_OPTX
 
@@ -46,7 +46,7 @@ out_size = {
 }
 
 # Setup MLP (same as the original paper for now)
-mlp = build_MLP(
+mlp = build_mlp(
     in_size=in_size[conf.dynamical_model],
     out_size=out_size[conf.dynamical_model],
     width_size=conf.mlp_layer_width,
