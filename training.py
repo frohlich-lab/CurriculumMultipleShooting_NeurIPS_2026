@@ -219,7 +219,16 @@ def train(
             [training_data, validation_data]
     ):
         df_predict, df_obs = get_fit_dfs(model, u0, t_save, t_span, data)
-        log_plots(df_predict, df_obs, labels, colors, f"{dataset}", epoch)
+        log_plots(
+            df_predict,
+            df_obs,
+            labels,
+            colors,
+            f"{dataset}",
+            epoch,
+            save_plot=True,
+            plot_fmt="svg"
+        )
 
     if max_iter_optx > 0:  # otherwise end training and return trained model
         # Additional training with BFGS via optimistix
@@ -272,7 +281,16 @@ def train(
                 [training_data, validation_data]
         ):
             df_predict, df_obs = get_fit_dfs(model, u0, t_save, t_span, data)
-            log_plots(df_predict, df_obs, labels, colors, f"{dataset}_optx", epoch)
+            log_plots(
+                df_predict,
+                df_obs,
+                labels,
+                colors,
+                f"{dataset}_optx",
+                epoch,
+                save_plot=True,
+                plot_fmt="svg",
+            )
 
     wandb.log({"final_epoch": epoch})
     wandb.finish()
@@ -429,7 +447,7 @@ def get_scheduler(
     return optax.sgdr_schedule(schedules)
 
 
-def log_plots(df_predict, df_obs, labels, colors, plot_name, epoch):
+def log_plots(df_predict, df_obs, labels, colors, plot_name, epoch, save_plot=False, plot_fmt="png"):
     plt.subplots(1, 2, figsize=(6, 4))
     for ind, (label, color) in enumerate(zip(labels, colors)):
         plt.subplot(1, 2, ind + 1)
@@ -453,4 +471,6 @@ def log_plots(df_predict, df_obs, labels, colors, plot_name, epoch):
         plt.gca().tick_params(direction='in', length=5)
         if ind == 0:
             plt.ylabel('Measurement')
+    if save_plot:
+        plt.savefig(f"fit_plot_{plot_name}.{plot_fmt}")
     wandb.log({f"fit_plot_{plot_name}": plt}, step=epoch)
