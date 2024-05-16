@@ -118,7 +118,7 @@ def compute_loss(prob, u0, t_save, t_span, data, reg_exp, reg_strength):
 def compute_loss_optx(prob_params, args):
     prob_static, u0, t_save, t_span, data = args
     prob = eqx.combine(prob_params, prob_static)
-    u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span).ys
+    u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
     return jnp.sum((u_pred.ys - data) ** 2)
 
 
