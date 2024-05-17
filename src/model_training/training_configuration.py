@@ -1,6 +1,6 @@
 DYNAMICAL_MODEL = {
     "lotka_volterra",
-    # "SIR"
+    # "sir"
 }
 
 MLP_WIDTHS = {

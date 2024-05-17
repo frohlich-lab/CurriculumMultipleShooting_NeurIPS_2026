@@ -27,22 +27,22 @@ key_mlp, key_init = jr.split(key, 2)
 # Setup default u0, dynamic parameters, in_size, out_size
 u0 = {
     'lotka_volterra': jnp.array([0.44249296, 4.6280594]),
-    'SIR': jnp.array([51000000.0, 578, 24, 10]),
+    'sir': jnp.array([51000000.0, 578, 24, 10]),
 }
 
 dynamic_parameters = {
     'lotka_volterra': jnp.array([1.3, 1.8]),
-    'SIR': jnp.array([0.15, 0.013, 0.01]),
+    'sir': jnp.array([0.15, 0.013, 0.01]),
 }
 
 in_size = {
     'lotka_volterra': 2,
-    'SIR': 3,
+    'sir': 3,
 }
 
 out_size = {
     'lotka_volterra': 2,
-    'SIR': 1,
+    'sir': 1,
 }
 
 # Setup MLP (same as the original paper for now)
@@ -71,7 +71,7 @@ if conf.dynamical_model == 'lotka_volterra':
         "rtol": 1e-3,
         "atol": 1e-3,
     }
-elif conf.dynamical_model == 'SIR':
+elif conf.dynamical_model == 'sir':
     # TODO @GiacomoFabrini find better way to express filepath and pass it as argument - same as above
     (train_data, t_save_train, t_span_train,
      validation_data, t_save_validation, t_span_validation) = setup_sir.get_training_validation_data()
