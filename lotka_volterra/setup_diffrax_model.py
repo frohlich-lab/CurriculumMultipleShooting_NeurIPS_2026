@@ -1,13 +1,18 @@
-import jax.flatten_util
 import jax.numpy as jnp
 import diffrax
 import equinox as eqx
 import jax
+import os
 import pandas as pd
+
+from common import plot_fit, regularise_mlp
+from jaxtyping import Array
+from typing import List
 
 # Technically Float32 should work, but for consistency between the benchmarks
 # I think we should use Float64
 jax.config.update("jax_enable_x64", True)
+
 
 class UDEFunction(eqx.Module):
     """
@@ -19,7 +24,7 @@ class UDEFunction(eqx.Module):
         Evaluates the right hand side for input vector u, at time t
     """
 
-    dynamic_parameters: jax.Array
+    dynamic_parameters: Array
     mlp: eqx.nn.MLP
 
     def __init__(self, dynamic_parameters, mlp, **kwargs):
@@ -28,12 +33,17 @@ class UDEFunction(eqx.Module):
         self.mlp = mlp
 
     def __call__(self, t, u, args):
-        α, δ = self.dynamic_parameters
+        # Unpack dynamic parameters (learnable)
+        alpha, delta = self.dynamic_parameters
+        # Unpack state variables
         prey, predator = u
+        # jax.debug.print("{u}", u=u)
         nn_out = self.mlp(u)
-        d_prey = α*prey + nn_out[0]
-        d_predator = nn_out[1] - δ*predator
+        # jax.debug.print("{nn_out}", nn_out=nn_out)
+        d_prey = alpha * prey + nn_out[0]
+        d_predator = nn_out[1] - delta * predator
         return jnp.array([d_prey, d_predator])
+
 
 class UDEProblem(eqx.Module):
     """
@@ -70,7 +80,7 @@ class UDEProblem(eqx.Module):
         self.func = UDEFunction(dynamic_parameters, mlp)
 
     def solve(self, solver, u0, t_save, t_span,
-              controller = diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8),
+              controller=diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8),
               adjoint=diffrax.RecursiveCheckpointAdjoint()):
         t0, t1 = t_span
         sol = diffrax.diffeqsolve(diffrax.ODETerm(self.func),
@@ -85,42 +95,130 @@ class UDEProblem(eqx.Module):
                                   adjoint=adjoint)
         return sol
 
+
 @eqx.filter_value_and_grad
-def compute_loss_grad(prob, u0, t_save, t_span, data):
+def compute_loss_grad(prob, u0, t_save, t_span, data, reg_exp, reg_strength):
     u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
-    return jnp.sum((u_pred.ys - data)**2)
+    return jnp.sum((u_pred.ys - data) ** 2) + regularise_mlp(prob.func.mlp, reg_exp, reg_strength)
+
 
 @eqx.filter_jit
-def compute_loss(prob, u0, t_save, t_span, data):
+def compute_loss(prob, u0, t_save, t_span, data, reg_exp, reg_strength):
     u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
-    return jnp.sum((u_pred.ys - data)**2)
+    reg_loss = 0
+    for layer_num in range(len(prob.func.mlp.layers)):
+        w = prob.func.mlp.layers[layer_num].weight
+        reg_loss += jnp.mean(
+            jnp.abs(w) ** reg_exp
+        )
+    return jnp.sum((u_pred.ys - data) ** 2) + reg_strength * reg_loss
+
+
+@eqx.filter_jit
+def compute_loss_optx(prob_params, args):
+    prob_static, u0, t_save, t_span, data = args
+    prob = eqx.combine(prob_params, prob_static)
+    u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
+    return jnp.sum((u_pred.ys - data) ** 2)
+
+
+@eqx.filter_jit
+@jax.hessian
+def compute_hess(prob_params, prob_static, u0, t_save, t_span, data, adjoint):
+    prob = eqx.combine(prob_params, prob_static)
+    u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span,
+                        adjoint=adjoint)
+    return jnp.mean((u_pred.ys - data)**2)
+
+
+@eqx.filter_jit
+@jax.hessian
+def compute_hess_array(flat_p, unflatten_p, prob_static, u0, t_save, t_span, data, adjoint):
+    prob_params = unflatten_p(flat_p)
+    prob = eqx.combine(prob_params, prob_static)
+    u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span,
+                        adjoint=adjoint)
+    return jnp.mean((u_pred.ys - data)**2)
+
+
+def get_training_validation_data():
+    # Read training and validation data
+    train_data_df = pd.read_csv(os.path.join("Intermediate", "Lotka_volterra", "Train_data.csv"))
+    train_data = jnp.array(train_data_df[["u1", "u2"]].values)
+    t_save_train = diffrax.SaveAt(ts=train_data_df["t"].values)
+    t_span_train = [0.0, max(train_data_df["t"])]
+    validation_data_df = pd.read_csv(os.path.join("Intermediate", "Lotka_volterra", "Validation_data.csv"))
+    validation_data = jnp.array(validation_data_df[["u1", "u2"]].values)
+    t_save_validation = diffrax.SaveAt(ts=validation_data_df["t"].values)
+    t_span_validation = [0.0, max(validation_data_df["t"])]
+    return train_data, t_save_train, t_span_train, validation_data, t_save_validation, t_span_validation
+
 
 def get_result_plot(prob, u0, t_save, t_span, data):
-    '''
+    """
     Transform observed and model prediction data into pd.DataFrames that
     easily can be plotted with plotnine
-    '''
+    """
     # Model prediction
     u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
-    df_pred1 = pd.DataFrame({"time" : u_pred.ts,
-                             "value" : u_pred.ys[:, 0],
-                             "id" : "prey",
-                             "datasource" : "model"})
-    df_pred2 = pd.DataFrame({"time" : u_pred.ts,
-                             "value" : u_pred.ys[:, 1],
-                             "id" : "predator",
-                             "datasource" : "model"})
+    df_pred1 = pd.DataFrame({"time": u_pred.ts,
+                             "value": u_pred.ys[:, 0],
+                             "id": "prey",
+                             "datasource": "model"})
+    df_pred2 = pd.DataFrame({"time": u_pred.ts,
+                             "value": u_pred.ys[:, 1],
+                             "id": "predator",
+                             "datasource": "model"})
     df_predict = pd.concat([df_pred1, df_pred2], names=False)
 
     # Observed data
-    df_obs1 = pd.DataFrame({"time" : u_pred.ts,
-                            "value" : data[:, 0],
-                            "id" : "prey",
-                            "datasource" : "observed"})
-    df_obs2 = pd.DataFrame({"time" : u_pred.ts,
-                            "value" : data[:, 1],
-                            "id" : "predator",
-                            "datasource" : "observed"})
+    df_obs1 = pd.DataFrame({"time": u_pred.ts,
+                            "value": data[:, 0],
+                            "id": "prey",
+                            "datasource": "observed"})
+    df_obs2 = pd.DataFrame({"time": u_pred.ts,
+                            "value": data[:, 1],
+                            "id": "predator",
+                            "datasource": "observed"})
     df_obs = pd.concat([df_obs1, df_obs2], names=False)
 
     return df_predict, df_obs
+
+
+def get_fit_dfs(prob, u0, t_save, t_span, data):
+    # Model prediction
+    u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
+    df_pred = pd.DataFrame({"time": u_pred.ts,
+                            "prey": u_pred.ys[:, 0],
+                            "predator": u_pred.ys[:, 1],
+                            })
+    df_obs = pd.DataFrame({"time": u_pred.ts,
+                           "prey": data[:, 0],
+                           "predator": data[:, 1],
+                           })
+    return df_pred, df_obs
+
+
+def save_plot_results(
+        trained_model: UDEProblem,
+        u0: jnp.array,
+        t_save: diffrax.SaveAt,
+        t_span: List,
+        data: jnp.array,
+        dataset: str,
+        plot_name: str,
+        plot_fmt: str,
+        return_plot: bool = False,
+):
+    df_obs, df_pred = get_result_plot(
+        trained_model,
+        u0,
+        t_save,
+        t_span,
+        data,
+    )
+    p = plot_fit(df_obs, df_pred)
+    if return_plot:
+        return p
+    else:
+        p.save(f"{dataset}_{plot_name}.{plot_fmt}")
