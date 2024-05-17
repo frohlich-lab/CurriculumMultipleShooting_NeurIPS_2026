@@ -137,11 +137,11 @@ def compute_hess_array(flat_p, unflatten_p, prob_static, u0, t_save, t_span, dat
 
 def get_training_validation_data():
     # Read training and validation data
-    train_data_df = pd.read_csv(os.path.join("src", "data_dir", "Lotka_volterra", "Train_data.csv"))
+    train_data_df = pd.read_csv(os.path.join("src", "data_dir", "lotka_volterra", "Train_data.csv"))
     train_data = jnp.array(train_data_df[["u1", "u2"]].values)
     t_save_train = diffrax.SaveAt(ts=train_data_df["t"].values)
     t_span_train = [0.0, max(train_data_df["t"])]
-    validation_data_df = pd.read_csv(os.path.join("src", "data_dir", "Lotka_volterra", "Validation_data.csv"))
+    validation_data_df = pd.read_csv(os.path.join("src", "data_dir", "lotka_volterra", "Validation_data.csv"))
     validation_data = jnp.array(validation_data_df[["u1", "u2"]].values)
     t_save_validation = diffrax.SaveAt(ts=validation_data_df["t"].values)
     t_span_validation = [0.0, max(validation_data_df["t"])]

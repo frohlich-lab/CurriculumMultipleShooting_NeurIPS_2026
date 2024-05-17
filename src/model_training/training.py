@@ -217,7 +217,7 @@ def train(
         get_fit_dfs = get_fit_dfs_lv
         labels = ['prey', 'predator']
         colors = ['red', 'black']
-    elif conf.dynamical_model == 'SIR':
+    elif conf.dynamical_model == 'sir':
         get_fit_dfs = get_fit_dfs_sir
         labels = ['Infected', 'Recovered + dead']
         colors = ['red', 'black']

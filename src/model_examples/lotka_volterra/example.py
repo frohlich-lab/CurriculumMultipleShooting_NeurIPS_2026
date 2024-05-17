@@ -49,10 +49,10 @@ dynamic_parameters = jnp.array([1.3, 1.8])
 uprob = setup_lv.UDEProblem(dynamic_parameters, mlp)
 
 # Read training and validation data
-train_data_df = pd.read_csv(os.path.join("data_dir", "Lotka_volterra", "Train_data.csv"))
+train_data_df = pd.read_csv(os.path.join("data_dir", "lotka_volterra", "Train_data.csv"))
 train_data = jnp.array(train_data_df[["u1", "u2"]].values)
 t_save_train = diffrax.SaveAt(ts=train_data_df["t"].values)
-validation_data_df = pd.read_csv(os.path.join("data_dir", "Lotka_volterra", "Validation_data.csv"))
+validation_data_df = pd.read_csv(os.path.join("data_dir", "lotka_volterra", "Validation_data.csv"))
 validation_data = jnp.array(validation_data_df[["u1", "u2"]].values)
 t_save_validation = diffrax.SaveAt(ts=validation_data_df["t"].values)
 
