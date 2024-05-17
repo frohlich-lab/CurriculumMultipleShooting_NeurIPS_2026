@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import os
 import pandas as pd
 
-from common import plot_fit, regularise_mlp
+from src.common import plot_fit, regularise_mlp
 from typing import List
 
 # Technically Float32 should work, but for consistency between the benchmarks
@@ -202,12 +202,12 @@ def save_plot_results(
 def get_training_validation_data():
     # Read training and validation data
     # Training
-    train_data_df = pd.read_csv(os.path.join("Intermediate", "SIR", "Korea_data_train.csv"))
+    train_data_df = pd.read_csv(os.path.join("src", "data_dir", "SIR", "Korea_data_train.csv"))
     train_data = jnp.array(train_data_df[["infected", "dead", "recovered"]].values)
     t_save_train = diffrax.SaveAt(ts=train_data_df["time"].values)
     t_span_train = [0.0, max(train_data_df["time"])]
     # Validation
-    validation_data_df = pd.read_csv(os.path.join("Intermediate", "SIR", "Korea_data_validation.csv"))
+    validation_data_df = pd.read_csv(os.path.join("src", "data_dir", "SIR", "Korea_data_validation.csv"))
     validation_data = jnp.array(validation_data_df[["infected", "dead", "recovered"]].values)
     t_save_validation = diffrax.SaveAt(ts=validation_data_df["time"].values)
     t_span_validation = [0.0, max(validation_data_df["time"])]

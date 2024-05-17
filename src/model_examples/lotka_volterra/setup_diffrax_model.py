@@ -5,7 +5,7 @@ import jax
 import os
 import pandas as pd
 
-from common import plot_fit, regularise_mlp
+from src.common import plot_fit, regularise_mlp
 from jaxtyping import Array
 from typing import List
 
@@ -105,13 +105,7 @@ def compute_loss_grad(prob, u0, t_save, t_span, data, reg_exp, reg_strength):
 @eqx.filter_jit
 def compute_loss(prob, u0, t_save, t_span, data, reg_exp, reg_strength):
     u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
-    reg_loss = 0
-    for layer_num in range(len(prob.func.mlp.layers)):
-        w = prob.func.mlp.layers[layer_num].weight
-        reg_loss += jnp.mean(
-            jnp.abs(w) ** reg_exp
-        )
-    return jnp.sum((u_pred.ys - data) ** 2) + reg_strength * reg_loss
+    return jnp.sum((u_pred.ys - data) ** 2) + regularise_mlp(prob.func.mlp, reg_exp, reg_strength)
 
 
 @eqx.filter_jit
@@ -143,11 +137,11 @@ def compute_hess_array(flat_p, unflatten_p, prob_static, u0, t_save, t_span, dat
 
 def get_training_validation_data():
     # Read training and validation data
-    train_data_df = pd.read_csv(os.path.join("Intermediate", "Lotka_volterra", "Train_data.csv"))
+    train_data_df = pd.read_csv(os.path.join("src", "data_dir", "Lotka_volterra", "Train_data.csv"))
     train_data = jnp.array(train_data_df[["u1", "u2"]].values)
     t_save_train = diffrax.SaveAt(ts=train_data_df["t"].values)
     t_span_train = [0.0, max(train_data_df["t"])]
-    validation_data_df = pd.read_csv(os.path.join("Intermediate", "Lotka_volterra", "Validation_data.csv"))
+    validation_data_df = pd.read_csv(os.path.join("src", "data_dir", "Lotka_volterra", "Validation_data.csv"))
     validation_data = jnp.array(validation_data_df[["u1", "u2"]].values)
     t_save_validation = diffrax.SaveAt(ts=validation_data_df["t"].values)
     t_span_validation = [0.0, max(validation_data_df["t"])]

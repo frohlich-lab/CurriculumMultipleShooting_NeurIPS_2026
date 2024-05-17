@@ -3,26 +3,26 @@ import jax.random as jr
 import jax.nn as jnn
 import jax.numpy as jnp
 import lotka_volterra.setup_diffrax_model as setup_lv
-import sir.setup_diffrax_model as setup_sir
+import src.model_examples.sir.setup_diffrax_model as setup_sir
 
-from common import build_mlp, Conf, EarlyStoppingParams, set_weight_bias
-from training import train
-from training_configuration import (DYNAMICAL_MODEL,
-                                    MLP_WIDTHS,
-                                    MLP_DEPTHS,
-                                    MLP_ACTIVATIONS,
-                                    OPTIMISERS,
-                                    USE_EARLY_STOP,
-                                    MAX_LEARNING_RATES,
-                                    LEARNING_RATE_SPANS,
-                                    LEARNING_RATE_DECAYS,
-                                    WARMUP_FCTS,
-                                    OPT_STEPS,
-                                    OPT_MULT,
-                                    REG_EXPS,
-                                    REG_STRENGTHS,
-                                    N_EPOCHS,
-                                    MAX_ITER_OPTX)
+from src.common import build_mlp, Conf, EarlyStoppingParams, set_weight_bias
+from src.model_training.training import train
+from src.model_training.training_configuration import (DYNAMICAL_MODEL,
+                                                       MLP_WIDTHS,
+                                                       MLP_DEPTHS,
+                                                       MLP_ACTIVATIONS,
+                                                       OPTIMISERS,
+                                                       USE_EARLY_STOP,
+                                                       MAX_LEARNING_RATES,
+                                                       LEARNING_RATE_SPANS,
+                                                       LEARNING_RATE_DECAYS,
+                                                       WARMUP_FCTS,
+                                                       OPT_STEPS,
+                                                       OPT_MULT,
+                                                       REG_EXPS,
+                                                       REG_STRENGTHS,
+                                                       N_EPOCHS,
+                                                       MAX_ITER_OPTX)
 
 # Dictionary of activation functions to choose from
 activation_functions = {

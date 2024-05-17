@@ -7,18 +7,19 @@ import matplotlib.pyplot as plt
 import numpy as np
 import optax
 import optimistix as optx
-import plotly  # needed to export matplotlib plots for wandb logging
+import pandas as pd
 import wandb
 
-from common import Conf, EarlyStoppingParams
+from src.common import Conf, EarlyStoppingParams, plots_dir
 from flax.training.early_stopping import EarlyStopping
 from jaxtyping import Array, Float, PyTree
-from lotka_volterra.setup_diffrax_model import UDEProblem as UDEProblem_lv
-from lotka_volterra.setup_diffrax_model import get_fit_dfs as get_fit_dfs_lv
+from pathlib import Path
+from src.model_examples.lotka_volterra.setup_diffrax_model import UDEProblem as UDEProblem_lv
+from src.model_examples.lotka_volterra.setup_diffrax_model import get_fit_dfs as get_fit_dfs_lv
 # from lotka_volterra.setup_diffrax_model import save_plot_results as save_plot_results_lv
 
-from sir.setup_diffrax_model import UDEProblem as UDEProblem_sir
-from sir.setup_diffrax_model import get_fit_dfs as get_fit_dfs_sir
+from src.model_examples.sir.setup_diffrax_model import UDEProblem as UDEProblem_sir
+from src.model_examples.sir.setup_diffrax_model import get_fit_dfs as get_fit_dfs_sir
 # from sir.setup_diffrax_model import save_plot_results as save_plot_results_sir
 from typing import Callable, Dict, List
 
@@ -94,10 +95,20 @@ def train(
         model=model,
     )
 
-    # Get schedule and initialise the optimiser
-    schedule = get_scheduler(conf=conf, n_epochs=n_epochs)
-    opt = optimisers[conf.optimiser](schedule)
-    opt_state = opt.init(eqx.filter(model, eqx.is_array))
+    if not conf.use_lookahead:
+        # Get schedule and initialise the optimiser
+        schedule = get_scheduler(conf=conf, n_epochs=n_epochs)
+        opt = optimisers[conf.optimiser](schedule)
+        opt_state = opt.init(eqx.filter(model, eqx.is_array))
+    else:
+        opt = optax.lookahead(
+            fast_optimizer=optimisers[conf.optimiser](conf.max_lrate),
+            sync_period=conf.lookahead_sync,
+            slow_step_size=conf.lookahead_step_size,
+            reset_state=conf.lookahead_reset_state,
+        )
+        params = optax.LookaheadParams.init_synced(eqx.filter(model, eqx.is_array))
+        opt_state = opt.init(params)
 
     # Check Early-stopping parameters have been set correctly and instantiate early stopper
     if early_stopping_params.use_early_stopping:
@@ -219,14 +230,17 @@ def train(
             [training_data, validation_data]
     ):
         df_predict, df_obs = get_fit_dfs(model, u0, t_save, t_span, data)
+        plot_dir = plots_dir / conf.dynamical_model / "optax"
+        plot_dir.mkdir(exist_ok=True, parents=True)
         log_plots(
             df_predict,
             df_obs,
             labels,
             colors,
-            f"{dataset}",
             epoch,
+            f"{dataset}",
             save_plot=True,
+            plot_dir=plot_dir,
             plot_fmt="svg"
         )
 
@@ -281,14 +295,17 @@ def train(
                 [training_data, validation_data]
         ):
             df_predict, df_obs = get_fit_dfs(model, u0, t_save, t_span, data)
+            plot_dir = plots_dir / conf.dynamical_model / "optx"
+            plot_dir.mkdir(exist_ok=True, parents=True)
             log_plots(
                 df_predict,
                 df_obs,
                 labels,
                 colors,
-                f"{dataset}_optx",
                 epoch,
+                f"{dataset}",
                 save_plot=True,
+                plot_dir=plot_dir,
                 plot_fmt="svg",
             )
 
@@ -447,7 +464,17 @@ def get_scheduler(
     return optax.sgdr_schedule(schedules)
 
 
-def log_plots(df_predict, df_obs, labels, colors, plot_name, epoch, save_plot=False, plot_fmt="png"):
+def log_plots(
+        df_predict: pd.DataFrame,
+        df_obs: pd.DataFrame,
+        labels: List[str],
+        colors: List[str],
+        epoch: int,
+        plot_name: str,
+        plot_dir: Path,
+        save_plot: bool = False,
+        plot_fmt: str = "png"
+):
     plt.subplots(1, 2, figsize=(6, 4))
     for ind, (label, color) in enumerate(zip(labels, colors)):
         plt.subplot(1, 2, ind + 1)
@@ -471,6 +498,9 @@ def log_plots(df_predict, df_obs, labels, colors, plot_name, epoch, save_plot=Fa
         plt.gca().tick_params(direction='in', length=5)
         if ind == 0:
             plt.ylabel('Measurement')
-    if save_plot:
-        plt.savefig(f"fit_plot_{plot_name}.{plot_fmt}")
-    wandb.log({f"fit_plot_{plot_name}": plt}, step=epoch)
+    if save_plot and (plot_dir is not None):
+        plt.savefig(plot_dir / f"fit_plot_{plot_name}.{plot_fmt}")
+    elif save_plot and (plot_dir is None):
+        raise ValueError("Must specify plot directory in order to save plots!")
+    else:
+        wandb.log({f"fit_plot_{plot_name}": plt}, step=epoch)

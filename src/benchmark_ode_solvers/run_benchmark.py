@@ -10,7 +10,7 @@ import benchmark_ode_solvers.models as models
 
 
 def save_result(model_test, u_end, runtime):
-    dir_save = os.path.join("Intermediate", "Benchmark_solvers")
+    dir_save = os.path.join("data_dir", "Benchmark_solvers")
     if not os.path.isdir(dir_save):
         os.mkdir(dir_save)
     path_save = os.path.join(dir_save, "Diffrax" + model_test + ".csv")
@@ -33,7 +33,7 @@ def time_run(ode_func, solver, t_span, controller, max_steps):
 
 
 def test_model(model_test, solver):
-    # Some models demand more time-steps than others
+    # Some model_examples demand more time-steps than others
     if model_test == "RigidBody":
         max_steps = 10000000
     else:
@@ -43,7 +43,7 @@ def test_model(model_test, solver):
     runtime = np.zeros(len(rel_tols))
     u_end = np.zeros((len(rel_tols), len(ode_problem.u0)))
     for k in range(len(rel_tols)):
-        # Different controllers for stiff-models
+        # Different controllers for stiff-model_examples
         if model_test in ["Rober", "Hires", "Pollu"]:
             controller = diffrax.PIDController(rtol=rel_tols[k], atol=abs_tols[k],
                                                pcoeff=0.4, icoeff=0.3, dcoeff=0)

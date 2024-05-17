@@ -93,3 +93,10 @@ REG_STRENGTHS = {
     # 1e6,
 }
 
+USE_LOOKAHEAD = {
+    "True",
+    "False",
+}
+
+LOOKAHEAD_SYNC = 5
+

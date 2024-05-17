@@ -2,10 +2,10 @@ import fire
 import jax.random as jr
 import jax.nn as jnn
 import jax.numpy as jnp
-import lotka_volterra.setup_diffrax_model as setup_lv
-import sir.setup_diffrax_model as setup_sir
+import src.model_examples.lotka_volterra.setup_diffrax_model as setup_lv
+import src.model_examples.sir.setup_diffrax_model as setup_sir
 
-from common import build_mlp, Conf, EarlyStoppingParams, set_weight_bias
+from src.common import build_mlp, Conf, EarlyStoppingParams, set_weight_bias
 from training import train
 from training_configuration import N_EPOCHS, MAX_ITER_OPTX
 

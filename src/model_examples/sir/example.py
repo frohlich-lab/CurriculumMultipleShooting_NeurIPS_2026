@@ -9,8 +9,8 @@ import jax
 import timeit
 import matplotlib.pyplot as plt
 
-import common as common
-import sir.setup_diffrax_model as setup_sir
+from src import common as common
+import src.model_examples.sir.setup_diffrax_model as setup_sir
 
 # Set up the model (this mlp was used in the paper)
 width_size = 10
@@ -39,12 +39,12 @@ u_prob = setup_sir.UDEProblem(dynamic_parameters, mlp)
 
 # Read training and validation data
 # Training
-train_data_df = pd.read_csv(os.path.join("Intermediate", "SIR", "Korea_data_train.csv"))
+train_data_df = pd.read_csv(os.path.join("data_dir", "SIR", "Korea_data_train.csv"))
 train_data = jnp.array(train_data_df[["infected", "dead", "recovered"]].values)
 t_save_train = diffrax.SaveAt(ts=train_data_df["time"].values)
 t_span_train = [0.0, max(train_data_df["time"])]
 # Validation
-validation_data_df = pd.read_csv(os.path.join("Intermediate", "SIR", "Korea_data_validation.csv"))
+validation_data_df = pd.read_csv(os.path.join("data_dir", "SIR", "Korea_data_validation.csv"))
 validation_data = jnp.array(validation_data_df[["infected", "dead", "recovered"]].values)
 t_save_validation = diffrax.SaveAt(ts=validation_data_df["time"].values)
 t_span_validation = [0.0, max(validation_data_df["time"])]
