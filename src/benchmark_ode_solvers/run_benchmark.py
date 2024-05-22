@@ -1,12 +1,12 @@
 import timeit
 import diffrax
-import pandas as pd
+# import pandas as pd
 import numpy as np
 import equinox as eqx
 import pandas as pd
 import os
 
-import benchmark_ode_solvers.models as models
+import src.benchmark_ode_solvers.models as models
 
 
 def save_result(model_test, u_end, runtime):

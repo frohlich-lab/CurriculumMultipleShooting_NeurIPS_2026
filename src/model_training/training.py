@@ -16,11 +16,8 @@ from jaxtyping import Array, Float, PyTree
 from pathlib import Path
 from src.model_examples.lotka_volterra.setup_diffrax_model import UDEProblem as UDEProblem_lv
 from src.model_examples.lotka_volterra.setup_diffrax_model import get_fit_dfs as get_fit_dfs_lv
-# from lotka_volterra.setup_diffrax_model import save_plot_results as save_plot_results_lv
-
 from src.model_examples.sir.setup_diffrax_model import UDEProblem as UDEProblem_sir
 from src.model_examples.sir.setup_diffrax_model import get_fit_dfs as get_fit_dfs_sir
-# from sir.setup_diffrax_model import save_plot_results as save_plot_results_sir
 from typing import Callable, Dict, List
 
 # Optimisers to choose from

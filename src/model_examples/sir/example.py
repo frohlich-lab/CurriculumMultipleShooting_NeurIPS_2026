@@ -9,7 +9,7 @@ import jax
 import timeit
 import matplotlib.pyplot as plt
 
-from src import common as common
+import src.common as common
 import src.model_examples.sir.setup_diffrax_model as setup_sir
 
 # Set up the model (this mlp was used in the paper)
