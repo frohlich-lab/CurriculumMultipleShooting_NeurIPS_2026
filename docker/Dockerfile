@@ -10,8 +10,6 @@ RUN apt-get update --yes && \
     apt-get install --yes \
     gcc \
     g++ && \
-#    git \
-#    python3-dev && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install pip-tools to compile requirements and build wheels
@@ -28,14 +26,20 @@ FROM python:3.12-slim
 LABEL authors="giacomo.fabrini@crick.ac.uk" \
     description="Docker image containing requirements for Test_UDE"
 
+# Install build dependencies for fully functional requirements.txt install
+RUN apt-get update --yes && \
+    apt-get upgrade --yes && \
+    apt-get install --yes git && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
 # Update pip to latest version
 RUN python -m pip install --upgrade pip
 
-# Set /usr/src/ as the working directory
-WORKDIR /usr/src/
+# Set /usr as the working directory
+WORKDIR /usr/test_ude
 
-# Copy everything from /src to the working directory
-COPY src/ .
+# Copy everything from /src to the usr/src
+COPY src/ src/
 
 # Copy wheels from builder stage
 COPY --from=builder /usr/wheels /usr/wheels
@@ -43,10 +47,10 @@ COPY --from=builder /usr/wheels /usr/wheels
 # Install wheels
 RUN pip install --no-cache-dir --no-index --find-links=/usr/wheels -r /usr/wheels/requirements.txt
 
-# Install project modules
-RUN python -m pip install .
+# Install project modules from usr/src/
+RUN python -m pip install src/
 
 # Set PYTHONPATH to include the source directory
-ENV PYTHONPATH="/usr/src/:$PYTHONPATH"
+ENV PYTHONPATH="/usr/test_ude/:$PYTHONPATH"
 
 ENTRYPOINT ["/bin/bash"]

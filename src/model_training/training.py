@@ -236,10 +236,12 @@ def train(
             colors,
             epoch,
             f"{dataset}",
-            save_plot=True,
+            save_plot=False,
             plot_dir=plot_dir,
             plot_fmt="svg"
         )
+
+    wandb.log({"final_epoch": epoch})
 
     if max_iter_optx > 0:  # otherwise end training and return trained model
         # Additional training with BFGS via optimistix
@@ -281,7 +283,7 @@ def train(
                 "final_loss_train_optx": loss_dict["train"],
                 "final_loss_val_optx": loss_dict["validation"],
             },
-            step=sol.stats["num_steps"],
+            step=epoch+sol.stats["num_steps"],
         )
 
         # Log plots again after further training
@@ -299,16 +301,14 @@ def train(
                 df_obs,
                 labels,
                 colors,
-                epoch,
-                f"{dataset}",
-                save_plot=True,
+                epoch+sol.stats["num_steps"],
+                f"{dataset}_optx",
+                save_plot=False,
                 plot_dir=plot_dir,
                 plot_fmt="svg",
             )
 
-    wandb.log({"final_epoch": epoch})
     wandb.finish()
-
     return model
 
 

@@ -11,5 +11,6 @@ numpy==1.26.4
 optax==0.2.2
 optimistix==0.0.6
 pandas==2.2.1
+plotly==5.21.0
 plotnine==0.13.4
 wandb==0.16.6
