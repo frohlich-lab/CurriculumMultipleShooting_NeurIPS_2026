@@ -62,19 +62,18 @@ t_save_validation = diffrax.SaveAt(ts=validation_data_df["t"].values)
 # Compute loss and gradient
 loss, grad = setup_lv.compute_loss_grad(uprob, u0, t_save_train, [0.0, 10.0], train_data)
 
-df_pred, df_obs = setup_lv.get_result_plot(uprob, u0, t_save_validation, [0.0, 20.0], validation_data)
-
 # We can easily plot the fit by first generating the data to plot, and then call plotnine (the data 
 # should also be easy to plot with matplotlib :)). If you change below to t_save_validation and
 # validation_data you get the plot for the validation. The solid line is the model, while the 
 # dots are the data
-df_obs, df_pred = setup_lv.get_result_plot(uprob, u0, t_save_train, [0.0, 10.0], train_data)
-p = plot_fit(df_obs, df_pred)
-p
+df_pred_train, df_obs_train = setup_lv.get_result_plot(uprob, u0, t_save_train, [0.0, 10.0], train_data)
+p = plot_fit(df_obs=df_obs_train, df_pred=df_pred_train)
+# p
 plt.show()
 
 # Compute validation loss
 loss_validation = setup_lv.compute_loss(uprob, u0, t_save_validation, [0.0, 20.0], validation_data)
+df_pred_val, df_obs_val = setup_lv.get_result_plot(uprob, u0, t_save_validation, [0.0, 20.0], validation_data)
 
 
 # Something fun, let us try the Hessian. Here we must use partition for not

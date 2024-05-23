@@ -60,14 +60,14 @@ loss_validation = setup_sir.compute_loss(u_prob, u0, t_save_validation, t_span_v
 # Just as for the Lotka-Volterra model we can easily plot the results. Note, the 
 # observables are on log-scale for this model
 # Training data
-df_obs, df_pred = setup_sir.get_result_plot(u_prob, u0, t_save_train, t_span_train, train_data)
-p = plot_fit(df_obs, df_pred)
-p
+df_pred_train, df_obs_train = setup_sir.get_result_plot(u_prob, u0, t_save_train, t_span_train, train_data)
+p = plot_fit(df_obs=df_obs_train, df_pred=df_pred_train)
+# p
 plt.show()
 # Validation data
-df_obs, df_pred = setup_sir.get_result_plot(u_prob, u0, t_save_validation, t_span_validation, validation_data)
-p = plot_fit(df_obs, df_pred)
-p
+df_pred_val, df_obs_val = setup_sir.get_result_plot(u_prob, u0, t_save_validation, t_span_validation, validation_data)
+p = plot_fit(df_obs=df_obs_val, df_pred=df_pred_val)
+# p
 plt.show()
 
 
