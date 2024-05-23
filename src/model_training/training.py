@@ -1,4 +1,3 @@
-import dataclasses
 import equinox as eqx
 import git
 import itertools as itt
@@ -15,10 +14,9 @@ from src.common import Conf, EarlyStoppingParams, plots_dir
 from flax.training.early_stopping import EarlyStopping
 from jaxtyping import Array, Float, PyTree
 from pathlib import Path
-from src.model_examples.lotka_volterra.setup_diffrax_model import UDEProblem as UDEProblem_lv
 from src.model_examples.lotka_volterra.setup_diffrax_model import get_fit_dfs as get_fit_dfs_lv
-from src.model_examples.sir.setup_diffrax_model import UDEProblem as UDEProblem_sir
 from src.model_examples.sir.setup_diffrax_model import get_fit_dfs as get_fit_dfs_sir
+from src.ude_problem import UDEProblem
 from typing import Callable, Dict, List
 
 # Optimisers to choose from
@@ -29,7 +27,7 @@ optimisers = {
 
 
 def train(
-        model: UDEProblem_lv | UDEProblem_sir,
+        model: UDEProblem,
         u0: jnp.ndarray,
         training_data: jnp.ndarray,
         t_save_train: List,
@@ -45,7 +43,7 @@ def train(
         loss_optx: Callable,
         optx_config: Dict,
         max_iter_optx: int,
-) -> UDEProblem_lv | UDEProblem_sir:
+) -> UDEProblem:
     """
     Trains the UDEmodel (`model`).
 
@@ -122,7 +120,7 @@ def train(
 
     @eqx.filter_jit
     def make_step(
-            model: UDEProblem_lv | UDEProblem_sir,
+            model: UDEProblem,
             opt_state: PyTree,
             input_data: Float[Array, '...'],  # TODO @GiacomoFabrini fix input data shape
             t_save: List,
@@ -326,8 +324,8 @@ def train(
 
 # from Fabian's NeuralCoarseGraining
 def log_model_stats(
-        model: UDEProblem_lv | UDEProblem_sir,
-        grad: UDEProblem_lv | UDEProblem_sir,
+        model: UDEProblem,
+        grad: UDEProblem,
 ):
     """
     Log the layer statistics to wandb.
@@ -384,7 +382,7 @@ def log_model_stats(
 def initialise_wandb(
         conf: Conf,
         early_stopping_params: EarlyStoppingParams,
-        model: UDEProblem_lv | UDEProblem_sir,
+        model: UDEProblem,
 ):
     # Link to repo
     repo = git.Repo(search_parent_directories=True)

@@ -1,13 +1,13 @@
 import equinox as eqx
 import jax.random as jr
 
-from typing import Any, Callable, List
+from typing import Any, Callable, List, Union
 
 
 class CustomDropoutMLP(eqx.Module):
-    layers: List[eqx.nn.Linear]
+    layers: List[Union[eqx.nn.Linear, eqx.nn.Dropout]]
     activation: Callable
-    dropout_keys: List[Any]
+    dropout_keys: Any
 
     # TODO @GiacomoFabrini consider adding bias behaviour (use_bias)
     def __init__(

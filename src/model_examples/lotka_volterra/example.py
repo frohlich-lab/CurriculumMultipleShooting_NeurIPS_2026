@@ -1,4 +1,3 @@
-from src import common
 import diffrax
 import equinox as eqx
 import jax
@@ -8,6 +7,10 @@ import src.model_examples.lotka_volterra.setup_diffrax_model as setup_lv
 import matplotlib.pyplot as plt
 import os
 import pandas as pd
+
+from src.plotting import plot_fit
+from src.model_training.training_util import set_weight_bias
+from src.ude_problem import UDEProblem
 
 
 # Flatten a tree to an array to allow gradient and Hessian functions to 
@@ -40,13 +43,13 @@ mlp = eqx.nn.MLP(in_size=2,
 # For the benchmark against Julia we can use import functions (in Common.py)
 # to set equal weight, bias etc..., between the software, but first we should 
 # focus on different training schemes :)
-mlp = common.set_weight_bias(mlp, 0.1, key)
+mlp = set_weight_bias(mlp, 0.1, key)
 
 # Setting up the UDEProblem, I happen to use the true dynamic parameters 
 # here, but this can be looked at later 
 u0 = jnp.array([0.44249296, 4.6280594])
 dynamic_parameters = jnp.array([1.3, 1.8])
-uprob = setup_lv.UDEProblem(dynamic_parameters, mlp)
+uprob = UDEProblem("lotka_volterra", dynamic_parameters, mlp)
 
 # Read training and validation data
 train_data_df = pd.read_csv(os.path.join("data_dir", "lotka_volterra", "Train_data.csv"))
@@ -66,7 +69,7 @@ df_pred, df_obs = setup_lv.get_result_plot(uprob, u0, t_save_validation, [0.0, 2
 # validation_data you get the plot for the validation. The solid line is the model, while the 
 # dots are the data
 df_obs, df_pred = setup_lv.get_result_plot(uprob, u0, t_save_train, [0.0, 10.0], train_data)
-p = common.plot_fit(df_obs, df_pred)
+p = plot_fit(df_obs, df_pred)
 p
 plt.show()
 

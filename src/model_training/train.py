@@ -5,7 +5,9 @@ import src.model_examples.lotka_volterra.setup_diffrax_model as setup_lv
 import src.model_examples.sir.setup_diffrax_model as setup_sir
 
 from jax import config
-from src.common import activation_functions, build_mlp, Conf, EarlyStoppingParams, set_weight_bias
+from src.common import activation_functions, Conf, EarlyStoppingParams
+from src.model_training.training_util import set_weight_bias
+from src.ude_problem import UDEProblem, build_mlp
 from training import train
 from training_configuration import N_EPOCHS, MAX_ITER_OPTX
 
@@ -63,7 +65,6 @@ if conf.dynamical_model == 'lotka_volterra':
     (train_data, t_save_train, t_span_train,
      validation_data, t_save_validation, t_span_validation) = setup_lv.get_training_validation_data()
 
-    ude_problem = setup_lv.UDEProblem(dynamic_parameters[conf.dynamical_model], mlp)
     loss_fn = setup_lv.compute_loss
     loss_grad_fn = setup_lv.compute_loss_grad
     loss_optx = setup_lv.compute_loss_optx
@@ -76,7 +77,6 @@ elif conf.dynamical_model == 'sir':
     (train_data, t_save_train, t_span_train,
      validation_data, t_save_validation, t_span_validation) = setup_sir.get_training_validation_data()
 
-    ude_problem = setup_sir.UDEProblem(dynamic_parameters[conf.dynamical_model], mlp)
     loss_fn = setup_sir.compute_loss
     loss_grad_fn = setup_sir.compute_loss_grad
     loss_optx = setup_sir.compute_loss_optx
@@ -86,6 +86,7 @@ elif conf.dynamical_model == 'sir':
     }
 else:
     raise ValueError(f"Unknown dynamical model: {conf.dynamical_model}!")
+ude_problem = UDEProblem(conf.dynamical_model, dynamic_parameters[conf.dynamical_model], mlp)
 
 # # Linear schedule Fabian set up for the DMM -- DISABLED WITH NEW SCHEDULER
 # schedule_config = dict(

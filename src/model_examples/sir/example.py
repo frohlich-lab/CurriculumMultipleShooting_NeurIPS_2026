@@ -8,9 +8,11 @@ import jax.numpy as jnp
 import jax
 import timeit
 import matplotlib.pyplot as plt
-
-import src.common as common
 import src.model_examples.sir.setup_diffrax_model as setup_sir
+
+from src.model_training.training_util import set_weight_bias
+from src.plotting import plot_fit
+from src.ude_problem import UDEProblem
 
 # Set up the model (this mlp was used in the paper)
 width_size = 10
@@ -29,13 +31,13 @@ mlp = eqx.nn.MLP(in_size=3,
 # For the benchmark against Julia we can use import functions (in Common.py)
 # to set equal weight, bias etc..., between the software, but first we should 
 # focus on different training schemes :)
-mlp = common.set_weight_bias(mlp, 0.1, key)
+mlp = set_weight_bias(mlp, 0.1, key)
 
 # Setting up the UDEProblem, I happen to use the true dynamic parameters 
 # here, but this can be looked at later 
 u0 = jnp.array([51000000.0, 578, 24, 10])
 dynamic_parameters = jnp.array([0.15, 0.013, 0.01])
-u_prob = setup_sir.UDEProblem(dynamic_parameters, mlp)
+u_prob = UDEProblem("sir", dynamic_parameters, mlp)
 
 # Read training and validation data
 # Training
@@ -59,12 +61,12 @@ loss_validation = setup_sir.compute_loss(u_prob, u0, t_save_validation, t_span_v
 # observables are on log-scale for this model
 # Training data
 df_obs, df_pred = setup_sir.get_result_plot(u_prob, u0, t_save_train, t_span_train, train_data)
-p = common.plot_fit(df_obs, df_pred)
+p = plot_fit(df_obs, df_pred)
 p
 plt.show()
 # Validation data
 df_obs, df_pred = setup_sir.get_result_plot(u_prob, u0, t_save_validation, t_span_validation, validation_data)
-p = common.plot_fit(df_obs, df_pred)
+p = plot_fit(df_obs, df_pred)
 p
 plt.show()
 

@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import src.model_examples.lotka_volterra.setup_diffrax_model as setup_lv
 import src.model_examples.sir.setup_diffrax_model as setup_sir
 
-from src.common import build_mlp, Conf, EarlyStoppingParams, set_weight_bias
+from src.common import Conf, EarlyStoppingParams
 from src.model_training.training import train
 from src.model_training.training_configuration import (DYNAMICAL_MODEL,
                                                        MLP_WIDTHS,
@@ -22,7 +22,11 @@ from src.model_training.training_configuration import (DYNAMICAL_MODEL,
                                                        REG_EXPS,
                                                        REG_STRENGTHS,
                                                        N_EPOCHS,
-                                                       MAX_ITER_OPTX)
+                                                       MAX_ITER_OPTX,
+                                                       USE_DROPOUT,
+                                                       DROPOUT_RATES)
+from src.model_training.training_util import set_weight_bias
+from src.ude_problem import build_mlp, UDEProblem
 
 # Dictionary of activation functions to choose from
 activation_functions = {
@@ -62,12 +66,12 @@ for (
         dynamical_model,
         mlp_layer_width, mlp_depth, activation_fn_name,
         optimiser, max_lrate, lrate_span, lrate_decay, warmup_fct, opt_steps, opt_mult,
-        use_early_stop, reg_exp, reg_strength
+        use_early_stop, reg_exp, reg_strength, use_dropout, dropout_rate,
 ) in itt.product(
     DYNAMICAL_MODEL,
     MLP_WIDTHS, MLP_DEPTHS, MLP_ACTIVATIONS,
     OPTIMISERS, MAX_LEARNING_RATES, LEARNING_RATE_SPANS, LEARNING_RATE_DECAYS, WARMUP_FCTS, OPT_STEPS, OPT_MULT,
-    USE_EARLY_STOP, REG_EXPS, REG_STRENGTHS,
+    USE_EARLY_STOP, REG_EXPS, REG_STRENGTHS, USE_DROPOUT, DROPOUT_RATES,
 ):
     conf = Conf(
         dynamical_model=dynamical_model,
@@ -84,6 +88,8 @@ for (
         use_early_stop=use_early_stop,
         reg_exp=reg_exp,
         reg_strength=reg_strength,
+        use_dropout=use_dropout,
+        dropout_rate=dropout_rate,
     )
 
     # Setup MLP (same as the original paper for now)
@@ -94,6 +100,8 @@ for (
         hidden_layers=conf.mlp_depth,
         key=key_mlp,
         activation=activation_functions[conf.activation_fn_name],
+        use_dropout=conf.use_dropout,
+        dropout_rate=conf.dropout_rate,
     )
     # Initialise weights and biases of MLP
     mlp = set_weight_bias(mlp, conf.init_scale, key_init)
@@ -104,7 +112,6 @@ for (
         (train_data, t_save_train, t_span_train,
          validation_data, t_save_validation, t_span_validation) = setup_lv.get_training_validation_data()
 
-        ude_problem = setup_lv.UDEProblem(dynamic_parameters[conf.dynamical_model], mlp)
         loss_fn = setup_lv.compute_loss
         loss_grad_fn = setup_lv.compute_loss_grad
         loss_optx = setup_lv.compute_loss_optx
@@ -117,7 +124,6 @@ for (
         (train_data, t_save_train, t_span_train,
          validation_data, t_save_validation, t_span_validation) = setup_sir.get_training_validation_data()
 
-        ude_problem = setup_sir.UDEProblem(dynamic_parameters[conf.dynamical_model], mlp)
         loss_fn = setup_sir.compute_loss
         loss_grad_fn = setup_sir.compute_loss_grad
         loss_optx = setup_sir.compute_loss_optx
@@ -127,6 +133,7 @@ for (
         }
     else:
         raise ValueError(f"Unknown dynamical model: {conf.dynamical_model}!")
+    ude_problem = UDEProblem(conf.dynamical_model, dynamic_parameters[conf.dynamical_model], mlp)
 
     # Linear schedule Fabian set up for the DMM
     # schedule_config = dict(

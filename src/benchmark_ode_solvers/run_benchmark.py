@@ -1,6 +1,5 @@
 import timeit
 import diffrax
-# import pandas as pd
 import numpy as np
 import equinox as eqx
 import pandas as pd
