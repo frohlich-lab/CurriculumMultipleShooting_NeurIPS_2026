@@ -6,9 +6,9 @@ import jax
 import pandas as pd
 import plotnine as p9
 
+from src.custom_mlp import CustomDropoutMLP
 from pathlib import Path
-from jaxtyping import Array
-from typing import Any
+from typing import Any, Callable, Union
 
 
 @dataclasses.dataclass(frozen=True, repr=True, eq=True, order=True)
@@ -34,6 +34,8 @@ class Conf(dict):
     use_early_stop: bool = False
     reg_exp: float = 1.0
     reg_strength: float = 0.0  # no regularisation by default
+    use_dropout: bool = False
+    dropout_rate: float = 0.5
     use_lookahead: bool = False
     lookahead_sync: int = 10
     lookahead_step_size: float = 0.5
@@ -66,10 +68,10 @@ def _init_glorot(
 
 
 def set_weight_bias(
-        mlp: eqx.nn.MLP,
+        mlp: Union[eqx.nn.MLP, eqx.Module],
         scale: float,
         key: Any,
-):
+) -> Union[eqx.nn.MLP, eqx.Module]:
     """
     Set the bias to zero, and use a glorot_uniform with provided scale for the 
     weights
@@ -135,14 +137,31 @@ def build_mlp(
         width_size: int,
         hidden_layers: int,
         key: Any,
-        activation=jax.nn.tanh
-) -> eqx.nn.MLP:
-    mlp = eqx.nn.MLP(in_size=in_size,
-                     out_size=out_size,
-                     width_size=width_size,
-                     depth=hidden_layers,
-                     activation=activation,
-                     key=key)
+        activation: Callable,
+        use_dropout: bool,
+        dropout_rate: float,
+) -> Union[eqx.nn.MLP, eqx.Module]:
+    if not use_dropout:
+        mlp = eqx.nn.MLP(
+            in_size=in_size,
+            out_size=out_size,
+            width_size=width_size,
+            depth=hidden_layers,
+            activation=activation,
+            key=key
+        )
+    elif use_dropout and (dropout_rate is not None):
+        mlp = CustomDropoutMLP(
+            in_size=in_size,
+            out_size=out_size,
+            width_size=width_size,
+            depth=hidden_layers,
+            activation=activation,
+            key=key,
+            dropout_rate=dropout_rate,
+        )
+    else:
+        raise ValueError("For use_dropout to be True, dropout_rate cannot be None.")
     return mlp
 
 
@@ -156,11 +175,21 @@ def regularise_mlp(
     """
     reg_loss = 0
     for layer in mlp.layers:
-        reg_loss += jnp.mean(jnp.abs(layer.weight) ** reg_exp)
-        if hasattr(layer, 'bias') and layer.bias is not None:
-            reg_loss += jnp.mean(jnp.abs(layer.bias) ** reg_exp)
+        if isinstance(layer, eqx.nn.Linear):
+            reg_loss += jnp.mean(jnp.abs(layer.weight) ** reg_exp)
+            if hasattr(layer, 'bias') and layer.bias is not None:
+                reg_loss += jnp.mean(jnp.abs(layer.bias) ** reg_exp)
     return reg_strength * reg_loss
 
 
 basedir: Path = Path(__file__).resolve().parent
 plots_dir = basedir / "plots"
+
+# Dictionary of activation functions to choose from
+activation_functions = {
+    "tanh": jnn.tanh,
+    "relu": jnn.relu,
+    "swish": jnn.swish,
+    "elu": jnn.elu,
+    "gelu": jnn.gelu,
+}

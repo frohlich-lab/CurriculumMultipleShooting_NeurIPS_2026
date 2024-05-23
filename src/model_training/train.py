@@ -1,24 +1,19 @@
 import fire
 import jax.random as jr
-import jax.nn as jnn
 import jax.numpy as jnp
 import src.model_examples.lotka_volterra.setup_diffrax_model as setup_lv
 import src.model_examples.sir.setup_diffrax_model as setup_sir
 
-from src.common import build_mlp, Conf, EarlyStoppingParams, set_weight_bias
+from jax import config
+from src.common import activation_functions, build_mlp, Conf, EarlyStoppingParams, set_weight_bias
 from training import train
 from training_configuration import N_EPOCHS, MAX_ITER_OPTX
 
 conf = fire.Fire(Conf)
 
-# Dictionary of activation functions to choose from
-activation_functions = {
-    "tanh": jnn.tanh,
-    "relu": jnn.relu,
-    "swish": jnn.swish,
-    "elu": jnn.elu,
-    "gelu": jnn.gelu,
-}
+# Technically Float32 should work, but for consistency between the benchmarks
+# I think we should use Float64
+config.update("jax_enable_x64", True)
 
 # Key
 key = jr.PRNGKey(123)
@@ -46,6 +41,9 @@ out_size = {
 }
 
 # Setup MLP (same as the original paper for now)
+if conf.activation_fn_name not in activation_functions:
+    raise ValueError(f"Unknown activation function: {conf.activation_fn_name}!")
+
 mlp = build_mlp(
     in_size=in_size[conf.dynamical_model],
     out_size=out_size[conf.dynamical_model],
@@ -53,6 +51,8 @@ mlp = build_mlp(
     hidden_layers=conf.mlp_depth,
     key=key_mlp,
     activation=activation_functions[conf.activation_fn_name],
+    use_dropout=conf.use_dropout,
+    dropout_rate=conf.dropout_rate,
 )
 # Initialise weights and biases of MLP
 mlp = set_weight_bias(mlp, conf.init_scale, key_init)

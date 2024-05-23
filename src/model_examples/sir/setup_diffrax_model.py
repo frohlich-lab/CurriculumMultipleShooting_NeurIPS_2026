@@ -6,11 +6,7 @@ import os
 import pandas as pd
 
 from src.common import plot_fit, regularise_mlp
-from typing import List
-
-# Technically Float32 should work, but for consistency between the benchmarks
-# I think we should use Float64
-jax.config.update("jax_enable_x64", True)
+from typing import List, Union
 
 
 class UDEFunction(eqx.Module):
@@ -24,7 +20,7 @@ class UDEFunction(eqx.Module):
     """
 
     dynamic_parameters: jax.Array
-    mlp: eqx.nn.MLP
+    mlp: Union[eqx.nn.MLP, eqx.Module]
 
     def __init__(self, dynamic_parameters, mlp, **kwargs):
         super().__init__(**kwargs)
@@ -95,6 +91,25 @@ class UDEProblem(eqx.Module):
                                   stepsize_controller=controller,
                                   adjoint=adjoint)
         return sol
+
+    def copy(self, new_mlp=None):
+        """
+        Creates a copy of the UDEProblem with an optional new MLP for the UDEFunction.
+        This allows to get a copy of the model for inference in case we are using Dropout layers in the MLP.
+
+        Parameters
+        ----------
+        new_mlp : eqx.nn.MLP or eqx.Module, optional
+            If provided, this will replace the existing MLP in the copied UDEFunction.
+
+        Returns
+        -------
+        UDEProblem
+            A new instance of UDEProblem with the specified modifications.
+        """
+        dynamic_parameters = self.func.dynamic_parameters
+        mlp = new_mlp if new_mlp is not None else self.func.mlp
+        return UDEProblem(dynamic_parameters, mlp)
 
 
 @eqx.filter_value_and_grad

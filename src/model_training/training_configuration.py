@@ -93,6 +93,17 @@ REG_STRENGTHS = {
     # 1e6,
 }
 
+USE_DROPOUT = {
+    True,
+    False,
+}
+
+DROPOUT_RATES = {
+    0.2,
+    0.4,
+    0.5,
+}
+
 USE_LOOKAHEAD = {
     "True",
     "False",

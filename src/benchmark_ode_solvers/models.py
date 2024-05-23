@@ -4,8 +4,6 @@ import equinox as eqx
 import typing
 import diffrax
 
-jax.config.update("jax_enable_x64", True)
-
 
 class ODEProblem(eqx.Module):
     u0: jax.Array

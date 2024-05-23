@@ -1,3 +1,4 @@
+import dataclasses
 import equinox as eqx
 import git
 import itertools as itt
@@ -155,10 +156,17 @@ def train(
             t_span=t_span_train,
             conf=conf,
         )
-
+        if conf.use_dropout:
+            # Get a copy of the model for inference
+            inference_model = model.copy(
+                new_mlp=eqx.nn.inference_mode(model.func.mlp, value=True)
+            )
+        else:
+            # no need for difference in training/inference behaviour
+            inference_model = model
         # compute validation loss
         loss_val = loss_fn(
-            model,
+            inference_model,
             u0,
             t_save_val,
             t_span_val,
@@ -246,8 +254,12 @@ def train(
     if max_iter_optx > 0:  # otherwise end training and return trained model
         # Additional training with BFGS via optimistix
         solver = optx.BFGS(rtol=optx_config["rtol"], atol=optx_config["atol"])
+        # Set dropout behaviour to be deterministic
+        model_optx = model.copy(
+                new_mlp=eqx.nn.inference_mode(model.func.mlp, value=True)
+            )
         # Split model in learnable params and static component
-        params, static = eqx.partition(model, eqx.is_array)
+        params, static = eqx.partition(model_optx, eqx.is_array)
         # Minimise via Optimistix
         sol = optx.minimise(
             fn=loss_optx,
