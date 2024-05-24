@@ -113,7 +113,8 @@ class UDEFunction(eqx.Module):
 
 
 @eqx.filter_value_and_grad
-def compute_loss_grad(prob, u0, t_save, t_span, data, reg_exp, reg_strength):
+def compute_loss_grad(prob_params, prob_static, u0, t_save, t_span, data, reg_exp, reg_strength):
+    prob = eqx.combine(prob_params, prob_static)
     sol = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
     return _compute_loss(sol, data) + regularise_mlp(prob.func.mlp, reg_exp, reg_strength)
 

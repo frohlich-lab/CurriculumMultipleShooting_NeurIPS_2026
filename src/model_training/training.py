@@ -91,19 +91,24 @@ def train(
         model=model,
     )
 
+    # Split model into parameters and static component
+    params, static = eqx.partition(model, eqx.is_array)
+    # Get schedule
+    schedule = get_scheduler(conf=conf, n_epochs=n_epochs)
+
+    # Initialise optimiser and its state
     if not conf.use_lookahead:
-        # Get schedule and initialise the optimiser
-        schedule = get_scheduler(conf=conf, n_epochs=n_epochs)
         opt = optimisers[conf.optimiser](schedule)
         opt_state = opt.init(eqx.filter(model, eqx.is_array))
     else:
         opt = optax.lookahead(
-            fast_optimizer=optimisers[conf.optimiser](conf.max_lrate),
+            fast_optimizer=optimisers[conf.optimiser](schedule),
             sync_period=conf.lookahead_sync,
             slow_step_size=conf.lookahead_step_size,
             reset_state=conf.lookahead_reset_state,
         )
-        params = optax.LookaheadParams.init_synced(eqx.filter(model, eqx.is_array))
+        # Initialise params for lookahead (now params has params.fast and params.slow)
+        params = optax.LookaheadParams.init_synced(params)
         opt_state = opt.init(params)
 
     # Check Early-stopping parameters have been set correctly and instantiate early stopper
@@ -120,7 +125,8 @@ def train(
 
     @eqx.filter_jit
     def make_step(
-            model: UDEProblem,
+            params: UDEProblem,
+            static: UDEProblem,
             opt_state: PyTree,
             input_data: Float[Array, '...'],  # TODO @GiacomoFabrini fix input data shape
             t_save: List,
@@ -128,7 +134,8 @@ def train(
             conf: Conf,
     ):
         loss_value, grads = loss_grad_fn(
-            model,
+            params,
+            static,
             u0,
             t_save,
             t_span,
@@ -140,20 +147,59 @@ def train(
             lambda x: jnp.where(jnp.isfinite(x), x, jnp.zeros_like(x)),
             grads,
         )
-        updates, opt_state = opt.update(grads, opt_state, model)
-        model = eqx.apply_updates(model, updates)
-        return model, opt_state, loss_value, grads
+        updates, opt_state = opt.update(grads, opt_state, params)
+        params = eqx.apply_updates(params, updates)
+        return params, opt_state, loss_value, grads
+
+    @eqx.filter_jit
+    def make_step_looahead(
+            params: UDEProblem,
+            static: UDEProblem,
+            opt_state: PyTree,
+            input_data: Float[Array, '...'],  # TODO @GiacomoFabrini fix input data shape
+            t_save: List,
+            t_span: List,
+            conf: Conf,
+    ):
+        loss_value, grads = loss_grad_fn(
+            params.fast,
+            static,
+            u0,
+            t_save,
+            t_span,
+            input_data,
+            conf.reg_exp,
+            conf.reg_strength,
+        )
+        grads = jax.tree_map(
+            lambda x: jnp.where(jnp.isfinite(x), x, jnp.zeros_like(x)),
+            grads,
+        )
+        updates, opt_state = opt.update(grads, opt_state, params)
+        params = eqx.apply_updates(params, updates)
+        return params, opt_state, loss_value, grads
+
+    if conf.use_lookahead:
+        make_step_fn = make_step_looahead
+    else:
+        make_step_fn = make_step
 
     # Training loop
     for epoch in range(n_epochs + 1):
-        model, opt_state, loss_train, grads = make_step(
-            model=model,
+        params, opt_state, loss_train, grads = make_step_fn(
+            params=params,
+            static=static,
             opt_state=opt_state,
             input_data=training_data,
             t_save=t_save_train,
             t_span=t_span_train,
             conf=conf,
         )
+        if conf.use_lookahead:
+            model = eqx.combine(params.fast, static)
+        else:
+            model = eqx.combine(params, static)
+
         if conf.use_dropout:
             # Get a copy of the model for inference
             inference_model = model.copy(
@@ -162,6 +208,7 @@ def train(
         else:
             # no need for difference in training/inference behaviour
             inference_model = model
+
         # compute validation loss
         loss_val = loss_fn(
             inference_model,
