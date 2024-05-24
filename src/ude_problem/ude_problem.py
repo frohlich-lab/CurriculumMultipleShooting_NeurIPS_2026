@@ -98,7 +98,8 @@ def build_mlp(
         key: Any,
         activation: Callable,
         use_dropout: bool,
-        dropout_rate: float,
+        input_dropout_rate: float,
+        hidden_dropout_rate: float,
 ) -> Union[eqx.nn.MLP, eqx.Module]:
     if not use_dropout:
         mlp = eqx.nn.MLP(
@@ -109,7 +110,7 @@ def build_mlp(
             activation=activation,
             key=key
         )
-    elif use_dropout and (dropout_rate is not None):
+    elif use_dropout and (input_dropout_rate is not None) and (hidden_dropout_rate is not None):
         mlp = CustomDropoutMLP(
             in_size=in_size,
             out_size=out_size,
@@ -117,7 +118,10 @@ def build_mlp(
             depth=hidden_layers,
             activation=activation,
             key=key,
-            dropout_rate=dropout_rate,
+            dropout_rates={
+                "input": input_dropout_rate,
+                "hidden": hidden_dropout_rate,
+            },
         )
     else:
         raise ValueError("For use_dropout to be True, dropout_rate cannot be None.")

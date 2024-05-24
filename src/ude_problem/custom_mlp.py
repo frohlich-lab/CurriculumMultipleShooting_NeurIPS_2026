@@ -1,7 +1,7 @@
 import equinox as eqx
 import jax.random as jr
 
-from typing import Any, Callable, List, Union
+from typing import Any, Callable, Dict, List, Union
 
 
 class CustomDropoutMLP(eqx.Module):
@@ -18,7 +18,7 @@ class CustomDropoutMLP(eqx.Module):
             depth: int,
             key: Any,
             activation: Callable,
-            dropout_rate: float,
+            dropout_rates: Dict[str, float],
     ):
         # Initialise layers and prepare keys for layer initialisation
         self.layers = []
@@ -37,6 +37,14 @@ class CustomDropoutMLP(eqx.Module):
                 layer_keys
             )
         ):
+            if fan_in == in_size:
+                p = dropout_rates["input"]
+            else:
+                p = dropout_rates["hidden"]
+            # Dropout layers on inputs and hidden layers, but not outputs
+            self.layers.append(
+                eqx.nn.Dropout(p=p)
+            )
             self.layers.append(
                 eqx.nn.Linear(
                     in_features=fan_in,
@@ -45,11 +53,6 @@ class CustomDropoutMLP(eqx.Module):
                     key=key,
                 )
             )
-            # Add dropout layer after every Linear layer except output
-            if fan_out != out_size:
-                self.layers.append(
-                    eqx.nn.Dropout(p=dropout_rate)
-                )
         self.activation = activation
 
     def __call__(self, x):

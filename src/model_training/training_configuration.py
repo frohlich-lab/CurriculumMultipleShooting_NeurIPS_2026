@@ -75,7 +75,7 @@ OPT_MULT = {
     # 3,
 }
 
-N_EPOCHS = 2000  # default from UDE paper
+N_EPOCHS = 2000  # default from UDE paper: 2000
 
 MAX_ITER_OPTX = 10000  # default from UDE paper
 
@@ -98,9 +98,14 @@ USE_DROPOUT = {
     False,
 }
 
-DROPOUT_RATES = {
-    0.2,
-    0.4,
+INPUT_DROPOUT_RATES = {
+    0.8,
+    # 0.9,
+}
+
+HIDDEN_DROPOUT_RATES = {
+    # 0.2,
+    # 0.4,
     0.5,
 }
 

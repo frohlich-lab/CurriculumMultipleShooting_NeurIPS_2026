@@ -24,7 +24,8 @@ from src.model_training.training_configuration import (DYNAMICAL_MODEL,
                                                        N_EPOCHS,
                                                        MAX_ITER_OPTX,
                                                        USE_DROPOUT,
-                                                       DROPOUT_RATES)
+                                                       INPUT_DROPOUT_RATES,
+                                                       HIDDEN_DROPOUT_RATES)
 from src.model_training.training_util import set_weight_bias
 from src.ude_problem import build_mlp, UDEProblem
 
@@ -66,12 +67,12 @@ for (
         dynamical_model,
         mlp_layer_width, mlp_depth, activation_fn_name,
         optimiser, max_lrate, lrate_span, lrate_decay, warmup_fct, opt_steps, opt_mult,
-        use_early_stop, reg_exp, reg_strength, use_dropout, dropout_rate,
+        use_early_stop, reg_exp, reg_strength, use_dropout, input_dropout_rate, hidden_dropout_rate,
 ) in itt.product(
     DYNAMICAL_MODEL,
     MLP_WIDTHS, MLP_DEPTHS, MLP_ACTIVATIONS,
     OPTIMISERS, MAX_LEARNING_RATES, LEARNING_RATE_SPANS, LEARNING_RATE_DECAYS, WARMUP_FCTS, OPT_STEPS, OPT_MULT,
-    USE_EARLY_STOP, REG_EXPS, REG_STRENGTHS, USE_DROPOUT, DROPOUT_RATES,
+    USE_EARLY_STOP, REG_EXPS, REG_STRENGTHS, USE_DROPOUT, INPUT_DROPOUT_RATES, HIDDEN_DROPOUT_RATES,
 ):
     conf = Conf(
         dynamical_model=dynamical_model,
@@ -89,7 +90,8 @@ for (
         reg_exp=reg_exp,
         reg_strength=reg_strength,
         use_dropout=use_dropout,
-        dropout_rate=dropout_rate,
+        input_dropout_rate=input_dropout_rate,
+        hidden_dropout_rate=hidden_dropout_rate,
     )
 
     # Setup MLP (same as the original paper for now)
@@ -101,7 +103,8 @@ for (
         key=key_mlp,
         activation=activation_functions[conf.activation_fn_name],
         use_dropout=conf.use_dropout,
-        dropout_rate=conf.dropout_rate,
+        input_dropout_rate=conf.input_dropout_rate,
+        hidden_dropout_rate=conf.hidden_dropout_rate,
     )
     # Initialise weights and biases of MLP
     mlp = set_weight_bias(mlp, conf.init_scale, key_init)

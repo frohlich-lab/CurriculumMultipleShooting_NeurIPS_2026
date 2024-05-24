@@ -30,7 +30,8 @@ class Conf(dict):
     reg_exp: float = 1.0
     reg_strength: float = 0.0  # no regularisation by default
     use_dropout: bool = False
-    dropout_rate: float = 0.5
+    input_dropout_rate: float = 0.8
+    hidden_dropout_rate: float = 0.5
     use_lookahead: bool = False
     lookahead_sync: int = 10
     lookahead_step_size: float = 0.5

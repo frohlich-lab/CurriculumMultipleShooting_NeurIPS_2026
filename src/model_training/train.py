@@ -54,7 +54,8 @@ mlp = build_mlp(
     key=key_mlp,
     activation=activation_functions[conf.activation_fn_name],
     use_dropout=conf.use_dropout,
-    dropout_rate=conf.dropout_rate,
+    input_dropout_rate=conf.input_dropout_rate,
+    hidden_dropout_rate=conf.hidden_dropout_rate,
 )
 # Initialise weights and biases of MLP
 mlp = set_weight_bias(mlp, conf.init_scale, key_init)
