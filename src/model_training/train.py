@@ -6,7 +6,7 @@ import src.model_examples.sir.setup_diffrax_model as setup_sir
 
 from jax import config
 from src.common import activation_functions, Conf, EarlyStoppingParams
-from src.model_training.training_util import set_weight_bias
+from src.model_training.model_util import set_weight_bias
 from src.ude_problem import UDEProblem, build_mlp
 from training import train
 from training_configuration import N_EPOCHS, MAX_ITER_OPTX

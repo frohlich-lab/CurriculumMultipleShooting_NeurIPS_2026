@@ -9,7 +9,7 @@ import os
 import pandas as pd
 
 from src.plotting import plot_fit
-from src.model_training.training_util import set_weight_bias
+from src.model_training.model_util import set_weight_bias
 from src.ude_problem import UDEProblem
 
 

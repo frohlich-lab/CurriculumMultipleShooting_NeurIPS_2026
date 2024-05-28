@@ -26,7 +26,7 @@ from src.model_training.training_configuration import (DYNAMICAL_MODEL,
                                                        USE_DROPOUT,
                                                        INPUT_DROPOUT_RATES,
                                                        HIDDEN_DROPOUT_RATES)
-from src.model_training.training_util import set_weight_bias
+from src.model_training.model_util import set_weight_bias
 from src.ude_problem import build_mlp, UDEProblem
 
 # Dictionary of activation functions to choose from

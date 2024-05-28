@@ -4,6 +4,7 @@ import jax.nn as jnn
 import jax
 
 from pathlib import Path
+from jaxtyping import PyTree
 
 
 @dataclasses.dataclass(frozen=True, repr=True, eq=True, order=True)
@@ -56,13 +57,13 @@ class EarlyStoppingParams(dict):
 
 # Flatten a tree to an array to allow gradient and Hessian functions to
 # produce Array output
-def flatten(v):
+def flatten(v: PyTree):
     """
     Flatten a pytree to an array. This allows for vector gradient
     and Hessian functions to produce array output
     """
-    def f(v):
-        leaves, _ = jax.tree_util.tree_flatten(v)
+    def f(pt: PyTree) -> jnp.ndarray:
+        leaves, _ = jax.tree_util.tree_flatten(pt)
         return jnp.concatenate([x.ravel() for x in leaves])
 
     out, pullback = jax.vjp(f, v)

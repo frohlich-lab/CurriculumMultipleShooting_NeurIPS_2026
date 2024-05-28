@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import os
 import pandas as pd
 
-from src.model_training.training_util import regularise_mlp
+from src.model_training.model_util import regularise_mlp
 from typing import Union
 
 

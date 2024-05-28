@@ -10,7 +10,7 @@ import timeit
 import matplotlib.pyplot as plt
 import src.model_examples.sir.setup_diffrax_model as setup_sir
 
-from src.model_training.training_util import set_weight_bias
+from src.model_training.model_util import set_weight_bias
 from src.plotting import plot_fit
 from src.ude_problem import UDEProblem
 

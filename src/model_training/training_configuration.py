@@ -31,7 +31,7 @@ USE_EARLY_STOP = {
 
 OPTIMISERS = {
     "adam",
-    #"adamw",
+    # "adamw",
 }
 
 MAX_LEARNING_RATES = {
@@ -115,4 +115,3 @@ USE_LOOKAHEAD = {
 }
 
 LOOKAHEAD_SYNC = 5
-
