@@ -37,6 +37,7 @@ class Conf(dict):
     lookahead_sync: int = 10
     lookahead_step_size: float = 0.5
     lookahead_reset_state: bool = False
+    save_plots: bool = False
 
     def __str__(self):
         """
@@ -73,6 +74,14 @@ def flatten(v: PyTree):
 basedir: Path = Path(__file__).resolve().parent
 plots_dir = basedir / "plots"
 
+
+def rbf(x):
+    """
+    Radial basis function activation function matching the one used in the original UDE paper.
+    """
+    return jnp.exp(-x**2)
+
+
 # Dictionary of activation functions to choose from
 activation_functions = {
     "tanh": jnn.tanh,
@@ -80,4 +89,5 @@ activation_functions = {
     "swish": jnn.swish,
     "elu": jnn.elu,
     "gelu": jnn.gelu,
+    "rbf": rbf,
 }
