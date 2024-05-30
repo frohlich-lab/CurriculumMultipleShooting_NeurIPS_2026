@@ -86,8 +86,6 @@ def initialise_wandb(
         "loss_val": "min",
         "learning_rate": None,
         "patience_counter": None,
-        "final_loss_train_optx": "min",
-        "final_loss_val_optx": "min",
     }
     for metric in metrics.keys():
         # if metric summary not specified
@@ -173,7 +171,7 @@ def log_plots(
         save_plot: bool = False,
         plot_fmt: str = "png"
 ):
-    plt.subplots(1, 2, figsize=(6, 4))
+    plt.subplots(1, 2, figsize=(6, 4), sharey=True, sharex=True)
     for ind, (label, color) in enumerate(zip(labels, colors)):
         plt.subplot(1, 2, ind + 1)
         plt.plot(

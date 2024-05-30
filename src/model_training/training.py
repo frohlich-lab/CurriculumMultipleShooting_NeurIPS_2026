@@ -12,6 +12,7 @@ from src.model_examples.lotka_volterra.setup_diffrax_model import get_fit_dfs as
 from src.model_examples.sir.setup_diffrax_model import get_fit_dfs as get_fit_dfs_sir
 from src.model_training.training_util import get_scheduler, initialise_wandb, log_model_stats, log_plots
 from src.ude_problem import UDEProblem
+from types import SimpleNamespace
 from typing import Callable, Dict, List
 
 # Optimisers to choose from
@@ -26,6 +27,59 @@ def make_grads_finite(grads):
         lambda x: jnp.where(jnp.isfinite(x), x, jnp.zeros_like(x)),
         grads,
     )
+
+
+def optx_solve(y, solver, fn, args, args_val, f_struct, aux_struct, options, tags, max_steps, starting_epoch):
+    # These arguments are always fixed throughout interactive solves.
+    step = eqx.filter_jit(
+        eqx.Partial(solver.step, fn=fn, args=args, options=options, tags=tags)
+    )
+    terminate = eqx.filter_jit(
+        eqx.Partial(solver.terminate, fn=fn, args=args, options=options, tags=tags)
+    )
+
+    # Initial state before we start solving.
+    state = solver.init(fn, y, args, options, f_struct, aux_struct, tags)
+    done, result = terminate(y=y, state=state)
+
+    iteration = 1
+    while not (done or iteration > max_steps):
+        # print(f"Evaluating point {y} with value {fn(y, args)}.")
+        y, state, aux = step(y=y, state=state)
+        # Log training and validation loss + params and grads every 5 optimistix iterations
+        if iteration % 5 == 0:
+            loss_train = fn(y, args)[0]
+            loss_val = fn(y, args_val)[0]
+            wandb.log(
+                {
+                    "loss_train": loss_train,
+                    "loss_val": loss_val,
+                    **log_model_stats(y, state.f_info.grad),
+                },
+                step=starting_epoch+iteration
+            )
+        iteration += 1
+        done, result = terminate(y=y, state=state)
+    if result != optx.RESULTS.successful:
+        print(f"Oh no! Got error {result}.")
+    y, _, _ = solver.postprocess(fn, y, aux, args, options, state, tags, result)
+    # print(f"Found solution {y} with value {fn(y, args)}.")
+    # Log final training and validation loss terms
+    wandb.log(
+        {
+            "loss_train": loss_train,
+            "loss_val": loss_val,
+        },
+        step=starting_epoch + iteration
+    )
+    sol = {
+        "value": y,
+        "stats": {
+            "num_steps": iteration,
+            "termination_reason": result,
+        },
+    }
+    return SimpleNamespace(**sol)
 
 
 @eqx.filter_jit
@@ -297,7 +351,7 @@ def train(
             colors,
             epoch,
             f"{dataset}",
-            save_plot=False,
+            save_plot=conf.save_plots,
             plot_dir=plot_dir,
             plot_fmt="svg"
         )
@@ -305,51 +359,46 @@ def train(
     wandb.log({"final_epoch": epoch})
 
     if max_iter_optx > 0:  # otherwise end training and return trained model
+        # Define options and tags for BFGS solver
+        options = {
+            "rtol": optx_config["rtol"],
+            "atol": optx_config["atol"],
+        }
+        tags = frozenset()
         # Additional training with BFGS via optimistix
-        solver = optx.BFGS(rtol=optx_config["rtol"], atol=optx_config["atol"])
+        solver = optx.BFGS(**options)
         # Set dropout behaviour to be deterministic
         model_optx = model.copy(
                 new_mlp=eqx.nn.inference_mode(model.func.mlp, value=True)
             )
         # Split model in learnable params and static component
         params, static = eqx.partition(model_optx, eqx.is_array)
-        # Minimise via Optimistix
-        sol = optx.minimise(
-            fn=loss_optx,
-            solver=solver,
-            y0=params,
-            args=(static, u0, t_save_train, t_span_train, training_data),
-            max_steps=max_iter_optx,
-        )
-        # Update model
-        params = sol.value
-        model = eqx.combine(params, static)
-        # Compute final loss_train and loss_val and log them to wandb
-        loss_dict = {
-            dataset: loss_fn(
-                model,
-                u0,
-                t_save,
-                t_span,
-                data,
-                conf.reg_exp,
-                conf.reg_strength,
-            )
-            for t_save, t_span, data, dataset in zip(
-                [t_save_train, t_save_val],
-                [t_span_train, t_span_val],
-                [training_data, validation_data],
-                ["train", "validation"],
-            )
-        }
+        # Minimise via Optimistix - no access to params during solve
+        # sol = optx.minimise(
+        #     fn=loss_optx,
+        #     solver=solver,
+        #     y0=params,
+        #     args=(static, u0, t_save_train, t_span_train, training_data),
+        #     max_steps=max_iter_optx,
+        # )
+        # Define additional arguments to pass optimistix loss function (train and val)
+        args = (static, u0, t_save_train, t_span_train, training_data)
+        args_val = (static, u0, t_save_val, t_span_val, validation_data)
+        # Shape+dtype of the output of `fn`
+        f_struct = jax.ShapeDtypeStruct((), jnp.float64)
+        aux_struct = None
 
-        wandb.log(
-            {
-                "final_loss_train_optx": loss_dict["train"],
-                "final_loss_val_optx": loss_dict["validation"],
-            },
-            step=epoch+sol.stats["num_steps"],
+        sol = optx_solve(
+            y=params, solver=solver,
+            fn=loss_optx, args=args, args_val=args_val,
+            f_struct=f_struct, aux_struct=aux_struct,
+            options=options, tags=tags,
+            max_steps=max_iter_optx,
+            starting_epoch=epoch,
         )
+
+        # Get final model
+        model = eqx.combine(sol.value, static)
 
         # Log plots again after further training
         for dataset, t_save, t_span, data in zip(
@@ -368,7 +417,7 @@ def train(
                 colors,
                 epoch+sol.stats["num_steps"],
                 f"{dataset}_optx",
-                save_plot=False,
+                save_plot=conf.save_plots,
                 plot_dir=plot_dir,
                 plot_fmt="svg",
             )

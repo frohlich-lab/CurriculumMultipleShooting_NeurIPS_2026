@@ -130,7 +130,7 @@ def compute_loss_optx(prob_params, args):
     prob_static, u0, t_save, t_span, data = args
     prob = eqx.combine(prob_params, prob_static)
     sol = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
-    return _compute_loss(sol, data)
+    return _compute_loss(sol, data), None
 
 
 def _compute_loss(sol, data):
