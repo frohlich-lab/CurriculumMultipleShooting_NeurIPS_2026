@@ -1,6 +1,7 @@
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+import jax.tree_util as jtu
 import optax
 import optimistix as optx
 import wandb
@@ -29,7 +30,7 @@ def make_grads_finite(grads):
     )
 
 
-def optx_solve(y, solver, fn, args, args_val, f_struct, aux_struct, options, tags, max_steps, starting_epoch):
+def optx_solve(y, solver, fn, args, args_val, f_struct, aux_struct, options, tags, max_steps, starting_epoch, conf):
     # These arguments are always fixed throughout interactive solves.
     step = eqx.filter_jit(
         eqx.Partial(solver.step, fn=fn, args=args, options=options, tags=tags)
@@ -54,7 +55,11 @@ def optx_solve(y, solver, fn, args, args_val, f_struct, aux_struct, options, tag
                 {
                     "loss_train": loss_train,
                     "loss_val": loss_val,
-                    **log_model_stats(y, state.f_info.grad),
+                    **log_model_stats(
+                        eqx.combine(y, args[0]),  # recombine updated params and static
+                        state.f_info.grad,
+                        conf
+                    ),
                 },
                 step=starting_epoch+iteration
             )
@@ -209,8 +214,21 @@ def train(
     early_stopper = None
     epoch = 0
 
-    # Split model into parameters and static component
-    params, static = eqx.partition(model, eqx.is_array)
+    # Split model into parameters and static components - which might or might not include
+    # the mechanistic parameters (i.e. dynamic_parameters)
+    if conf.freeze_mechanistic_params:
+        # Initialise filter_spec with True for all arrays
+        filter_spec = jtu.tree_map(lambda x: eqx.is_array(x), model)
+        # Freeze dynamic (mechanistic) parameters
+        filter_spec = eqx.tree_at(
+            lambda x: x.func.dynamic_parameters,
+            filter_spec,
+            replace=jax.tree_map(lambda _: False, filter_spec.func.dynamic_parameters)
+        )
+        # and partition accordingly
+        params, static = eqx.partition(model, filter_spec)
+    else:
+        params, static = eqx.partition(model, eqx.is_array)
     # Get schedule
     schedule = get_scheduler(conf=conf, n_epochs=n_epochs)
 
@@ -296,7 +314,7 @@ def train(
         if epoch % 5 == 0:
             wandb.log(
                 {
-                    **log_model_stats(model, grads),
+                    **log_model_stats(model, grads, conf),
                 },
                 step=epoch
             )
@@ -371,8 +389,11 @@ def train(
         model_optx = model.copy(
                 new_mlp=eqx.nn.inference_mode(model.func.mlp, value=True)
             )
-        # Split model in learnable params and static component
-        params, static = eqx.partition(model_optx, eqx.is_array)
+        # Split model_optx in learnable params and static component
+        if conf.freeze_mechanistic_params:
+            params, static = eqx.partition(model_optx, filter_spec)
+        else:
+            params, static = eqx.partition(model_optx, eqx.is_array)
         # Minimise via Optimistix - no access to params during solve
         # sol = optx.minimise(
         #     fn=loss_optx,
@@ -395,6 +416,7 @@ def train(
             options=options, tags=tags,
             max_steps=max_iter_optx,
             starting_epoch=epoch,
+            conf=conf,
         )
 
         # Get final model

@@ -37,6 +37,7 @@ class Conf(dict):
     lookahead_sync: int = 10
     lookahead_step_size: float = 0.5
     lookahead_reset_state: bool = False
+    freeze_mechanistic_params: bool = False
     save_plots: bool = False
 
     def __str__(self):

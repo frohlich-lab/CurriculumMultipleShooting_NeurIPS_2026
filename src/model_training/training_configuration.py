@@ -115,3 +115,9 @@ USE_LOOKAHEAD = {
 }
 
 LOOKAHEAD_SYNC = 5
+
+# Option to freeze the mechanistic parameters and only train the neural network component
+FREEZE_MECHANISTIC_PARAMS = {
+    True,
+    False
+}

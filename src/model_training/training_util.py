@@ -77,6 +77,7 @@ def initialise_wandb(
         ),
         tags=[
             "early_stop" if conf.use_early_stop else "no_early_stop",
+            "frozen_mechanistic_params" if conf.freeze_mechanistic_params else "learnable_mechanistic_params",
         ]
     )
 
@@ -107,6 +108,7 @@ def initialise_wandb(
 def log_model_stats(
         model: UDEProblem,
         grad: UDEProblem,
+        conf: Conf,
 ):
     """
     Log the layer statistics to wandb.
@@ -138,23 +140,46 @@ def log_model_stats(
         )
     }
 
-    dynamic_param_stats = {
-        f'dynamic_param.{par_label}_{value_label}': wandb.Histogram(
-            np.log10(np.abs(np.array(par_val[par_val != 0])))
-        )
-        if value_label == 'grads'
-        else wandb.Histogram(par_val)
-        for value_label, par_vals in zip(
-            ('vals', 'grads'),
-            (model.func.dynamic_parameters, grad.func.dynamic_parameters),
-            strict=False
-        )
-        for par_label, par_val in zip(
-            ('alpha', 'delta'),
-            np.array(par_vals).ravel(),
-            strict=False
-        )
-    }
+    if conf.dynamical_model == 'lotka_volterra':
+        param_labels = ['alpha', 'delta']
+    elif conf.dynamical_model == 'sir':
+        param_labels = ['beta', 'gamma', 'delta']
+    else:
+        raise ValueError(f"Unknown dynamical model: {conf.dynamical_model}!")
+
+    if not conf.freeze_mechanistic_params:
+        dynamic_param_stats = {
+            f'dynamic_param.{par_label}_{value_label}': wandb.Histogram(
+                np.log10(np.abs(np.array(par_val[par_val != 0])))
+            )
+            if value_label == 'grads'
+            else wandb.Histogram(par_val)
+            for value_label, par_vals in zip(
+                ('vals', 'grads'),
+                (model.func.dynamic_parameters, grad.func.dynamic_parameters),
+                strict=False
+            )
+            for par_label, par_val in zip(
+                param_labels,
+                np.array(par_vals).ravel(),
+                strict=False
+            )
+        }
+    else:
+        # No gradients to log! (frozen dynamical parameters)
+        dynamic_param_stats = {
+            f'dynamic_param.{par_label}_{value_label}':  wandb.Histogram(par_val)
+            for value_label, par_vals in zip(
+                'vals',
+                model.func.dynamic_parameters,
+                strict=False
+            )
+            for par_label, par_val in zip(
+                param_labels,
+                np.array(par_vals).ravel(),
+                strict=False
+            )
+        }
 
     stats = {**layer_stats, **dynamic_param_stats}
     return stats
