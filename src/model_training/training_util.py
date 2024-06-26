@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import optax
 import pandas as pd
+import seaborn as sns
 import wandb
 
 from pathlib import Path
@@ -225,3 +226,61 @@ def log_plots(
         raise ValueError("Must specify plot directory in order to save plots!")
     else:
         wandb.log({f"fit_plot_{plot_name}": plt}, step=epoch)
+
+
+def plot_model_weights(model: UDEProblem, conf: Conf, filename: str = None):
+    num_rows = conf.mlp_layer_width + 2  # top and bottom margin
+    num_columns = len(model.func.mlp.layers) + 2  # left and right margin
+
+    in_size = {
+        'lotka_volterra': 2,
+        'sir': 3,
+    }
+
+    out_size = {
+        'lotka_volterra': 2,
+        'sir': 1,
+    }
+
+    fig = plt.figure()
+    fig.set_figheight(num_rows)
+    fig.set_figwidth(num_columns)
+
+    # Plot input
+    ax = plt.subplot2grid(
+        shape=(num_rows, num_columns),
+        loc=(3, 0),
+        colspan=1,
+        rowspan=in_size[conf.dynamical_model],
+    )
+    sns.heatmap(
+        np.zeros(shape=(in_size[conf.dynamical_model], 1)),
+        cbar=False, xticklabels=False, yticklabels=False, ax=ax
+    )
+    ax.set_title(f"in: {in_size[conf.dynamical_model]}")
+    for i, layer in enumerate(model.func.mlp.layers):
+        ax = plt.subplot2grid(
+            shape=(num_rows, num_columns),
+            loc=(2, 1+i),
+            colspan=1,
+            rowspan=conf.mlp_layer_width,
+        )
+        sns.heatmap(layer.weight.T, cbar=False, xticklabels=False, yticklabels=False, ax=ax)
+        ax.set_title(f"{i}: {layer.weight.T.shape}")
+
+    # Plot output
+    ax = plt.subplot2grid(
+        shape=(num_rows, num_columns),
+        loc=(3, 1+len(model.func.mlp.layers)),
+        colspan=1,
+        rowspan=out_size[conf.dynamical_model],
+    )
+    sns.heatmap(
+        np.zeros(shape=(out_size[conf.dynamical_model], 1)),
+        cbar=False, xticklabels=False, yticklabels=False, ax=ax
+    )
+    ax.set_title(f"out: {out_size[conf.dynamical_model]}")
+
+    if filename is not None:
+        plt.savefig(filename, facecolor='w')
+    plt.show()
