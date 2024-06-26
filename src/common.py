@@ -10,6 +10,7 @@ from jaxtyping import PyTree
 @dataclasses.dataclass(frozen=True, repr=True, eq=True, order=True)
 class Conf(dict):
     dynamical_model: str = ''
+    add_interaction: bool = False
     mlp_layer_width: int = 5  # change back to 5
     mlp_depth: int = 1  # change back to 1
     init_scale: float = 0.1

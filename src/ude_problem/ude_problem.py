@@ -27,7 +27,7 @@ class UDEProblem(eqx.Module):
     dynamical_model: str
     func: Union[UDEFunction_lv, UDEFunction_sir]
 
-    def __init__(self, dynamical_model, dynamic_parameters, mlp, **kwargs):
+    def __init__(self, dynamical_model, dynamic_parameters, mlp, options, **kwargs):
         """
         Parameters
         ----------
@@ -44,13 +44,15 @@ class UDEProblem(eqx.Module):
         mlp : eqx.nn.MLP
             An equinox Standard Multi-Layer Perceptron (MLP) network. If set to
             None path_meta must be provided.
+        options: dict
+            Options for the UDEFunction.
         controller : diffrax.PIDController
         """
         super().__init__(**kwargs)
         self.dynamical_model = dynamical_model
         if self.dynamical_model not in UDE_funcs.keys():
             raise ValueError(f"Unknown dynamical model: {dynamical_model}!")
-        self.func = UDE_funcs[dynamical_model](dynamic_parameters, mlp)
+        self.func = UDE_funcs[dynamical_model](dynamic_parameters, mlp, options)
 
     def solve(self, solver, u0, t_save, t_span,
               controller=diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8),
@@ -86,8 +88,9 @@ class UDEProblem(eqx.Module):
         """
         dynamical_model = self.dynamical_model
         dynamic_parameters = self.func.dynamic_parameters
+        options = self.func.options
         mlp = new_mlp if new_mlp is not None else self.func.mlp
-        return UDEProblem(dynamical_model, dynamic_parameters, mlp)
+        return UDEProblem(dynamical_model, dynamic_parameters, mlp, options)
 
 
 def build_mlp(

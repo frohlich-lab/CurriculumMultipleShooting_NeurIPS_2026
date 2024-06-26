@@ -22,11 +22,13 @@ class UDEFunction(eqx.Module):
 
     dynamic_parameters: Array
     mlp: Union[eqx.nn.MLP, eqx.Module]
+    options: dict[str, bool]
 
-    def __init__(self, dynamic_parameters, mlp, **kwargs):
+    def __init__(self, dynamic_parameters, mlp, options, **kwargs):
         super().__init__(**kwargs)
         self.dynamic_parameters = dynamic_parameters
         self.mlp = mlp
+        self.options = options
 
     def __call__(self, t, u, args):
         # Unpack dynamic parameters (learnable)
@@ -34,7 +36,12 @@ class UDEFunction(eqx.Module):
         # Unpack state variables
         prey, predator = u
         # jax.debug.print("{u}", u=u)
-        nn_out = self.mlp(u)
+        if self.options["add_interaction"]:
+            nn_input = jnp.concatenate([u, jnp.array([prey*predator])])
+        else:
+            nn_input = u
+        # jax.debug.print("{nn_input}", nn_input=nn_input)
+        nn_out = self.mlp(nn_input)
         # jax.debug.print("{nn_out}", nn_out=nn_out)
         d_prey = alpha * prey + nn_out[0]
         d_predator = nn_out[1] - delta * predator

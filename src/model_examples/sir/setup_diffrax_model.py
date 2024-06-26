@@ -21,11 +21,13 @@ class UDEFunction(eqx.Module):
 
     dynamic_parameters: jax.Array
     mlp: Union[eqx.nn.MLP, eqx.Module]
+    options: dict[str, bool]
 
-    def __init__(self, dynamic_parameters, mlp, **kwargs):
+    def __init__(self, dynamic_parameters, mlp, options, **kwargs):
         super().__init__(**kwargs)
         self.dynamic_parameters = dynamic_parameters
         self.mlp = mlp
+        self.options = options
 
     def __call__(self, t, u, args):
         u0 = args

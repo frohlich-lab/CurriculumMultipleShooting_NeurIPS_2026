@@ -46,6 +46,10 @@ out_size = {
 if conf.activation_fn_name not in activation_functions:
     raise ValueError(f"Unknown activation function: {conf.activation_fn_name}!")
 
+if conf.add_interaction:
+    # increase input size for interaction term
+    in_size["lotka_volterra"] += 1
+
 mlp = build_mlp(
     in_size=in_size[conf.dynamical_model],
     out_size=out_size[conf.dynamical_model],
@@ -87,7 +91,16 @@ elif conf.dynamical_model == 'sir':
     }
 else:
     raise ValueError(f"Unknown dynamical model: {conf.dynamical_model}!")
-ude_problem = UDEProblem(conf.dynamical_model, dynamic_parameters[conf.dynamical_model], mlp)
+
+options = {
+    "add_interaction": conf.add_interaction,
+}
+ude_problem = UDEProblem(
+    dynamical_model=conf.dynamical_model,
+    dynamic_parameters=dynamic_parameters[conf.dynamical_model],
+    mlp=mlp,
+    options=options,
+)
 
 # # Linear schedule Fabian set up for the DMM -- DISABLED WITH NEW SCHEDULER
 # schedule_config = dict(
