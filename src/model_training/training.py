@@ -387,8 +387,8 @@ def train(
         solver = optx.BFGS(**options)
         # Set dropout behaviour to be deterministic
         model_optx = model.copy(
-                new_mlp=eqx.nn.inference_mode(model.func.mlp, value=True)
-            )
+            new_mlp=eqx.nn.inference_mode(model.func.mlp, value=True)
+        )
         # Split model_optx in learnable params and static component
         if conf.freeze_mechanistic_params:
             params, static = eqx.partition(model_optx, filter_spec)
