@@ -13,4 +13,6 @@ optimistix==0.0.6
 pandas==2.2.1
 plotly==5.21.0
 plotnine==0.13.4
+setuptools~=69.5.1
+seaborn~=0.13.2
 wandb==0.17.0

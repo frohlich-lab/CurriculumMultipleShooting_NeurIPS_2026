@@ -35,11 +35,8 @@ RUN apt-get update --yes && \
 # Update pip to latest version
 RUN python -m pip install --upgrade pip
 
-# Set /usr as the working directory
+# Set /usr/test_ude as the working directory
 WORKDIR /usr/test_ude
-
-# Copy everything from /src to the usr/src
-COPY src/ src/
 
 # Copy wheels from builder stage
 COPY --from=builder /usr/wheels /usr/wheels
@@ -47,10 +44,5 @@ COPY --from=builder /usr/wheels /usr/wheels
 # Install wheels
 RUN pip install --no-cache-dir --no-index --find-links=/usr/wheels -r /usr/wheels/requirements.txt
 
-# Install project modules from usr/src/
-RUN python -m pip install src/
-
 # Set PYTHONPATH to include the source directory
 ENV PYTHONPATH="/usr/test_ude/:$PYTHONPATH"
-
-ENTRYPOINT ["/bin/bash"]
