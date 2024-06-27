@@ -300,20 +300,13 @@ def train(
             conf.reg_strength,
         )
 
-        # Log loss values on training and validation dataset + learning rate (useful to inspect schedules)
-        wandb.log(
-            {
-                "loss_train": loss_train,
-                "loss_val": loss_val,
-                "learning_rate": schedule(epoch),
-            },
-            step=epoch
-        )
-
-        # log param values and grads every 5 epochs
+        # log loss_train, loss_val, learning rate, param values and grads every 5 epochs
         if epoch % 5 == 0:
             wandb.log(
                 {
+                    "loss_train": loss_train,
+                    "loss_val": loss_val,
+                    "learning_rate": schedule(epoch),
                     **log_model_stats(model, grads, conf),
                 },
                 step=epoch
