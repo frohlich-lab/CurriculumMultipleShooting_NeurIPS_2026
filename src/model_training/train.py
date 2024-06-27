@@ -32,6 +32,17 @@ dynamic_parameters = {
     'sir': jnp.array([0.15, 0.013, 0.01]),
 }
 
+# Estimate dynamic parameters on log10 scale
+if conf.dynamic_params_scale == "log10":
+    dynamic_parameters = {
+        dynamical_model: jnp.log10(dynamic_parameters[dynamical_model])
+        for dynamical_model in dynamic_parameters.keys()
+    }
+elif conf.dynamic_params_scale == "linear":
+    pass
+else:
+    raise ValueError(f"Unknown dynamic parameter scale: {conf.dynamic_params_scale}!")
+
 in_size = {
     'lotka_volterra': 2,
     'sir': 3,
@@ -94,6 +105,7 @@ else:
 
 options = {
     "add_interaction": conf.add_interaction,
+    "dynamic_params_scale": conf.dynamic_params_scale,
 }
 ude_problem = UDEProblem(
     dynamical_model=conf.dynamical_model,

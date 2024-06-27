@@ -31,7 +31,12 @@ class UDEFunction(eqx.Module):
 
     def __call__(self, t, u, args):
         u0 = args
-        beta, gamma, delta = self.dynamic_parameters
+        if self.options["dynamic_params_scale"] == "log10":
+            beta, gamma, delta = jnp.power(10, self.dynamic_parameters)
+        elif self.options["dynamic_params_scale"] == "linear":
+            beta, gamma, delta = self.dynamic_parameters
+        else:
+            raise ValueError(f"Unknown dynamic parameter scale: {self.options['dynamic_params_scale']}!")
         s, i, r, t = u
         nn_t = self.mlp(jnp.array([s, i, r]))
 

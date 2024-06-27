@@ -32,7 +32,12 @@ class UDEFunction(eqx.Module):
 
     def __call__(self, t, u, args):
         # Unpack dynamic parameters (learnable)
-        alpha, delta = self.dynamic_parameters
+        if self.options["dynamic_params_scale"] == "log10":
+            alpha, delta = jnp.power(10, self.dynamic_parameters)
+        elif self.options["dynamic_params_scale"] == "linear":
+            alpha, delta = self.dynamic_parameters
+        else:
+            raise ValueError(f"Unknown dynamic parameter scale: {self.options['dynamic_params_scale']}!")
         # Unpack state variables
         prey, predator = u
         # jax.debug.print("{u}", u=u)
