@@ -118,6 +118,16 @@ class UDEFunction(eqx.Module):
 #         mlp = new_mlp if new_mlp is not None else self.func.mlp
 #         return UDEProblem(dynamic_parameters, mlp)
 
+# LOSS AND LOSS GRAD FUNCTIONS
+def _compute_loss(sol, data):
+    infected = data[:, 0]
+    dead = data[:, 1]
+    recovered = data[:, 2]
+    loss1 = jnp.mean((jnp.log(infected) - jnp.log(jnp.absolute(sol.ys[:, 1] + sol.ys[:, 3]))) ** 2)
+    loss2 = jnp.mean((jnp.log(jnp.absolute(recovered + dead)) - jnp.log(jnp.absolute(sol.ys[:, 2]))) ** 2)
+    # loss is sum of MSE on Infected and Recovered+Dead
+    return loss1 + loss2
+
 
 @eqx.filter_value_and_grad
 def compute_loss_grad(prob_params, prob_static, u0, t_save, t_span, data, reg_exp, reg_strength):
@@ -140,13 +150,30 @@ def compute_loss_optx(prob_params, args):
     return _compute_loss(sol, data), None
 
 
-def _compute_loss(sol, data):
-    infected = data[:, 0]
-    dead = data[:, 1]
-    recovered = data[:, 2]
-    loss1 = jnp.mean((jnp.log(infected) - jnp.log(jnp.absolute(sol.ys[:, 1] + sol.ys[:, 3]))) ** 2)
-    loss2 = jnp.mean((jnp.log(jnp.absolute(recovered + dead)) - jnp.log(jnp.absolute(sol.ys[:, 2]))) ** 2)
-    return loss1 + loss2
+# HESSIAN FUNCTIONS
+@eqx.filter_jit
+@jax.hessian
+def compute_hess(
+        prob_params, prob_static,
+        u0, t_save_train, t_span_train, data, adjoint,
+        reg_exp, reg_strength
+):
+    prob = eqx.combine(prob_params, prob_static)
+    sol = prob.solve(diffrax.Tsit5(), u0, t_save_train, t_span_train, adjoint=adjoint)
+    return _compute_loss(sol, data) + regularise_mlp(prob.func.mlp, reg_exp, reg_strength)
+
+
+@eqx.filter_jit
+@jax.hessian
+def compute_hess_array(
+        flat_p, unflatten_p, prob_static,
+        u0, t_save_train, t_span_train, data, adjoint,
+        reg_exp, reg_strength
+):
+    prob_params = unflatten_p(flat_p)
+    prob = eqx.combine(prob_params, prob_static)
+    sol = prob.solve(diffrax.Tsit5(), u0, t_save_train, t_span_train, adjoint=adjoint)
+    return _compute_loss(sol, data) + regularise_mlp(prob.func.mlp, reg_exp, reg_strength)
 
 
 def get_result_plot(prob, u0, t_save, t_span, data):

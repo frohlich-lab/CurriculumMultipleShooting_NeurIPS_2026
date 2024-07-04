@@ -128,13 +128,13 @@ class UDEFunction(eqx.Module):
 def compute_loss_grad(prob_params, prob_static, u0, t_save, t_span, data, reg_exp, reg_strength):
     prob = eqx.combine(prob_params, prob_static)
     u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
-    return jnp.sum((u_pred.ys - data) ** 2) + regularise_mlp(prob.func.mlp, reg_exp, reg_strength)
+    return jnp.mean((u_pred.ys - data) ** 2) + regularise_mlp(prob.func.mlp, reg_exp, reg_strength)
 
 
 @eqx.filter_jit
 def compute_loss(prob, u0, t_save, t_span, data, reg_exp, reg_strength):
     u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
-    return jnp.sum((u_pred.ys - data) ** 2) + regularise_mlp(prob.func.mlp, reg_exp, reg_strength)
+    return jnp.mean((u_pred.ys - data) ** 2) + regularise_mlp(prob.func.mlp, reg_exp, reg_strength)
 
 
 @eqx.filter_jit
@@ -142,7 +142,7 @@ def compute_loss_optx(prob_params, args):
     prob_static, u0, t_save, t_span, data = args
     prob = eqx.combine(prob_params, prob_static)
     u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
-    return jnp.sum((u_pred.ys - data) ** 2), None
+    return jnp.mean((u_pred.ys - data) ** 2), None
 
 
 @eqx.filter_jit
@@ -156,12 +156,12 @@ def compute_hess(prob_params, prob_static, u0, t_save, t_span, data, adjoint):
 
 @eqx.filter_jit
 @jax.hessian
-def compute_hess_array(flat_p, unflatten_p, prob_static, u0, t_save, t_span, data, adjoint):
+def compute_hess_array(flat_p, unflatten_p, prob_static, u0, t_save, t_span, data, adjoint, reg_exp, reg_strength):
     prob_params = unflatten_p(flat_p)
     prob = eqx.combine(prob_params, prob_static)
     u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span,
                         adjoint=adjoint)
-    return jnp.mean((u_pred.ys - data)**2)
+    return jnp.mean((u_pred.ys - data)**2) + regularise_mlp(prob.func.mlp, reg_exp, reg_strength)
 
 
 def get_training_validation_data():

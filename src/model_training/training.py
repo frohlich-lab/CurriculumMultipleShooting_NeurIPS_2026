@@ -7,19 +7,28 @@ import optimistix as optx
 import wandb
 
 from src.common import Conf, EarlyStoppingParams, plots_dir
+from diffrax import DirectAdjoint
 from flax.training.early_stopping import EarlyStopping
 from jaxtyping import Array, Float, PyTree
-from src.model_examples.lotka_volterra.setup_diffrax_model import get_fit_dfs as get_fit_dfs_lv
-from src.model_examples.sir.setup_diffrax_model import get_fit_dfs as get_fit_dfs_sir
+from src.model_examples.lotka_volterra.setup_diffrax_model import (get_fit_dfs as get_fit_dfs_lv,
+                                                                   compute_hess_array as compute_hess_array_lv)
+from src.model_examples.sir.setup_diffrax_model import (get_fit_dfs as get_fit_dfs_sir,
+                                                        compute_hess_array as compute_hess_array_sir)
 from src.model_training.training_util import get_scheduler, initialise_wandb, log_model_stats, log_plots
 from src.ude_problem import UDEProblem
 from types import SimpleNamespace
-from typing import Callable, Dict, List
+from typing import Callable, Dict, List, Union
 
 # Optimisers to choose from
 optimisers = {
     "adam": optax.adam,
     "adamw": optax.adamw,
+    "sgd": optax.sgd,
+}
+
+hessian_fn = {
+    "lotka_volterra": compute_hess_array_lv,
+    "sir": compute_hess_array_sir,
 }
 
 
@@ -28,6 +37,40 @@ def make_grads_finite(grads):
         lambda x: jnp.where(jnp.isfinite(x), x, jnp.zeros_like(x)),
         grads,
     )
+
+
+def apply_hessian_preconditioning_to_grads(
+        grads: Union[PyTree, UDEProblem],
+        params: Union[PyTree, UDEProblem],
+        static: Union[PyTree, UDEProblem],
+        args: tuple,
+        conf: Conf,
+):
+    # unpack args
+    u0, t_save, t_span, input_data = args
+    # flatten params PyTree and get unflatten function
+    flat_p, unflatten_p = jax.flatten_util.ravel_pytree(params)
+    # compute hessian as a 2D array
+    hessian = hessian_fn[conf.dynamical_model](
+        flat_p, unflatten_p, static,
+        u0, t_save, t_span, input_data,
+        DirectAdjoint(),
+        conf.reg_exp, conf.reg_strength,
+    )
+
+    # Keep only the diagonal (experiment - Sebastian) -- disabled
+    # hessian_diag = hessian * jnp.eye(hessian.shape[0])
+
+    # Compute the inverse of the Hessian
+    inv_hessian = jnp.linalg.pinv(hessian)
+
+    # Flatten the grads PyTree
+    flat_grads, unravel_grads = jax.flatten_util.ravel_pytree(grads)
+    # Multiply the flat gradients by the inverse Hessian to precondition gradients
+    flat_precond_grads = jnp.dot(inv_hessian, flat_grads)
+    # Unflatten the preconditioned gradients back to the PyTree structure + ensure they are finite
+    grads = make_grads_finite(unravel_grads(flat_precond_grads))
+    return grads
 
 
 def optx_solve(y, solver, fn, args, args_val, f_struct, aux_struct, options, tags, max_steps, starting_epoch, conf):
@@ -111,6 +154,9 @@ def make_step(
         conf.reg_strength,
     )
     grads = make_grads_finite(grads)
+    if conf.hessian_precondition:
+        args = (u0, t_save, t_span, input_data)
+        grads = apply_hessian_preconditioning_to_grads(grads, params, static, args, conf)
     updates, opt_state = opt.update(grads, opt_state, params)
     params = eqx.apply_updates(params, updates)
     return params, opt_state, loss_value, grads
@@ -140,6 +186,9 @@ def make_step_looahead(
         conf.reg_strength,
     )
     grads = make_grads_finite(grads)
+    if conf.hessian_precondition:
+        args = (u0, t_save, t_span, input_data)
+        grads = apply_hessian_preconditioning_to_grads(grads, params.fast, static, args, conf)
     updates, opt_state = opt.update(grads, opt_state, params)
     params = eqx.apply_updates(params, updates)
     return params, opt_state, loss_value, grads
@@ -229,40 +278,42 @@ def train(
         params, static = eqx.partition(model, filter_spec)
     else:
         params, static = eqx.partition(model, eqx.is_array)
-    # Get schedule
-    schedule = get_scheduler(conf=conf, n_epochs=n_epochs)
 
-    # Initialise optimiser and its state
-    if not conf.use_lookahead:
-        opt = optimisers[conf.optimiser](schedule)
-        opt_state = opt.init(eqx.filter(model, eqx.is_array))
-        make_step_fn = make_step
-    else:
-        opt = optax.lookahead(
-            fast_optimizer=optimisers[conf.optimiser](schedule),
-            sync_period=conf.lookahead_sync,
-            slow_step_size=conf.lookahead_step_size,
-            reset_state=conf.lookahead_reset_state,
-        )
-        # Initialise params for lookahead (now params has params.fast and params.slow)
-        params = optax.LookaheadParams.init_synced(params)
-        opt_state = opt.init(params)
-        make_step_fn = make_step_looahead
+    if n_epochs > 0:
+        # Get schedule
+        schedule = get_scheduler(conf=conf, n_epochs=n_epochs)
 
-    # Check Early-stopping parameters have been set correctly and instantiate early stopper
-    if early_stopping_params.use_early_stopping:
-        if early_stopping_params.patience is None:
-            raise ValueError("Patience value for early stopping is undefined.")
-        elif early_stopping_params.min_improvement is None:
-            raise ValueError("Minimum absolute improvement for early stopping is undefined.")
+        # Initialise optimiser and its state
+        if not conf.use_lookahead:
+            opt = optimisers[conf.optimiser](schedule)
+            opt_state = opt.init(eqx.filter(model, eqx.is_array))
+            make_step_fn = make_step
         else:
-            early_stopper = EarlyStopping(
-                min_delta=early_stopping_params.min_improvement,
-                patience=early_stopping_params.patience
+            opt = optax.lookahead(
+                fast_optimizer=optimisers[conf.optimiser](schedule),
+                sync_period=conf.lookahead_sync,
+                slow_step_size=conf.lookahead_step_size,
+                reset_state=conf.lookahead_reset_state,
             )
+            # Initialise params for lookahead (now params has params.fast and params.slow)
+            params = optax.LookaheadParams.init_synced(params)
+            opt_state = opt.init(params)
+            make_step_fn = make_step_looahead
+
+        # Check Early-stopping parameters have been set correctly and instantiate early stopper
+        if early_stopping_params.use_early_stopping:
+            if early_stopping_params.patience is None:
+                raise ValueError("Patience value for early stopping is undefined.")
+            elif early_stopping_params.min_improvement is None:
+                raise ValueError("Minimum absolute improvement for early stopping is undefined.")
+            else:
+                early_stopper = EarlyStopping(
+                    min_delta=early_stopping_params.min_improvement,
+                    patience=early_stopping_params.patience
+                )
 
     # Training loop
-    for epoch in range(n_epochs + 1):
+    for epoch in range(n_epochs):
         params, opt_state, loss_train, grads = make_step_fn(
             params=params,
             static=static,

@@ -11,7 +11,7 @@ import wandb
 from pathlib import Path
 from src.common import Conf, EarlyStoppingParams
 from src.ude_problem import UDEProblem
-from typing import List
+from typing import List, Optional
 
 
 # Scheduler from Fabian's NeuralCoarseGraining

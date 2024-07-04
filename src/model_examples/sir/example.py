@@ -89,7 +89,6 @@ def compute_hess(prob_params, prob_static, u0, t_save_train, t_span_train, data,
 def compute_hess_array(flat_p, unflatten_p, prob_static, u0, t_save_train, t_span_train, data, adjoint):
     prob_params = unflatten_p(flat_p)
     prob = eqx.combine(prob_params, prob_static)
-    prob = eqx.combine(prob_params, prob_static)
     sol = prob.solve(diffrax.Tsit5(), u0, t_save_train, t_span_train, adjoint=adjoint)
     return setup_sir._compute_loss(sol, data)
 
