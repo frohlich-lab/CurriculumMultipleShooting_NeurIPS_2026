@@ -89,14 +89,21 @@ def initialise_wandb(
         "learning_rate": None,
         "patience_counter": None,
     }
+    # Add regularisation term if applied
+    if conf.reg_strength > 0:
+        metrics["regularisation_loss"] = "min"
+
+    # Define metrics in W&B
     for metric in metrics.keys():
         # if metric summary not specified
         if metrics[metric] is None:
             wandb.define_metric(metric)
         else:
             wandb.define_metric(metric, summary=metrics[metric])
+
     # Define layer statistics (weight/bias value and grads)
     # from Fabian's NeuralCoarseGraining
+    # https://github.com/frohlich-lab/NeuralCoarseGraining/blob/8c5cc42447b9b55cdf8b3bfc685388ba4bf6b751/ncg/training.py#L257
     for il, _ in enumerate(model.func.mlp.layers):
         for par_label, val_label in itt.product(('w', 'b'), ('vals', 'grads')):
             wandb.define_metric(

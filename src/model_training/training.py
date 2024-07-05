@@ -14,6 +14,7 @@ from src.model_examples.lotka_volterra.setup_diffrax_model import (get_fit_dfs a
                                                                    compute_hess_array as compute_hess_array_lv)
 from src.model_examples.sir.setup_diffrax_model import (get_fit_dfs as get_fit_dfs_sir,
                                                         compute_hess_array as compute_hess_array_sir)
+from src.model_training.model_util import regularise_mlp
 from src.model_training.training_util import get_scheduler, initialise_wandb, log_model_stats, log_plots
 from src.ude_problem import UDEProblem
 from types import SimpleNamespace
@@ -362,6 +363,19 @@ def train(
                 },
                 step=epoch
             )
+
+            # Log regularisation term if applied
+            if conf.reg_strength > 0:
+                wandb.log(
+                    {
+                        "regularisation_loss": regularise_mlp(
+                            model.func.mlp,
+                            conf.reg_exp,
+                            conf.reg_strength
+                        )
+                    },
+                    step=epoch
+                )
 
         # Check early stopping criterion
         if early_stopping_params.use_early_stopping:
