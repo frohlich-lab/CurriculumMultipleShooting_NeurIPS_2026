@@ -61,7 +61,7 @@ def initialise_wandb(
     repo = git.Repo(search_parent_directories=True)
     # Initialise run
     wandb.init(
-        project=f"TestUDE.{conf.dynamical_model}",
+        project=f"TestUDE.nf.{conf.dynamical_model}",  # nf = nextflow pipeline
         group=f"{conf.dynamical_model}",
         config={
             **conf.__dict__,

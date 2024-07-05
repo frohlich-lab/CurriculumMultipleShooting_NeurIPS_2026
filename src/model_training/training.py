@@ -4,6 +4,7 @@ import jax.numpy as jnp
 import jax.tree_util as jtu
 import optax
 import optimistix as optx
+import subprocess
 import wandb
 
 from src.common import Conf, EarlyStoppingParams, plots_dir
@@ -501,6 +502,13 @@ def train(
                 plot_dir=plot_dir,
                 plot_fmt="svg",
             )
-
+    # Get W&B run directory
+    wandb_stripped_dir = wandb.run.dir.rsplit('/files', 1)[0]
+    command = f"wandb sync {wandb_stripped_dir}"
     wandb.finish()
+    # Log everything to W&B after end of run
+    try:
+        _ = subprocess.run(command, shell=True)
+    except subprocess.CalledProcessError as e:
+        raise ValueError(f"Error syncing wandb directory: {e}")
     return model
