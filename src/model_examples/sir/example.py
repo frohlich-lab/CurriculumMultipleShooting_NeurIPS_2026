@@ -37,7 +37,11 @@ mlp = set_weight_bias(mlp, 0.1, key)
 # here, but this can be looked at later 
 u0 = jnp.array([51000000.0, 578, 24, 10])
 dynamic_parameters = jnp.array([0.15, 0.013, 0.01])
-u_prob = UDEProblem("sir", dynamic_parameters, mlp)
+options = {
+    "add_interaction": False,
+    "dynamic_params_scale": False,
+}
+u_prob = UDEProblem("sir", dynamic_parameters, mlp, options)
 
 # Read training and validation data
 # Training
@@ -70,36 +74,20 @@ p = plot_fit(df_obs=df_obs_val, df_pred=df_pred_val)
 # p
 plt.show()
 
-
 # Something fun, let us try the Hessian. Here we must use partition for not
 # run into Jax problems. I have also created two Hessian functions, one that 
 # outputs the Hessian as a Matrix, and one as a PyTree. This because a lot 
 # of the nice abstractions with PyTree quickly become complicated when 
 # dealing with the second derivative matrix
-@eqx.filter_jit
-@jax.hessian
-def compute_hess(prob_params, prob_static, u0, t_save_train, t_span_train, data, adjoint):
-    prob = eqx.combine(prob_params, prob_static)
-    sol = prob.solve(diffrax.Tsit5(), u0, t_save_train, t_span_train, adjoint=adjoint)
-    return setup_sir._compute_loss(sol, data)
-
-
-@eqx.filter_jit
-@jax.hessian
-def compute_hess_array(flat_p, unflatten_p, prob_static, u0, t_save_train, t_span_train, data, adjoint):
-    prob_params = unflatten_p(flat_p)
-    prob = eqx.combine(prob_params, prob_static)
-    sol = prob.solve(diffrax.Tsit5(), u0, t_save_train, t_span_train, adjoint=adjoint)
-    return setup_sir._compute_loss(sol, data)
 
 
 params, static = eqx.partition(u_prob, eqx.is_array)
-hess = compute_hess(params, static, u0, t_save_train, t_span_train, train_data,
-                    diffrax.DirectAdjoint())
+hess = setup_sir.compute_hess(params, static, u0, t_save_train, t_span_train, train_data,
+                              diffrax.DirectAdjoint())
 
 flat_p, unflatten_p = jax.flatten_util.ravel_pytree(params)
-hess = compute_hess_array(flat_p, unflatten_p, static, u0, t_save_train, t_span_train, train_data,
-                          diffrax.DirectAdjoint())
+hess = setup_sir.compute_hess_array(flat_p, unflatten_p, static, u0, t_save_train, t_span_train, train_data,
+                                    diffrax.DirectAdjoint())
 
 
 # We can run some fun timing
@@ -108,8 +96,8 @@ def time_stuff():
         loss, grad = setup_sir.compute_loss_grad(u_prob, u0, t_save_train, t_span_train, train_data)
 
     def _hess():
-        hess = compute_hess_array(flat_p, unflatten_p, static, u0, t_save_train, t_span_train,
-                                  train_data, diffrax.DirectAdjoint())
+        hess = setup_sir.compute_hess_array(flat_p, unflatten_p, static, u0, t_save_train, t_span_train,
+                                            train_data, diffrax.DirectAdjoint())
 
     duration1 = timeit.Timer(_grad).repeat(100, number=1)
     duration2 = timeit.Timer(_hess).repeat(100, number=1)

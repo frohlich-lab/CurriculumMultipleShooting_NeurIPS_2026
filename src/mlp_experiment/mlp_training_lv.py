@@ -11,9 +11,9 @@ from flax.training.early_stopping import EarlyStopping
 from jaxtyping import Array, Float, PyTree
 from src.common import Conf, EarlyStoppingParams
 from src.model_training.model_util import regularise_mlp
-from src.model_training.training import optimisers, make_grads_finite
-from src.model_training.training_util import get_scheduler
-from typing import Callable
+from src.model_training.training import make_grads_finite
+from src.model_training.training_util import get_model_after_step, get_opt_opt_state_params, get_scheduler
+from typing import Callable, Union
 
 
 @eqx.filter_jit
@@ -31,43 +31,24 @@ def compute_loss_grad(params, static, data, targets, reg_exp, reg_strength):
 
 @eqx.filter_jit
 def mlp_training_step(
-        params: eqx.Module,
-        static: eqx.Module,
+        params: Union[PyTree, eqx.Module],
+        static: Union[PyTree, eqx.Module],
         opt: optax.GradientTransformation,
         opt_state: PyTree,
-        input: Float[Array, '...'],  # TODO @GiacomoFabrini fix input and output data shape
+        input_data: Float[Array, '...'],  # TODO @GiacomoFabrini fix input and output data shape
         targets: Float[Array, '...'],
         conf: Conf,
         loss_grad_fn: Callable,
 ):
+    if conf.use_lookahead:
+        opt_params = params.fast
+    else:
+        opt_params = params
     loss_value, grads = loss_grad_fn(
-        params,
-        static,
-        input,
-        targets,
-        conf.reg_exp,
-        conf.reg_strength,
-    )
-    grads = make_grads_finite(grads)
-    updates, opt_state = opt.update(grads, opt_state, params)
-    params = eqx.apply_updates(params, updates)
-    return params, opt_state, loss_value, grads
-
-
-@eqx.filter_jit
-def mlp_training_step_lookahead(
-        params: eqx.Module,
-        static: eqx.Module,
-        opt: optax.GradientTransformation,
-        opt_state: PyTree,
-        input_data: Float[Array, '...'],  # TODO @GiacomoFabrini fix input data shape
-        conf: Conf,
-        loss_grad_fn: Callable,
-):
-    loss_value, grads = loss_grad_fn(
-        params.fast,
+        opt_params,
         static,
         input_data,
+        targets,
         conf.reg_exp,
         conf.reg_strength,
     )
@@ -130,16 +111,16 @@ def initialise_wandb_mlp(
 
 
 def mlp_train(
-    model: eqx.nn.MLP,
-    training_data: jnp.ndarray,
-    training_targets: jnp.ndarray,
-    validation_data: jnp.ndarray,
-    validation_targets: jnp.ndarray,
-    conf: Conf,
-    n_epochs: int,
-    early_stopping_params: EarlyStoppingParams,
-    loss_fn: Callable,
-    loss_grad_fn: Callable,
+        model: eqx.nn.MLP,
+        training_data: jnp.ndarray,
+        training_targets: jnp.ndarray,
+        validation_data: jnp.ndarray,
+        validation_targets: jnp.ndarray,
+        conf: Conf,
+        n_epochs: int,
+        early_stopping_params: EarlyStoppingParams,
+        loss_fn: Callable,
+        loss_grad_fn: Callable,
 ):
     # Initialise wandb and define metrics
     initialise_wandb_mlp(
@@ -156,22 +137,8 @@ def mlp_train(
     schedule = get_scheduler(conf=conf, n_epochs=n_epochs)
     params, static = eqx.partition(model, eqx.is_array)
 
-    # Initialise optimiser and its state
-    if not conf.use_lookahead:
-        opt = optimisers[conf.optimiser](schedule)
-        opt_state = opt.init(eqx.filter(model, eqx.is_array))
-        make_step_fn = mlp_training_step
-    else:
-        opt = optax.lookahead(
-            fast_optimizer=optimisers[conf.optimiser](schedule),
-            sync_period=conf.lookahead_sync,
-            slow_step_size=conf.lookahead_step_size,
-            reset_state=conf.lookahead_reset_state,
-        )
-        # Initialise params for lookahead (now params has params.fast and params.slow)
-        params = optax.LookaheadParams.init_synced(params)
-        opt_state = opt.init(params)
-        make_step_fn = mlp_training_step_lookahead
+    # Initialise optimiser, optimiser state + update params if using lookahead
+    opt, opt_state, params = get_opt_opt_state_params(conf, params, schedule)
 
     # Check Early-stopping parameters have been set correctly and instantiate early stopper
     if early_stopping_params.use_early_stopping:
@@ -187,7 +154,7 @@ def mlp_train(
 
     # Training loop
     for epoch in range(n_epochs + 1):
-        params, opt_state, loss_train, grads = make_step_fn(
+        params, opt_state, loss_train, grads = mlp_training_step(
             params=params,
             static=static,
             opt=opt,
@@ -197,10 +164,7 @@ def mlp_train(
             conf=conf,
             loss_grad_fn=loss_grad_fn,
         )
-        if conf.use_lookahead:
-            model = eqx.combine(params.fast, static)
-        else:
-            model = eqx.combine(params, static)
+        model = get_model_after_step(params, static, conf)
 
         if conf.use_dropout:
             # Get a copy of the model for inference
@@ -257,7 +221,7 @@ def mlp_train(
     wandb.log({"final_epoch": epoch})
     wandb.finish()
     # Rudimentary plot
-    plt.subplots(1,2, figsize=(10,5))
+    plt.subplots(1, 2, figsize=(10, 5))
     plt.subplot(131)
     plt.plot(training_data, 'o', label='Training data')
     plt.plot(training_targets, 's', label='Targets')

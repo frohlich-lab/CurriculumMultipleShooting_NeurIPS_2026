@@ -1,6 +1,9 @@
+import diffrax
 import equinox as eqx
 import git
 import itertools as itt
+import jax.numpy as jnp
+import jax
 import matplotlib.pyplot as plt
 import numpy as np
 import optax
@@ -8,10 +11,11 @@ import pandas as pd
 import seaborn as sns
 import wandb
 
+from jaxtyping import Array, PyTree
 from pathlib import Path
 from src.common import Conf, EarlyStoppingParams
 from src.ude_problem import UDEProblem
-from typing import List, Optional
+from typing import List, Union
 
 
 # Scheduler from Fabian's NeuralCoarseGraining
@@ -52,6 +56,35 @@ def get_scheduler(
     return optax.sgdr_schedule(schedules)
 
 
+def get_opt_opt_state_params(
+        conf: Conf,
+        params: Union[PyTree, UDEProblem],
+        schedule: optax.Schedule
+):
+    # Optimisers to choose from
+    optimisers = {
+        "adam": optax.adam,
+        "adamw": optax.adamw,
+        "sgd": optax.sgd,
+    }
+
+    if not conf.use_lookahead:
+        opt = optimisers[conf.optimiser](schedule)
+        opt_state = opt.init(params)
+    else:
+        opt = optax.lookahead(
+            fast_optimizer=optimisers[conf.optimiser](schedule),
+            sync_period=conf.lookahead_sync,
+            slow_step_size=conf.lookahead_step_size,
+            reset_state=conf.lookahead_reset_state,
+        )
+        # Initialise params for lookahead (now params has params.fast and params.slow)
+        params = optax.LookaheadParams.init_synced(params)
+        opt_state = opt.init(params)
+
+    return opt, opt_state, params
+
+
 def initialise_wandb(
         conf: Conf,
         early_stopping_params: EarlyStoppingParams,
@@ -87,6 +120,7 @@ def initialise_wandb(
         "loss_train": "min",
         "loss_val": "min",
         "learning_rate": None,
+        "num_train_samples": None,
         "patience_counter": None,
     }
     # Add regularisation term if applied
@@ -123,6 +157,7 @@ def log_model_stats(
 
     :param model: model containing weight information
     :param grad: model containing gradient information
+    :param conf: configuration object
     """
     layers = [
         (par_layer, grad_layer)
@@ -235,6 +270,25 @@ def log_plots(
         wandb.log({f"fit_plot_{plot_name}": plt}, step=epoch)
 
 
+def make_grads_finite(grads):
+    return jax.tree_map(
+        lambda x: jnp.where(jnp.isfinite(x), x, jnp.zeros_like(x)),
+        grads,
+    )
+
+
+def get_model_after_step(
+        params: Union[PyTree, UDEProblem],
+        static: Union[PyTree, UDEProblem],
+        conf: Conf,
+):
+    if conf.use_lookahead:
+        model = eqx.combine(params.fast, static)
+    else:
+        model = eqx.combine(params, static)
+    return model
+
+
 def plot_model_weights(model: UDEProblem, conf: Conf, filename: str = None):
     num_rows = conf.mlp_layer_width + 2  # top and bottom margin
     num_columns = len(model.func.mlp.layers) + 2  # left and right margin
@@ -291,3 +345,35 @@ def plot_model_weights(model: UDEProblem, conf: Conf, filename: str = None):
     if filename is not None:
         plt.savefig(filename, facecolor='w')
     plt.show()
+
+
+def generate_incremental_arrays(
+        data: Array,
+        t_save: diffrax.SaveAt,
+        n_epoch: int,
+        increment_percentage: int,
+):
+    if increment_percentage <= 0 or increment_percentage > 100 or 100 % increment_percentage != 0:
+        raise ValueError("Increment percentage must be a divisor of 100 (e.g. 10, 20, 25, 50).")
+
+    # Initialize the list to store the results
+    incremental_data = []
+    incremental_t_save = []
+    incremental_t_span = []
+
+    for i in range(1, increment_percentage + 1):
+        length = int(len(data) * (i / increment_percentage))
+        start_epoch = int((i - 1) * (int(0.50 * n_epoch) / increment_percentage))
+        end_epoch = int(i * (int(0.50 * n_epoch) / increment_percentage))
+        for _ in range(end_epoch - start_epoch):
+            incremental_data.append(data[:length])
+            incremental_t_save.append(diffrax.SaveAt(ts=t_save.subs.ts[:length]))
+            incremental_t_span.append([np.min(t_save.subs.ts[:length]), np.max(t_save.subs.ts[:length])])
+
+    # Add full data for the last 50% of epochs
+    for _ in range(n_epoch - len(incremental_data)):
+        incremental_data.append(data)
+        incremental_t_save.append(t_save)
+        incremental_t_span.append([np.min(t_save.subs.ts), np.max(t_save.subs.ts)])
+
+    return incremental_data, incremental_t_save, incremental_t_span

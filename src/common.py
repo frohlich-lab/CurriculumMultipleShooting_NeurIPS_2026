@@ -22,9 +22,9 @@ class Conf(dict):
     # default lrate_decay is 1 - no decay
     lrate_decay: float = 1.0  # if < 1, the learning rate decays between schedules
     # default warmup_fct = 0 as in UDE paper (no warmup)
-    warmup_fct: float = 0.0  # fraction of schedule epochs to be used for warmup
+    warmup_fct: float = 0.1  # fraction of schedule epochs to be used for warmup
     # default opt_steps creates a single schedule if N_EPOCHS = 2000
-    opt_steps: int = 2000  # Number of steps in the first schedule (they multiply each time in length by opt_mult)
+    opt_steps: int = 10  # Number of steps in the first schedule (they multiply each time in length by opt_mult)
     opt_mult: int = 2  # Multiplier for the number of steps in each schedule
     # they did not use early_stop in original UDE paper
     use_early_stop: bool = False

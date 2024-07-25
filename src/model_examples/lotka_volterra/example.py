@@ -6,12 +6,12 @@ import jax.random as jr
 import numpy as np
 
 import src.model_examples.lotka_volterra.setup_diffrax_model as setup_lv
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import os
 import pandas as pd
 
-from src.plotting import plot_fit
-from src.model_training.model_util import set_weight_bias, regularise_mlp
+# from src.plotting import plot_fit
+from src.model_training.model_util import set_weight_bias
 from src.ude_problem import UDEProblem
 
 
@@ -98,24 +98,6 @@ loss_validation = setup_lv.compute_loss(
 # outputs the Hessian as a Matrix, and one as a PyTree. This because a lot 
 # of the nice abstractions with PyTree quickly become complicated when 
 # dealing with the second derivative matrix
-@eqx.filter_jit
-@jax.hessian
-def compute_hess(prob_params, prob_static, u0, t_save, t_span, data, adjoint):
-    prob = eqx.combine(prob_params, prob_static)
-    u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span,
-                        adjoint=adjoint)
-    return jnp.mean((u_pred.ys - data)**2)
-
-
-@eqx.filter_jit
-@jax.hessian
-def compute_hess_array(flat_p, unflatten_p, prob_static, u0, t_save, t_span, data, adjoint, reg_exp, reg_strength):
-    prob_params = unflatten_p(flat_p)
-    prob = eqx.combine(prob_params, prob_static)
-    u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span,
-                        adjoint=adjoint)
-    return jnp.mean((u_pred.ys - data)**2) + regularise_mlp(prob.func.mlp, reg_exp, reg_strength)
-
 
 def finite_diff_hessian(flat_p, unflatten_p, static, args, epsilon=1e-5):
     # Unpack args
@@ -167,11 +149,11 @@ def finite_diff_hessian(flat_p, unflatten_p, static, args, epsilon=1e-5):
 
 
 params, static = eqx.partition(uprob, eqx.is_array)
-hess = compute_hess(params, static, u0, t_save_train, [0.0, 10.0], train_data,
+hess = setup_lv.compute_hess(params, static, u0, t_save_train, [0.0, 10.0], train_data,
                     diffrax.DirectAdjoint())
 
 flat_p, unflatten_p = jax.flatten_util.ravel_pytree(params)
-hess = compute_hess_array(flat_p, unflatten_p, static, u0, t_save_train, [0.0, 10.0], train_data,
+hess = setup_lv.compute_hess_array(flat_p, unflatten_p, static, u0, t_save_train, [0.0, 10.0], train_data,
                           diffrax.DirectAdjoint(), 1.0, 0.0)
 
 

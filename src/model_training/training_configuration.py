@@ -75,7 +75,7 @@ OPT_MULT = {
     # 3,
 }
 
-N_EPOCHS = 2000  # default from UDE paper: 2000 / SIR: 40000-100000
+N_EPOCHS = 4000  # default from UDE paper: 2000 / SIR: 40000-100000
 
 MAX_ITER_OPTX = 10000  # default from UDE paper
 

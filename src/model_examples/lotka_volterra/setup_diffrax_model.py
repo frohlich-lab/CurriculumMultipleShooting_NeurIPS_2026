@@ -53,77 +53,7 @@ class UDEFunction(eqx.Module):
         return jnp.array([d_prey, d_predator])
 
 
-# class UDEProblem(eqx.Module):
-#     """
-#     Class to solve the UDEProblem with a chosen ODE-solver
-#
-#     Methods
-#     -------
-#     solve(self, solver t_save, t_span)
-#         Solve the UDE for t_span = [t0, tend] and save the solution at the
-#         points in t_save using the provided solver. Controller is the adaptive
-#         ODE-stepping controller (should not need to be changed)
-#     """
-#
-#     func: UDEFunction
-#
-#     def __init__(self, dynamic_parameters, mlp, **kwargs):
-#         """
-#         Parameters
-#         ----------
-#         solver
-#             A valid diffrax ODE-solver (e.g. Tsit5 or Kvaerno5)
-#         dynamic_parameters : jax.Array
-#             Starting values for the model dynamic parameters (α, δ in the model
-#             equations).
-#         u0 : jax.Array
-#             Initial values for the UDEProblem. Technically we can estimate these,
-#             but at least for the Lotka-Volterra model this is not the case.
-#         mlp : eqx.nn.MLP
-#             An equinox Standard Multi-Layer Perceptron (MLP) network. If set to
-#             None path_meta must be provided.
-#         controller : diffrax.PIDController
-#         """
-#         super().__init__(**kwargs)
-#         self.func = UDEFunction(dynamic_parameters, mlp)
-#
-#     def solve(self, solver, u0, t_save, t_span,
-#               controller=diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8),
-#               adjoint=diffrax.RecursiveCheckpointAdjoint()):
-#         t0, t1 = t_span
-#         sol = diffrax.diffeqsolve(diffrax.ODETerm(self.func),
-#                                   solver,
-#                                   t0,
-#                                   t1,
-#                                   None,
-#                                   u0,
-#                                   args=u0,
-#                                   saveat=t_save,
-#                                   throw=False,
-#                                   stepsize_controller=controller,
-#                                   adjoint=adjoint)
-#         return sol
-#
-#     def copy(self, new_mlp=None):
-#         """
-#         Creates a copy of the UDEProblem with an optional new MLP for the UDEFunction.
-#         This allows to get a copy of the model for inference in case we are using Dropout layers in the MLP.
-#
-#         Parameters
-#         ----------
-#         new_mlp : eqx.nn.MLP or eqx.Module, optional
-#             If provided, this will replace the existing MLP in the copied UDEFunction.
-#
-#         Returns
-#         -------
-#         UDEProblem
-#             A new instance of UDEProblem with the specified modifications.
-#         """
-#         dynamic_parameters = self.func.dynamic_parameters
-#         mlp = new_mlp if new_mlp is not None else self.func.mlp
-#         return UDEProblem(dynamic_parameters, mlp)
-
-
+# LOSS AND GRAD
 @eqx.filter_value_and_grad
 def compute_loss_grad(prob_params, prob_static, u0, t_save, t_span, data, reg_exp, reg_strength):
     prob = eqx.combine(prob_params, prob_static)
@@ -139,12 +69,13 @@ def compute_loss(prob, u0, t_save, t_span, data, reg_exp, reg_strength):
 
 @eqx.filter_jit
 def compute_loss_optx(prob_params, args):
-    prob_static, u0, t_save, t_span, data = args
+    prob_static, u0, t_save, t_span, data, reg_exp, reg_strength = args
     prob = eqx.combine(prob_params, prob_static)
     u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
-    return jnp.mean((u_pred.ys - data) ** 2), None
+    return jnp.mean((u_pred.ys - data) ** 2) + regularise_mlp(prob.func.mlp, reg_exp, reg_strength), None
 
 
+# HESSIAN
 @eqx.filter_jit
 @jax.hessian
 def compute_hess(prob_params, prob_static, u0, t_save, t_span, data, adjoint):
@@ -164,6 +95,7 @@ def compute_hess_array(flat_p, unflatten_p, prob_static, u0, t_save, t_span, dat
     return jnp.mean((u_pred.ys - data)**2) + regularise_mlp(prob.func.mlp, reg_exp, reg_strength)
 
 
+# UTILS - DATA AND PLOTTING
 def get_training_validation_data():
     # Read training and validation data
     train_data_df = pd.read_csv(os.path.join("src", "data_dir", "lotka_volterra", "Train_data.csv"))

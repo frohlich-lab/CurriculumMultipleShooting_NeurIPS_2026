@@ -6,9 +6,10 @@ import optax
 import optimistix as optx
 import subprocess
 import wandb
+import warnings
 
 from src.common import Conf, EarlyStoppingParams, plots_dir
-from diffrax import DirectAdjoint
+from diffrax import DirectAdjoint, SaveAt
 from flax.training.early_stopping import EarlyStopping
 from jaxtyping import Array, Float, PyTree
 from src.model_examples.lotka_volterra.setup_diffrax_model import (get_fit_dfs as get_fit_dfs_lv,
@@ -16,29 +17,15 @@ from src.model_examples.lotka_volterra.setup_diffrax_model import (get_fit_dfs a
 from src.model_examples.sir.setup_diffrax_model import (get_fit_dfs as get_fit_dfs_sir,
                                                         compute_hess_array as compute_hess_array_sir)
 from src.model_training.model_util import regularise_mlp
-from src.model_training.training_util import get_scheduler, initialise_wandb, log_model_stats, log_plots
+from src.model_training.training_util import (generate_incremental_arrays, get_model_after_step,
+                                              get_opt_opt_state_params, get_scheduler,
+                                              initialise_wandb, log_model_stats, log_plots, make_grads_finite)
 from src.ude_problem import UDEProblem
 from types import SimpleNamespace
 from typing import Callable, Dict, List, Union
 
-# Optimisers to choose from
-optimisers = {
-    "adam": optax.adam,
-    "adamw": optax.adamw,
-    "sgd": optax.sgd,
-}
-
-hessian_fn = {
-    "lotka_volterra": compute_hess_array_lv,
-    "sir": compute_hess_array_sir,
-}
-
-
-def make_grads_finite(grads):
-    return jax.tree_map(
-        lambda x: jnp.where(jnp.isfinite(x), x, jnp.zeros_like(x)),
-        grads,
-    )
+# Some FutureWarning with unhashable DynamicJaxprTracer object in the diffeq solve/call
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 
 def apply_hessian_preconditioning_to_grads(
@@ -48,6 +35,11 @@ def apply_hessian_preconditioning_to_grads(
         args: tuple,
         conf: Conf,
 ):
+    # define hessian functions for different dynamical models
+    hessian_fn = {
+        "lotka_volterra": compute_hess_array_lv,
+        "sir": compute_hess_array_sir,
+    }
     # unpack args
     u0, t_save, t_span, input_data = args
     # flatten params PyTree and get unflatten function
@@ -76,6 +68,10 @@ def apply_hessian_preconditioning_to_grads(
 
 
 def optx_solve(y, solver, fn, args, args_val, f_struct, aux_struct, options, tags, max_steps, starting_epoch, conf):
+    # Initialise loss variables
+    loss_train, loss_val = jnp.inf, jnp.inf
+    aux = None
+
     # These arguments are always fixed throughout interactive solves.
     step = eqx.filter_jit(
         eqx.Partial(solver.step, fn=fn, args=args, options=options, tags=tags)
@@ -134,8 +130,8 @@ def optx_solve(y, solver, fn, args, args_val, f_struct, aux_struct, options, tag
 
 @eqx.filter_jit
 def make_step(
-        params: UDEProblem,
-        static: UDEProblem,
+        params: Union[PyTree, UDEProblem],
+        static: Union[PyTree, UDEProblem],
         opt: optax.GradientTransformation,
         opt_state: PyTree,
         input_data: Float[Array, '...'],  # TODO @GiacomoFabrini fix input data shape
@@ -145,8 +141,12 @@ def make_step(
         conf: Conf,
         loss_grad_fn: Callable,
 ):
+    if conf.use_lookahead:
+        opt_params = params.fast
+    else:
+        opt_params = params
     loss_value, grads = loss_grad_fn(
-        params,
+        opt_params,
         static,
         u0,
         t_save,
@@ -158,39 +158,7 @@ def make_step(
     grads = make_grads_finite(grads)
     if conf.hessian_precondition:
         args = (u0, t_save, t_span, input_data)
-        grads = apply_hessian_preconditioning_to_grads(grads, params, static, args, conf)
-    updates, opt_state = opt.update(grads, opt_state, params)
-    params = eqx.apply_updates(params, updates)
-    return params, opt_state, loss_value, grads
-
-
-@eqx.filter_jit
-def make_step_looahead(
-        params: UDEProblem,
-        static: UDEProblem,
-        opt: optax.GradientTransformation,
-        opt_state: PyTree,
-        input_data: Float[Array, '...'],  # TODO @GiacomoFabrini fix input data shape
-        u0: jnp.ndarray,
-        t_save: List,
-        t_span: List,
-        conf: Conf,
-        loss_grad_fn: Callable,
-):
-    loss_value, grads = loss_grad_fn(
-        params.fast,
-        static,
-        u0,
-        t_save,
-        t_span,
-        input_data,
-        conf.reg_exp,
-        conf.reg_strength,
-    )
-    grads = make_grads_finite(grads)
-    if conf.hessian_precondition:
-        args = (u0, t_save, t_span, input_data)
-        grads = apply_hessian_preconditioning_to_grads(grads, params.fast, static, args, conf)
+        grads = apply_hessian_preconditioning_to_grads(grads, opt_params, static, args, conf)
     updates, opt_state = opt.update(grads, opt_state, params)
     params = eqx.apply_updates(params, updates)
     return params, opt_state, loss_value, grads
@@ -200,7 +168,7 @@ def train(
         model: UDEProblem,
         u0: jnp.ndarray,
         training_data: jnp.ndarray,
-        t_save_train: List,
+        t_save_train: SaveAt,
         t_span_train: List,
         validation_data: jnp.ndarray,
         t_save_val: List,
@@ -261,12 +229,11 @@ def train(
         model=model,
     )
 
-    # Initialise early stopper and epoch counter
-    early_stopper = None
+    # Initialise variables
+    early_stopper, opt, opt_state, schedule = None, None, None, None
     epoch = 0
 
-    # Split model into parameters and static components - which might or might not include
-    # the mechanistic parameters (i.e. dynamic_parameters)
+    # Split model into params and static - depends on whether we are freezing mechanistic parameters or learning them
     if conf.freeze_mechanistic_params:
         # Initialise filter_spec with True for all arrays
         filter_spec = jtu.tree_map(lambda x: eqx.is_array(x), model)
@@ -276,31 +243,29 @@ def train(
             filter_spec,
             replace=jax.tree_map(lambda _: False, filter_spec.func.dynamic_parameters)
         )
-        # and partition accordingly
-        params, static = eqx.partition(model, filter_spec)
     else:
-        params, static = eqx.partition(model, eqx.is_array)
+        filter_spec = eqx.is_array
+    params, static = eqx.partition(model, filter_spec)
 
+    # Define plotting functions, labels and colours
+    if conf.dynamical_model == "lotka_volterra":
+        get_fit_dfs = get_fit_dfs_lv
+        labels = ['prey', 'predator']
+        colors = ['red', 'black']
+    elif conf.dynamical_model == 'sir':
+        get_fit_dfs = get_fit_dfs_sir
+        labels = ['Infected', 'Recovered + dead']
+        colors = ['red', 'black']
+    else:
+        raise ValueError(f"Undefined dynamical model {conf.dynamical_model}.")
+
+    # Train with ADAM/ADAM-W
     if n_epochs > 0:
         # Get schedule
         schedule = get_scheduler(conf=conf, n_epochs=n_epochs)
 
-        # Initialise optimiser and its state
-        if not conf.use_lookahead:
-            opt = optimisers[conf.optimiser](schedule)
-            opt_state = opt.init(eqx.filter(model, eqx.is_array))
-            make_step_fn = make_step
-        else:
-            opt = optax.lookahead(
-                fast_optimizer=optimisers[conf.optimiser](schedule),
-                sync_period=conf.lookahead_sync,
-                slow_step_size=conf.lookahead_step_size,
-                reset_state=conf.lookahead_reset_state,
-            )
-            # Initialise params for lookahead (now params has params.fast and params.slow)
-            params = optax.LookaheadParams.init_synced(params)
-            opt_state = opt.init(params)
-            make_step_fn = make_step_looahead
+        # Initialise optimiser, optimiser state + update params if using lookahead
+        opt, opt_state, params = get_opt_opt_state_params(conf, params, schedule)
 
         # Check Early-stopping parameters have been set correctly and instantiate early stopper
         if early_stopping_params.use_early_stopping:
@@ -314,127 +279,125 @@ def train(
                     patience=early_stopping_params.patience
                 )
 
-    # Training loop
-    for epoch in range(n_epochs):
-        params, opt_state, loss_train, grads = make_step_fn(
-            params=params,
-            static=static,
-            opt=opt,
-            opt_state=opt_state,
-            input_data=training_data,
-            u0=u0,
-            t_save=t_save_train,
-            t_span=t_span_train,
-            conf=conf,
-            loss_grad_fn=loss_grad_fn,
+        incremental_training_data, incremental_train_save, incremental_t_span = generate_incremental_arrays(
+            training_data,
+            t_save_train,
+            n_epochs, 10,
         )
-        if conf.use_lookahead:
-            model = eqx.combine(params.fast, static)
-        else:
-            model = eqx.combine(params, static)
-
-        if conf.use_dropout:
-            # Get a copy of the model for inference
-            inference_model = model.copy(
-                new_mlp=eqx.nn.inference_mode(model.func.mlp, value=True)
+        # Training loop
+        for epoch in range(n_epochs):
+            params, opt_state, loss_train, grads = make_step(
+                params=params,
+                static=static,
+                opt=opt,
+                opt_state=opt_state,
+                input_data=incremental_training_data[epoch],
+                u0=u0,
+                t_save=incremental_train_save[epoch],
+                t_span=incremental_t_span[epoch],
+                conf=conf,
+                loss_grad_fn=loss_grad_fn,
             )
-        else:
-            # no need for difference in training/inference behaviour
-            inference_model = model
+            model = get_model_after_step(params, static, conf)
 
-        # compute validation loss
-        loss_val = loss_fn(
-            inference_model,
-            u0,
-            t_save_val,
-            t_span_val,
-            validation_data,
-            conf.reg_exp,
-            conf.reg_strength,
-        )
+            if conf.use_dropout:
+                # Get a copy of the model for inference
+                inference_model = model.copy(
+                    new_mlp=eqx.nn.inference_mode(model.func.mlp, value=True)
+                )
+            else:
+                # no need for difference in training/inference behaviour
+                inference_model = model
 
-        # log loss_train, loss_val, learning rate, param values and grads every 5 epochs
-        if epoch % 5 == 0:
-            wandb.log(
-                {
-                    "loss_train": loss_train,
-                    "loss_val": loss_val,
-                    "learning_rate": schedule(epoch),
-                    **log_model_stats(model, grads, conf),
-                },
-                step=epoch
+            # compute validation loss
+            loss_val = loss_fn(
+                inference_model,
+                u0,
+                t_save_val,
+                t_span_val,
+                validation_data,
+                conf.reg_exp,
+                conf.reg_strength,
             )
 
-            # Log regularisation term if applied
-            if conf.reg_strength > 0:
+            # log loss_train, loss_val, learning rate, param values and grads every 5 epochs
+            if epoch % 10 == 0:
                 wandb.log(
                     {
-                        "regularisation_loss": regularise_mlp(
-                            model.func.mlp,
-                            conf.reg_exp,
-                            conf.reg_strength
-                        )
+                        "loss_train": loss_train,
+                        "loss_val": loss_val,
+                        "learning_rate": schedule(epoch),
+                        "num_train_samples": len(incremental_training_data[epoch]),
+                        **log_model_stats(model, grads, conf),
                     },
                     step=epoch
                 )
 
-        # Check early stopping criterion
-        if early_stopping_params.use_early_stopping:
-            # Update early stopper
-            early_stopper = early_stopper.update(loss_val)
-            # Debugging statements
-            print(
-                f"epoch {epoch} | "
-                f"loss_val {loss_val} | "
-                f"has improved? {early_stopper.has_improved} | "
-                f"patience count {early_stopper.patience_count}"
+                # Log regularisation term if applied
+                if conf.reg_strength > 0:
+                    wandb.log(
+                        {
+                            "regularisation_loss": regularise_mlp(
+                                model.func.mlp,
+                                conf.reg_exp,
+                                conf.reg_strength
+                            )
+                        },
+                        step=epoch
+                    )
+
+                print(
+                    f"epoch {epoch} | "
+                    f"loss_train {loss_train} | "
+                    f"loss_val {loss_val} | "
+                )
+
+                # Check early stopping criterion
+                if early_stopping_params.use_early_stopping:
+                    # Update early stopper
+                    early_stopper = early_stopper.update(loss_val)
+                    # Debugging statements
+                    print(
+                        f"has improved? {early_stopper.has_improved} | "
+                        f"patience count {early_stopper.patience_count}"
+                    )
+                    # Log current patience count
+                    wandb.log(
+                        {
+                            "patience_counter": early_stopper.patience_count,
+                        },
+                        step=epoch,
+                    )
+                    # Stop training if we have run out of patience
+                    if early_stopper.should_stop:
+                        print(f'Met early stopping criteria, breaking at epoch {epoch}')
+                        break
+
+        # Plot fit (train/val) at end of training
+        for dataset, t_save, t_span, data in zip(
+                ["train", "validation"],
+                [t_save_train, t_save_val],
+                [t_span_train, t_span_val],
+                [training_data, validation_data]
+        ):
+            df_predict, df_obs = get_fit_dfs(model, u0, t_save, t_span, data)
+            plot_dir = plots_dir / conf.dynamical_model / "optax"
+            plot_dir.mkdir(exist_ok=True, parents=True)
+            log_plots(
+                df_predict,
+                df_obs,
+                labels,
+                colors,
+                epoch,
+                f"{dataset}",
+                save_plot=conf.save_plots,
+                plot_dir=plot_dir,
+                plot_fmt="svg"
             )
-            # Log current patience count
-            wandb.log(
-                {
-                    "patience_counter": early_stopper.patience_count,
-                },
-                step=epoch,
-            )
-            # Stop training if we have run out of patience
-            if early_stopper.should_stop:
-                print(f'Met early stopping criteria, breaking at epoch {epoch}')
-                break
 
-    # Plot fit (train/val) at end of training
-    if conf.dynamical_model == "lotka_volterra":
-        get_fit_dfs = get_fit_dfs_lv
-        labels = ['prey', 'predator']
-        colors = ['red', 'black']
-    elif conf.dynamical_model == 'sir':
-        get_fit_dfs = get_fit_dfs_sir
-        labels = ['Infected', 'Recovered + dead']
-        colors = ['red', 'black']
-    else:
-        raise ValueError(f"Undefined dynamical model {conf.dynamical_model}.")
-    for dataset, t_save, t_span, data in zip(
-            ["train", "validation"],
-            [t_save_train, t_save_val],
-            [t_span_train, t_span_val],
-            [training_data, validation_data]
-    ):
-        df_predict, df_obs = get_fit_dfs(model, u0, t_save, t_span, data)
-        plot_dir = plots_dir / conf.dynamical_model / "optax"
-        plot_dir.mkdir(exist_ok=True, parents=True)
-        log_plots(
-            df_predict,
-            df_obs,
-            labels,
-            colors,
-            epoch,
-            f"{dataset}",
-            save_plot=conf.save_plots,
-            plot_dir=plot_dir,
-            plot_fmt="svg"
-        )
+        wandb.log({"final_epoch": epoch})
 
-    wandb.log({"final_epoch": epoch})
-
+    # Train with BFGS via optimistix
     if max_iter_optx > 0:  # otherwise end training and return trained model
         # Define options and tags for BFGS solver
         options = {
@@ -462,8 +425,8 @@ def train(
         #     max_steps=max_iter_optx,
         # )
         # Define additional arguments to pass optimistix loss function (train and val)
-        args = (static, u0, t_save_train, t_span_train, training_data)
-        args_val = (static, u0, t_save_val, t_span_val, validation_data)
+        args = (static, u0, t_save_train, t_span_train, training_data, conf.reg_exp, conf.reg_strength)
+        args_val = (static, u0, t_save_val, t_span_val, validation_data, conf.reg_exp, conf.reg_strength)
         # Shape+dtype of the output of `fn`
         f_struct = jax.ShapeDtypeStruct((), jnp.float64)
         aux_struct = None
@@ -502,6 +465,7 @@ def train(
                 plot_dir=plot_dir,
                 plot_fmt="svg",
             )
+
     # Get W&B run directory
     wandb_stripped_dir = wandb.run.dir.rsplit('/files', 1)[0]
     command = f"wandb sync {wandb_stripped_dir}"
