@@ -42,7 +42,7 @@ class UDEFunction(eqx.Module):
         prey, predator = u
         # jax.debug.print("{u}", u=u)
         if self.options["add_interaction"]:
-            nn_input = jnp.concatenate([u, jnp.array([prey*predator])])
+            nn_input = jnp.concatenate([u, jnp.array([prey * predator])])
         else:
             nn_input = u
         # jax.debug.print("{nn_input}", nn_input=nn_input)
@@ -82,7 +82,7 @@ def compute_hess(prob_params, prob_static, u0, t_save, t_span, data, adjoint):
     prob = eqx.combine(prob_params, prob_static)
     u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span,
                         adjoint=adjoint)
-    return jnp.mean((u_pred.ys - data)**2)
+    return jnp.mean((u_pred.ys - data) ** 2)
 
 
 @eqx.filter_jit
@@ -92,7 +92,7 @@ def compute_hess_array(flat_p, unflatten_p, prob_static, u0, t_save, t_span, dat
     prob = eqx.combine(prob_params, prob_static)
     u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span,
                         adjoint=adjoint)
-    return jnp.mean((u_pred.ys - data)**2) + regularise_mlp(prob.func.mlp, reg_exp, reg_strength)
+    return jnp.mean((u_pred.ys - data) ** 2) + regularise_mlp(prob.func.mlp, reg_exp, reg_strength)
 
 
 # UTILS - DATA AND PLOTTING

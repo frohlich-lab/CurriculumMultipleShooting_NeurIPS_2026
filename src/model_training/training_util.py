@@ -13,7 +13,10 @@ import wandb
 
 from jaxtyping import Array, PyTree
 from pathlib import Path
-from src.common import Conf, EarlyStoppingParams
+from src.common import Conf, EarlyStoppingParams, plots_dir
+from src.model_examples.lotka_volterra.setup_diffrax_model import compute_hess_array as compute_hess_array_lv
+from src.model_examples.sir.setup_diffrax_model import compute_hess_array as compute_hess_array_sir
+from src.model_training.training_configuration import N_EPOCHS, MAX_ITER_OPTX
 from src.ude_problem import UDEProblem
 from typing import List, Union
 
@@ -63,17 +66,25 @@ def get_opt_opt_state_params(
 ):
     # Optimisers to choose from
     optimisers = {
-        "adam": optax.adam,
-        "adamw": optax.adamw,
-        "sgd": optax.sgd,
+        "adam": optax.adam(schedule),
+        "adamw": optax.adamw(schedule),
+        "adam_lbfgs": optax.chain(
+            optax.adam(schedule),
+            optax.scale_by_lbfgs()
+        ),
+        "sgd": optax.sgd(schedule),
+        "sgd_lbfgs": optax.chain(
+           optax.sgd(schedule),
+           optax.scale_by_lbfgs()
+        )
     }
 
     if not conf.use_lookahead:
-        opt = optimisers[conf.optimiser](schedule)
+        opt = optimisers[conf.optimiser]
         opt_state = opt.init(params)
     else:
         opt = optax.lookahead(
-            fast_optimizer=optimisers[conf.optimiser](schedule),
+            fast_optimizer=optimisers[conf.optimiser],
             sync_period=conf.lookahead_sync,
             slow_step_size=conf.lookahead_step_size,
             reset_state=conf.lookahead_reset_state,
@@ -120,6 +131,11 @@ def initialise_wandb(
         "loss_train": "min",
         "loss_val": "min",
         "learning_rate": None,
+        "max_eigenvalue": None,
+        "min_eigenvalue": None,
+        "max_sv": None,
+        "min_sv": None,
+        "condition_number": "min",
         "num_train_samples": None,
         "patience_counter": None,
     }
@@ -348,6 +364,7 @@ def plot_model_weights(model: UDEProblem, conf: Conf, filename: str = None):
 
 
 def generate_incremental_arrays(
+        conf: Conf,
         data: Array,
         t_save: diffrax.SaveAt,
         n_epoch: int,
@@ -361,19 +378,79 @@ def generate_incremental_arrays(
     incremental_t_save = []
     incremental_t_span = []
 
-    for i in range(1, increment_percentage + 1):
-        length = int(len(data) * (i / increment_percentage))
-        start_epoch = int((i - 1) * (int(0.50 * n_epoch) / increment_percentage))
-        end_epoch = int(i * (int(0.50 * n_epoch) / increment_percentage))
-        for _ in range(end_epoch - start_epoch):
-            incremental_data.append(data[:length])
-            incremental_t_save.append(diffrax.SaveAt(ts=t_save.subs.ts[:length]))
-            incremental_t_span.append([np.min(t_save.subs.ts[:length]), np.max(t_save.subs.ts[:length])])
+    if conf.curriculum_learning:
+        for i in range(1, increment_percentage + 1):
+            length = int(len(data) * (i / increment_percentage))
+            start_epoch = int((i - 1) * (int(0.50 * n_epoch) / increment_percentage))
+            end_epoch = int(i * (int(0.50 * n_epoch) / increment_percentage))
+            for _ in range(end_epoch - start_epoch):
+                incremental_data.append(data[:length])
+                incremental_t_save.append(diffrax.SaveAt(ts=t_save.subs.ts[:length]))
+                incremental_t_span.append([np.min(t_save.subs.ts[:length]), np.max(t_save.subs.ts[:length])])
 
-    # Add full data for the last 50% of epochs
-    for _ in range(n_epoch - len(incremental_data)):
-        incremental_data.append(data)
-        incremental_t_save.append(t_save)
-        incremental_t_span.append([np.min(t_save.subs.ts), np.max(t_save.subs.ts)])
+        # Add full data for the last 50% of epochs
+        for _ in range(n_epoch - len(incremental_data)):
+            incremental_data.append(data)
+            incremental_t_save.append(t_save)
+            incremental_t_span.append([np.min(t_save.subs.ts), np.max(t_save.subs.ts)])
+    else:
+        incremental_data = [data] * n_epoch
+        incremental_t_save = [t_save] * n_epoch
+        incremental_t_span = [[np.min(t_save.subs.ts), np.max(t_save.subs.ts)]] * n_epoch
 
     return incremental_data, incremental_t_save, incremental_t_span
+
+
+def eig_sv_plot(
+        params: Union[PyTree, UDEProblem],
+        static: Union[PyTree, UDEProblem],
+        u0: Array,
+        t_save: diffrax.SaveAt,
+        t_span: List,
+        data: jnp.ndarray,
+        conf: Conf,
+        epoch: int,
+        plot: bool = True,
+):
+    # flatten params PyTree and get unflatten function
+    flat_p_hess, unflatten_p_hess = jax.flatten_util.ravel_pytree(params)
+    hessian_fn = {
+        "lotka_volterra": compute_hess_array_lv,
+        "sir": compute_hess_array_sir,
+    }
+    # compute hessian
+    hessian = hessian_fn[conf.dynamical_model](
+        flat_p_hess, unflatten_p_hess, static,
+        u0, t_save, t_span, data,
+        diffrax.DirectAdjoint(),
+        conf.reg_exp, conf.reg_strength,
+    )
+    # compute both singular values and eigenvalues of hessian
+    singular_values = jnp.linalg.svd(
+        hessian,
+        hermitian=True,  # hermitian + real = symmetric
+        compute_uv=False  # only return singular values
+    )
+    eigenvalues, _ = jnp.linalg.eigh(hessian)
+    if plot:
+        plt.subplots(1, 2, figsize=(10, 5))
+        plt.subplot(121)
+        # Discrete singular values
+        plt.stem(singular_values, jnp.ones_like(singular_values), label=f"Epoch {epoch}")
+        plt.xlabel("Singular Value")
+        plt.ylim([0, 1.2])
+        plt.legend()
+        plt.subplot(122)
+        # Discrete eigenvalues values
+        plt.stem(eigenvalues, jnp.ones_like(eigenvalues), label=f"Epoch {epoch}")
+        plt.xlabel("Eigenvalue")
+        plt.ylim([0, 1.2])
+        plt.legend()
+        plt.savefig(
+            plots_dir /
+            conf.dynamical_model /
+            f"sv+eig_plot_{conf.curriculum_learning}_{N_EPOCHS}_{MAX_ITER_OPTX}_{epoch}.pdf"
+        )
+        plt.show()
+    else:
+        return eigenvalues, singular_values

@@ -17,7 +17,7 @@ from src.model_examples.lotka_volterra.setup_diffrax_model import (get_fit_dfs a
 from src.model_examples.sir.setup_diffrax_model import (get_fit_dfs as get_fit_dfs_sir,
                                                         compute_hess_array as compute_hess_array_sir)
 from src.model_training.model_util import regularise_mlp
-from src.model_training.training_util import (generate_incremental_arrays, get_model_after_step,
+from src.model_training.training_util import (eig_sv_plot, generate_incremental_arrays, get_model_after_step,
                                               get_opt_opt_state_params, get_scheduler,
                                               initialise_wandb, log_model_stats, log_plots, make_grads_finite)
 from src.ude_problem import UDEProblem
@@ -280,6 +280,7 @@ def train(
                 )
 
         incremental_training_data, incremental_train_save, incremental_t_span = generate_incremental_arrays(
+            conf,
             training_data,
             t_save_train,
             n_epochs, 10,
@@ -320,6 +321,18 @@ def train(
                 conf.reg_strength,
             )
 
+            # Plot eigenvalue and singular value spectrum at first and last ADAM epoch
+            if epoch in [0, n_epochs-1]:
+                eig_sv_plot(
+                    params,
+                    static,
+                    u0, t_save_train, t_span_train,
+                    training_data,
+                    conf,
+                    epoch,
+                    plot=True,
+                )
+
             # log loss_train, loss_val, learning rate, param values and grads every 5 epochs
             if epoch % 10 == 0:
                 wandb.log(
@@ -351,6 +364,27 @@ def train(
                     f"loss_train {loss_train} | "
                     f"loss_val {loss_val} | "
                 )
+
+                if epoch % 50 == 0:  # only compute every 50 epochs (1 every 5 eval epochs)
+                    eigenvalues, singular_values = eig_sv_plot(
+                        params,
+                        static,
+                        u0, t_save_train, t_span_train,
+                        training_data,
+                        conf,
+                        epoch,
+                        plot=False,
+                    )
+                    wandb.log(
+                        {
+                            "max_eigenvalue": jnp.max(eigenvalues),
+                            "min_eigenvalue": jnp.min(eigenvalues),
+                            "max_sv": jnp.max(singular_values),
+                            "min_sv": jnp.min(singular_values),
+                            "condition_number": jnp.max(singular_values)/jnp.min(singular_values),
+                        },
+                        step=epoch
+                    )
 
                 # Check early stopping criterion
                 if early_stopping_params.use_early_stopping:
@@ -443,6 +477,16 @@ def train(
 
         # Get final model
         model = eqx.combine(sol.value, static)
+
+        # Plot eigenvalue and singular value spectrum
+        eig_sv_plot(
+            sol.value,
+            static,
+            u0, t_save_train, t_span_train,
+            training_data,
+            conf,
+            epoch+sol.stats["num_steps"],
+        )
 
         # Log plots again after further training
         for dataset, t_save, t_span, data in zip(

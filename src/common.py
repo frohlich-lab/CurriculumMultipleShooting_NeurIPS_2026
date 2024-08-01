@@ -43,6 +43,7 @@ class Conf(dict):
     dynamic_params_scale: str = "log10"
     save_plots: bool = False
     hessian_precondition: bool = False
+    curriculum_learning: bool = True
 
     def __str__(self):
         """
@@ -50,7 +51,14 @@ class Conf(dict):
 
         Note: enables printing of Conf objects in fire
         """
-        values = (getattr(self, field.name) for field in dataclasses.fields(self))
+        unwanted_fields = []
+        if not self.use_dropout:  # if not using dropout, do not include dropout rates in run name
+            unwanted_fields.extend(["input_dropout_rate", "hidden_dropout_rate"])
+        values = (
+            getattr(self, field.name)
+            for field in dataclasses.fields(self)
+            if field not in unwanted_fields
+        )
         return '__'.join(map(str, values))
 
 
