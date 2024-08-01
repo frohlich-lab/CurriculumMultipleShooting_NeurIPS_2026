@@ -136,6 +136,7 @@ def initialise_wandb(
         "max_sv": None,
         "min_sv": None,
         "condition_number": "min",
+        "max_grad_norm": "min",
         "num_train_samples": None,
         "patience_counter": None,
     }
@@ -454,3 +455,12 @@ def eig_sv_plot(
         plt.show()
     else:
         return eigenvalues, singular_values
+
+
+def max_grad_norm(grads: PyTree) -> Array:
+    # Flatten
+    grads_flat, _ = jax.tree_util.tree_flatten(grads)
+    # Compute L2 norm
+    grad_norms = [jnp.linalg.norm(g) for g in grads_flat]
+    # Return max norm
+    return jnp.max(jnp.array(grad_norms))

@@ -19,7 +19,8 @@ from src.model_examples.sir.setup_diffrax_model import (get_fit_dfs as get_fit_d
 from src.model_training.model_util import regularise_mlp
 from src.model_training.training_util import (eig_sv_plot, generate_incremental_arrays, get_model_after_step,
                                               get_opt_opt_state_params, get_scheduler,
-                                              initialise_wandb, log_model_stats, log_plots, make_grads_finite)
+                                              initialise_wandb, log_model_stats, log_plots,
+                                              make_grads_finite, max_grad_norm)
 from src.ude_problem import UDEProblem
 from types import SimpleNamespace
 from typing import Callable, Dict, List, Union
@@ -342,6 +343,7 @@ def train(
                         "learning_rate": schedule(epoch),
                         "num_train_samples": len(incremental_training_data[epoch]),
                         **log_model_stats(model, grads, conf),
+                        "max_grad_norm": max_grad_norm(grads),
                     },
                     step=epoch
                 )
