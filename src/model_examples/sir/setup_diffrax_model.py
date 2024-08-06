@@ -37,15 +37,24 @@ class UDEFunction(eqx.Module):
             beta, gamma, delta = self.dynamic_parameters
         else:
             raise ValueError(f"Unknown dynamic parameter scale: {self.options['dynamic_params_scale']}!")
-        s, i, r, t = u
-        nn_t = self.mlp(jnp.array([s, i, r]))
+        s, i, r, t_ = u[0], u[1], u[2], u[3]
+        if len(u) > 4:
+            augmented_vars = u[4:]
+            nn_q = self.mlp(jnp.array([s, i, r, *augmented_vars]))
+        else:
+            nn_q = self.mlp(jnp.array([s, i, r]))
 
+        # TODO @Sebastian: check whether u0[0] needs to appear in equations 2 and 4 + check whether u0[0] is actually
+        #  the total number (N)
         ds = - beta * s * i / u0[0]
-        di = beta * s * i / u0[0] - gamma * i - nn_t[0] * i / u0[0]
-        dr = gamma * i + delta * t
-        dt = nn_t[0] * i / u0[0] - delta * t
+        di = beta * s * i / u0[0] - gamma * i - nn_q[0] * i / u0[0]  # paper does not use N in denominator of last term
+        dr = gamma * i + delta * t_
+        dt_ = nn_q[0] * i / u0[0] - delta * t_  # paper does not use N in denominator of first term
 
-        return jnp.array([ds, di, dr, dt])
+        derivatives = jnp.array([ds, di, dr, dt_])
+        if len(u) > 4:
+            derivatives = jnp.concatenate([derivatives, nn_q[1:]])
+        return derivatives
 
 
 # LOSS AND GRAD FUNCTIONS

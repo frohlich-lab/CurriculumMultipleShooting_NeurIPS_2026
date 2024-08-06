@@ -27,6 +27,10 @@ u0 = {
     'sir': jnp.array([51000000.0, 578, 24, 10]),
 }
 
+if conf.node_augmentation > 0:
+    for dynamical_model in u0.keys():
+        u0[dynamical_model] = jnp.concatenate([u0[dynamical_model], jnp.zeros(conf.node_augmentation)])
+
 dynamic_parameters = {
     'lotka_volterra': jnp.array([1.3, 1.8]),
     'sir': jnp.array([0.15, 0.013, 0.01]),
@@ -44,13 +48,13 @@ else:
     raise ValueError(f"Unknown dynamic parameter scale: {conf.dynamic_params_scale}!")
 
 in_size = {
-    'lotka_volterra': 2,
-    'sir': 3,
+    'lotka_volterra': len(u0['lotka_volterra']),  # i.e. 2 (prey, predator) + conf.node_augmentation
+    'sir': len(u0['sir'])-1,  # i.e. 4 (S, I, R) + conf.node_augmentation -- does not include t (quarantined)
 }
 
 out_size = {
-    'lotka_volterra': 2,
-    'sir': 1,
+    'lotka_volterra': 2+conf.node_augmentation,  # prey, predator, augmentation variables
+    'sir': 1+conf.node_augmentation,  # Q (quarantine strength), augmentation variables
 }
 
 # Setup MLP (same as the original paper for now)

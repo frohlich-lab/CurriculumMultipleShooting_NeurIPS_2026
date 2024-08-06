@@ -39,18 +39,19 @@ class UDEFunction(eqx.Module):
         else:
             raise ValueError(f"Unknown dynamic parameter scale: {self.options['dynamic_params_scale']}!")
         # Unpack state variables
-        prey, predator = u
-        # jax.debug.print("{u}", u=u)
-        if self.options["add_interaction"]:
-            nn_input = jnp.concatenate([u, jnp.array([prey * predator])])
-        else:
-            nn_input = u
-        # jax.debug.print("{nn_input}", nn_input=nn_input)
+        prey, predator = u[0], u[1]
+        # if self.options["add_interaction"]:
+        #     nn_input = jnp.concatenate([u, jnp.array([prey * predator])])
+        # else:
+        #     nn_input = u
+        nn_input = u
         nn_out = self.mlp(nn_input)
-        # jax.debug.print("{nn_out}", nn_out=nn_out)
         d_prey = alpha * prey + nn_out[0]
         d_predator = nn_out[1] - delta * predator
-        return jnp.array([d_prey, d_predator])
+        derivatives = jnp.array([d_prey, d_predator])
+        if len(u) > 2:
+            derivatives = jnp.concatenate([derivatives, nn_out[2:]])
+        return derivatives
 
 
 # LOSS AND GRAD
@@ -58,13 +59,15 @@ class UDEFunction(eqx.Module):
 def compute_loss_grad(prob_params, prob_static, u0, t_save, t_span, data, reg_exp, reg_strength):
     prob = eqx.combine(prob_params, prob_static)
     u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
-    return jnp.mean((u_pred.ys - data) ** 2) + regularise_mlp(prob.func.mlp, reg_exp, reg_strength)
+    return jnp.mean((u_pred.ys[:, :2] - data) ** 2) + regularise_mlp(prob.func.mlp, reg_exp, reg_strength)
 
 
+# TODO @GiacomoFabrini no magic numbers - add conf.node_augmentation and derive number of components for loss.
+#  Same for all functions on this page! Need to adapt SIR as well!
 @eqx.filter_jit
 def compute_loss(prob, u0, t_save, t_span, data, reg_exp, reg_strength):
     u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
-    return jnp.mean((u_pred.ys - data) ** 2) + regularise_mlp(prob.func.mlp, reg_exp, reg_strength)
+    return jnp.mean((u_pred.ys[:, :2] - data) ** 2) + regularise_mlp(prob.func.mlp, reg_exp, reg_strength)
 
 
 @eqx.filter_jit
@@ -72,7 +75,7 @@ def compute_loss_optx(prob_params, args):
     prob_static, u0, t_save, t_span, data, reg_exp, reg_strength = args
     prob = eqx.combine(prob_params, prob_static)
     u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
-    return jnp.mean((u_pred.ys - data) ** 2) + regularise_mlp(prob.func.mlp, reg_exp, reg_strength), None
+    return jnp.mean((u_pred.ys[:, :2] - data) ** 2) + regularise_mlp(prob.func.mlp, reg_exp, reg_strength), None
 
 
 # HESSIAN
@@ -82,7 +85,7 @@ def compute_hess(prob_params, prob_static, u0, t_save, t_span, data, adjoint):
     prob = eqx.combine(prob_params, prob_static)
     u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span,
                         adjoint=adjoint)
-    return jnp.mean((u_pred.ys - data) ** 2)
+    return jnp.mean((u_pred.ys[:, :2] - data) ** 2)
 
 
 @eqx.filter_jit
@@ -92,17 +95,17 @@ def compute_hess_array(flat_p, unflatten_p, prob_static, u0, t_save, t_span, dat
     prob = eqx.combine(prob_params, prob_static)
     u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span,
                         adjoint=adjoint)
-    return jnp.mean((u_pred.ys - data) ** 2) + regularise_mlp(prob.func.mlp, reg_exp, reg_strength)
+    return jnp.mean((u_pred.ys[:, :2] - data) ** 2) + regularise_mlp(prob.func.mlp, reg_exp, reg_strength)
 
 
 # UTILS - DATA AND PLOTTING
 def get_training_validation_data():
     # Read training and validation data
-    train_data_df = pd.read_csv(os.path.join("src", "data_dir", "lotka_volterra", "Train_data.csv"))
+    train_data_df = pd.read_csv(os.path.join("src", "data_dir", "lotka_volterra", "Train_data_GF_63_noise0.05.csv"))
     train_data = jnp.array(train_data_df[["u1", "u2"]].values)
     t_save_train = diffrax.SaveAt(ts=train_data_df["t"].values)
     t_span_train = [0.0, max(train_data_df["t"])]
-    validation_data_df = pd.read_csv(os.path.join("src", "data_dir", "lotka_volterra", "Validation_data.csv"))
+    validation_data_df = pd.read_csv(os.path.join("src", "data_dir", "lotka_volterra", "Validation_data_GF_63_noise0.05.csv"))
     validation_data = jnp.array(validation_data_df[["u1", "u2"]].values)
     t_save_validation = diffrax.SaveAt(ts=validation_data_df["t"].values)
     t_span_validation = [0.0, max(validation_data_df["t"])]
