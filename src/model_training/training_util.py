@@ -3,6 +3,7 @@ import equinox as eqx
 import git
 import itertools as itt
 import jax.numpy as jnp
+import jax.random as jr
 import jax
 import matplotlib.pyplot as plt
 import numpy as np
@@ -484,3 +485,15 @@ def max_grad_norm(grads: PyTree) -> Array:
     grad_norms = [jnp.linalg.norm(g) for g in grads_flat]
     # Return max norm
     return jnp.max(jnp.array(grad_norms))
+
+
+def sample_dynamical_params(true_params, deviation, seed, scale="log10"):
+    if scale not in ["log10", "linear"]:
+        raise ValueError("Scale must be either 'log10' or 'linear'.")
+    sampled_params_log10 = jax.random.uniform(
+        key=jr.PRNGKey(seed),
+        shape=true_params.shape,
+        minval=jnp.log10(true_params)-deviation,
+        maxval=jnp.log10(true_params)+deviation,
+    )
+    return sampled_params_log10 if scale == "log10" else jnp.power(10, sampled_params_log10)

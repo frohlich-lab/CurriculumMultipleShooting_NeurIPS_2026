@@ -121,3 +121,5 @@ FREEZE_MECHANISTIC_PARAMS = {
     True,
     False
 }
+
+N_STARTS = 10  # number of multi-starts

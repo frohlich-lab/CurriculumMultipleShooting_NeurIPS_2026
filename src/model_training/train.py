@@ -7,11 +7,15 @@ import src.model_examples.sir.setup_diffrax_model as setup_sir
 from jax import config
 from src.common import activation_functions, Conf, EarlyStoppingParams
 from src.model_training.model_util import set_weight_bias
+from src.model_training.training_util import sample_dynamical_params
 from src.ude_problem import UDEProblem, build_mlp
 from training import train
 from training_configuration import N_EPOCHS, MAX_ITER_OPTX
 
 conf = fire.Fire(Conf)
+
+# Set seed for sampling dynamical parameters
+seed = conf.multistart_job
 
 # Technically Float32 should work, but for consistency between the benchmarks
 # I think we should use Float64
@@ -31,21 +35,21 @@ if conf.node_augmentation > 0:
     for dynamical_model in u0.keys():
         u0[dynamical_model] = jnp.concatenate([u0[dynamical_model], jnp.zeros(conf.node_augmentation)])
 
-dynamic_parameters = {
+true_dynamic_parameters = {
     'lotka_volterra': jnp.array([1.3, 1.8]),
     'sir': jnp.array([0.15, 0.013, 0.01]),
 }
 
-# Estimate dynamic parameters on log10 scale
-if conf.dynamic_params_scale == "log10":
-    dynamic_parameters = {
-        dynamical_model: jnp.log10(dynamic_parameters[dynamical_model])
-        for dynamical_model in dynamic_parameters.keys()
-    }
-elif conf.dynamic_params_scale == "linear":
-    pass
-else:
-    raise ValueError(f"Unknown dynamic parameter scale: {conf.dynamic_params_scale}!")
+# Sample dynamic parameters and convert to correct scale (linear/log10)
+dynamic_parameters = {
+    dynamical_model: sample_dynamical_params(
+        true_params=true_dynamic_parameters[dynamical_model],
+        deviation=conf.multistart_deviation,
+        seed=seed,
+        scale=conf.dynamic_params_scale
+    )
+    for dynamical_model in true_dynamic_parameters.keys()
+}
 
 in_size = {
     'lotka_volterra': len(u0['lotka_volterra']),  # i.e. 2 (prey, predator) + conf.node_augmentation

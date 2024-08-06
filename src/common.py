@@ -48,6 +48,8 @@ class Conf(dict):
     save_plots: bool = False
     hessian_precondition: bool = False
     curriculum_learning: bool = True
+    multistart_deviation: float = 0.0
+    multistart_job: int = 0
 
     def __str__(self):
         """
