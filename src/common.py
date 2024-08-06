@@ -13,14 +13,17 @@ class Conf(dict):
     mlp_layer_width: int = 5  # change back to 5
     mlp_depth: int = 1  # change back to 1
     init_scale: float = 0.1
+    use_bias: bool = True
+    use_final_bias: bool = True
     activation_fn_name: str = "relu"
+    final_activation_fn_name: str = "identity"
     optimiser: str = "adam"
     # default max_lrate is 0.01 as in UDE paper
     max_lrate: float = 0.01  # absolute maximum learning rate (max in first schedule or in all schedules without decay)
     # default lrate_span is 1 = no range spanned
     lrate_span: float = 1e0  # ratio between max and min learning rates in a given schedule
     # default lrate_decay is 1 - no decay
-    lrate_decay: float = 1.0  # if < 1, the learning rate decays between schedules
+    lrate_decay: float = 0.99  # if < 1, the learning rate decays between schedules
     # default warmup_fct = 0 as in UDE paper (no warmup)
     warmup_fct: float = 0.1  # fraction of schedule epochs to be used for warmup
     # default opt_steps creates a single schedule if N_EPOCHS = 2000
@@ -39,7 +42,8 @@ class Conf(dict):
     lookahead_reset_state: bool = False
     freeze_mechanistic_params: bool = False
     # Extra options for UDEFunction
-    add_interaction: bool = False
+    node_augmentation: int = 0
+    # add_interaction: bool = False
     dynamic_params_scale: str = "log10"
     save_plots: bool = False
     hessian_precondition: bool = False
@@ -97,10 +101,13 @@ def rbf(x):
 
 # Dictionary of activation functions to choose from
 activation_functions = {
+    "identity": lambda x: x,  # identity = no activation function, default for final_activation
     "tanh": jnn.tanh,
     "relu": jnn.relu,
     "swish": jnn.swish,
     "elu": jnn.elu,
     "gelu": jnn.gelu,
     "rbf": rbf,
+    "softplus": jnn.softplus,
+    "squareplus": jnn.squareplus,
 }

@@ -99,7 +99,10 @@ def build_mlp(
         width_size: int,
         hidden_layers: int,
         key: Any,
+        use_bias: bool,
+        use_final_bias: bool,
         activation: Callable,
+        final_activation: Callable,
         use_dropout: bool,
         input_dropout_rate: float,
         hidden_dropout_rate: float,
@@ -110,7 +113,10 @@ def build_mlp(
             out_size=out_size,
             width_size=width_size,
             depth=hidden_layers,
+            use_bias=use_bias,
+            use_final_bias=use_final_bias,
             activation=activation,
+            final_activation=final_activation,
             key=key
         )
     elif use_dropout and (input_dropout_rate is not None) and (hidden_dropout_rate is not None):
@@ -120,7 +126,10 @@ def build_mlp(
             width_size=width_size,
             depth=hidden_layers,
             activation=activation,
+            final_activation=final_activation,
             key=key,
+            use_bias=use_bias,
+            use_final_bias=use_final_bias,
             dropout_rates={
                 "input": input_dropout_rate,
                 "hidden": hidden_dropout_rate,

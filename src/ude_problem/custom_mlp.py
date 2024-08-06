@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, List, Union
 class CustomDropoutMLP(eqx.Module):
     layers: List[Union[eqx.nn.Linear, eqx.nn.Dropout]]
     activation: Callable
+    final_activation: Callable
     dropout_keys: Any
 
     # TODO @GiacomoFabrini consider adding bias behaviour (use_bias)
@@ -17,7 +18,10 @@ class CustomDropoutMLP(eqx.Module):
             width_size: int,
             depth: int,
             key: Any,
+            use_bias: bool,
+            use_final_bias: bool,
             activation: Callable,
+            final_activation: Callable,
             dropout_rates: Dict[str, float],
     ):
         # Initialise layers and prepare keys for layer initialisation
@@ -49,11 +53,12 @@ class CustomDropoutMLP(eqx.Module):
                 eqx.nn.Linear(
                     in_features=fan_in,
                     out_features=fan_out,
-                    # adds bias by default (use_bias=True) TODO @GiacomoFabrini - consider prescribing this properly
+                    use_bias=use_bias if layer_num < depth else use_final_bias,
                     key=key,
                 )
             )
         self.activation = activation
+        self.final_activation = final_activation
 
     def __call__(self, x):
         a = x
@@ -64,5 +69,5 @@ class CustomDropoutMLP(eqx.Module):
                     a = self.activation(layer(a))
                 elif isinstance(layer, eqx.nn.Dropout):
                     a = layer(a, key=self.dropout_keys[i % 2 + 1])
-        # If single layer (self.layers[0] == self.layers[-1]), fully linear behaviour (no non-linear activations).
-        return self.layers[-1](a)
+        # by default the final activation is an identity (no non-linearity)
+        return self.final_activation(self.layers[-1](a))

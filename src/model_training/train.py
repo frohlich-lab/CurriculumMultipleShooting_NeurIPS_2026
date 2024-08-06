@@ -57,9 +57,9 @@ out_size = {
 if conf.activation_fn_name not in activation_functions:
     raise ValueError(f"Unknown activation function: {conf.activation_fn_name}!")
 
-if conf.add_interaction:
-    # increase input size for interaction term
-    in_size["lotka_volterra"] += 1
+# if conf.add_interaction:
+#     # increase input size for interaction term
+#     in_size["lotka_volterra"] += 1
 
 mlp = build_mlp(
     in_size=in_size[conf.dynamical_model],
@@ -67,7 +67,10 @@ mlp = build_mlp(
     width_size=conf.mlp_layer_width,
     hidden_layers=conf.mlp_depth,
     key=key_mlp,
+    use_bias=conf.use_bias,
+    use_final_bias=conf.use_final_bias,
     activation=activation_functions[conf.activation_fn_name],
+    final_activation=activation_functions[conf.final_activation_fn_name],
     use_dropout=conf.use_dropout,
     input_dropout_rate=conf.input_dropout_rate,
     hidden_dropout_rate=conf.hidden_dropout_rate,
@@ -104,7 +107,7 @@ else:
     raise ValueError(f"Unknown dynamical model: {conf.dynamical_model}!")
 
 options = {
-    "add_interaction": conf.add_interaction,
+    # "add_interaction": conf.add_interaction,
     "dynamic_params_scale": conf.dynamic_params_scale,
 }
 ude_problem = UDEProblem(
