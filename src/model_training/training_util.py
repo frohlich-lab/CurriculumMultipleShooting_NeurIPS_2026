@@ -369,35 +369,55 @@ def generate_incremental_arrays(
         data: Array,
         t_save: diffrax.SaveAt,
         n_epoch: int,
-        increment_percentage: int,
+        increment_percentage: int = 10,
+        single_step_switch: bool = False,
+        fraction_single_step: int = 10,
 ):
+    # Checks
     if increment_percentage <= 0 or increment_percentage > 100 or 100 % increment_percentage != 0:
         raise ValueError("Increment percentage must be a divisor of 100 (e.g. 10, 20, 25, 50).")
+
+    if fraction_single_step <= 0 or fraction_single_step > 100:
+        raise ValueError("Fraction single step must be between 1 and 100.")
 
     # Initialize the list to store the results
     incremental_data = []
     incremental_t_save = []
     incremental_t_span = []
 
-    if conf.curriculum_learning:
+    epochs_filled = 0
+
+    if single_step_switch:
+        # Determine the number of epochs where the 10% data is used
+        single_step_epochs = int(n_epoch * (fraction_single_step / 100))
+
+        # Use only 10% of the data for the first single_step_epochs
+        length = int(len(data) * fraction_single_step/100)  # fraction_single_step% of the data
+        for _ in range(single_step_epochs):
+            incremental_data.append(data[:length])
+            incremental_t_save.append(diffrax.SaveAt(ts=t_save.subs.ts[:length]))
+            incremental_t_span.append([np.min(t_save.subs.ts[:length]), np.max(t_save.subs.ts[:length])])
+
+        epochs_filled = single_step_epochs
+
+    elif conf.curriculum_learning:
+        switch_epoch = min(int(0.50 * n_epoch), 2000)  # ramp up amount of training data for 2k / 50% of allotted epochs
         for i in range(1, increment_percentage + 1):
             length = int(len(data) * (i / increment_percentage))
-            start_epoch = int((i - 1) * (int(0.50 * n_epoch) / increment_percentage))
-            end_epoch = int(i * (int(0.50 * n_epoch) / increment_percentage))
+            start_epoch = int((i - 1) * (switch_epoch / increment_percentage))
+            end_epoch = int(i * (switch_epoch / increment_percentage))
             for _ in range(end_epoch - start_epoch):
                 incremental_data.append(data[:length])
                 incremental_t_save.append(diffrax.SaveAt(ts=t_save.subs.ts[:length]))
                 incremental_t_span.append([np.min(t_save.subs.ts[:length]), np.max(t_save.subs.ts[:length])])
 
-        # Add full data for the last 50% of epochs
-        for _ in range(n_epoch - len(incremental_data)):
-            incremental_data.append(data)
-            incremental_t_save.append(t_save)
-            incremental_t_span.append([np.min(t_save.subs.ts), np.max(t_save.subs.ts)])
-    else:
-        incremental_data = [data] * n_epoch
-        incremental_t_save = [t_save] * n_epoch
-        incremental_t_span = [[np.min(t_save.subs.ts), np.max(t_save.subs.ts)]] * n_epoch
+        epochs_filled = len(incremental_data)
+
+    # Add full data for the remaining epochs, re-using the same code block
+    for _ in range(n_epoch - epochs_filled):
+        incremental_data.append(data)
+        incremental_t_save.append(t_save)
+        incremental_t_span.append([np.min(t_save.subs.ts), np.max(t_save.subs.ts)])
 
     return incremental_data, incremental_t_save, incremental_t_span
 
