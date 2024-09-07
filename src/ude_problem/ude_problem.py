@@ -27,7 +27,7 @@ class UDEProblem(eqx.Module):
     dynamical_model: str
     func: Union[UDEFunction_lv, UDEFunction_sir]
 
-    def __init__(self, dynamical_model, dynamic_parameters, mlp, options, **kwargs):
+    def __init__(self, dynamical_model, dynamic_parameters, mlp, options, state_dimension, **kwargs):
         """
         Parameters
         ----------
@@ -52,7 +52,7 @@ class UDEProblem(eqx.Module):
         self.dynamical_model = dynamical_model
         if self.dynamical_model not in UDE_funcs.keys():
             raise ValueError(f"Unknown dynamical model: {dynamical_model}!")
-        self.func = UDE_funcs[dynamical_model](dynamic_parameters, mlp, options)
+        self.func = UDE_funcs[dynamical_model](dynamic_parameters, mlp, options, state_dimension)
 
     def solve(self, solver, u0, t_save, t_span,
               controller=diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8),
@@ -89,8 +89,9 @@ class UDEProblem(eqx.Module):
         dynamical_model = self.dynamical_model
         dynamic_parameters = self.func.dynamic_parameters
         options = self.func.options
+        state_dimension = self.func.state_dimension
         mlp = new_mlp if new_mlp is not None else self.func.mlp
-        return UDEProblem(dynamical_model, dynamic_parameters, mlp, options)
+        return UDEProblem(dynamical_model, dynamic_parameters, mlp, options, state_dimension)
 
 
 def build_mlp(

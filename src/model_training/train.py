@@ -10,7 +10,7 @@ from src.model_training.model_util import set_weight_bias
 from src.model_training.training_util import sample_dynamical_params
 from src.ude_problem import UDEProblem, build_mlp
 from training import train
-from training_configuration import N_EPOCHS, MAX_ITER_OPTX
+from training_configuration import MECHANISTIC_FIT_EPOCHS, N_EPOCHS, MAX_ITER_OPTX_FINETUNE
 
 conf = fire.Fire(Conf)
 
@@ -24,6 +24,11 @@ config.update("jax_enable_x64", True)
 # Key
 key = jr.PRNGKey(123)
 key_mlp, key_init = jr.split(key, 2)
+
+state_dims = {
+    "lotka_volterra": 2,
+    "sir": 4,
+}
 
 # Setup default u0, dynamic parameters, in_size, out_size
 u0 = {
@@ -123,6 +128,7 @@ ude_problem = UDEProblem(
     dynamic_parameters=dynamic_parameters[conf.dynamical_model],
     mlp=mlp,
     options=options,
+    state_dimension=state_dims[conf.dynamical_model],
 )
 
 # # Linear schedule Fabian set up for the DMM -- DISABLED WITH NEW SCHEDULER
@@ -138,6 +144,11 @@ early_stopping_params = EarlyStoppingParams(
     min_improvement=0,  # absolute improvement in loss_val to consider as improvement
 )
 
+# TODO @GiacomoFabrini - can we get u0 from data? fix this!
+# u0 = train_data[0]
+# if conf.node_augmentation > 0:
+#     u0 = jnp.concatenate([u0, jnp.zeros(conf.node_augmentation)])
+
 trained_model = train(
     model=ude_problem,
     u0=u0[conf.dynamical_model],
@@ -148,11 +159,12 @@ trained_model = train(
     t_save_val=t_save_validation,
     t_span_val=t_span_validation,
     conf=conf,
-    n_epochs=N_EPOCHS,
     early_stopping_params=early_stopping_params,
     loss_fn=loss_fn,
     loss_grad_fn=loss_grad_fn,
     loss_optx=loss_optx,
     optx_config=optx_config,
-    max_iter_optx=MAX_ITER_OPTX,
+    max_iter_optx_mechanistic=MECHANISTIC_FIT_EPOCHS,
+    n_epochs=N_EPOCHS,
+    max_iter_optx_finetune=MAX_ITER_OPTX_FINETUNE,
 )

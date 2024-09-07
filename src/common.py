@@ -40,7 +40,7 @@ class Conf(dict):
     lookahead_sync: int = 10
     lookahead_step_size: float = 0.5
     lookahead_reset_state: bool = False
-    freeze_mechanistic_params: bool = False
+    # freeze_mechanistic_params: bool = False -- disabled after introduction of multistage training
     # Extra options for UDEFunction
     node_augmentation: int = 0
     # add_interaction: bool = False
@@ -48,8 +48,9 @@ class Conf(dict):
     save_plots: bool = False
     hessian_precondition: bool = False
     curriculum_learning: bool = True
-    multistart_deviation: float = 0.0
+    multistart_deviation: float = 0.0  # default: ground truth parameters
     multistart_job: int = 0
+    mechanistic_fit_epochs: int = 0
 
     def __str__(self):
         """

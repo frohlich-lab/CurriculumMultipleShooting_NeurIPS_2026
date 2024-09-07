@@ -164,7 +164,10 @@ def mlp_train(
             conf=conf,
             loss_grad_fn=loss_grad_fn,
         )
-        model = get_model_after_step(params, static, conf)
+        model = eqx.combine(
+            params.fast if conf.use_lookahead else params,
+            static,
+        )
 
         if conf.use_dropout:
             # Get a copy of the model for inference

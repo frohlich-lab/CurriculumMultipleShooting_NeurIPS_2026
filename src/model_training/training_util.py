@@ -17,7 +17,7 @@ from pathlib import Path
 from src.common import Conf, EarlyStoppingParams, plots_dir
 from src.model_examples.lotka_volterra.setup_diffrax_model import compute_hess_array as compute_hess_array_lv
 from src.model_examples.sir.setup_diffrax_model import compute_hess_array as compute_hess_array_sir
-from src.model_training.training_configuration import N_EPOCHS, MAX_ITER_OPTX
+from src.model_training.training_configuration import N_EPOCHS, MAX_ITER_OPTX_FINETUNE
 from src.ude_problem import UDEProblem
 from typing import List, Union
 
@@ -169,6 +169,8 @@ def log_model_stats(
         model: UDEProblem,
         grad: UDEProblem,
         conf: Conf,
+        frozen_mechanistic: bool = False,
+        frozen_nn: bool = False,
 ):
     """
     Log the layer statistics to wandb.
@@ -184,22 +186,34 @@ def log_model_stats(
         )
         if isinstance(par_layer, eqx.nn.Linear)
     ]
-    layer_stats = {
-        f'layer{ind_layer}.{par_label}_{value_label}': wandb.Histogram(
-            np.log10(np.abs(np.array(par_vals[par_vals != 0])))
-        )
-        if value_label == 'grads'
-        else wandb.Histogram(list(par_vals))
-        for ind_layer, (par_layer, grad_layer) in enumerate(layers)
-        for value_label, layer in zip(
-            ('vals', 'grads'), (par_layer, grad_layer), strict=False
-        )
-        for par_label, par_vals in zip(
-            ('w', 'b'),
-            (layer.weight.ravel(), layer.bias.ravel()),
-            strict=False,
-        )
-    }
+    if not frozen_nn:
+        layer_stats = {
+            f'layer{ind_layer}.{par_label}_{value_label}': wandb.Histogram(
+                np.log10(np.abs(np.array(par_vals[par_vals != 0])))
+            )
+            if value_label == 'grads'
+            else wandb.Histogram(list(par_vals))
+            for ind_layer, (par_layer, grad_layer) in enumerate(layers)
+            for value_label, layer in zip(
+                ('vals', 'grads'), (par_layer, grad_layer), strict=False
+            )
+            for par_label, par_vals in zip(
+                ('w', 'b'),
+                (layer.weight.ravel(), layer.bias.ravel()),
+                strict=False,
+            )
+        }
+    else:
+        layer_stats = {
+            f'layer{ind_layer}.{par_label}_{value_label}': wandb.Histogram(list(par_vals))
+            for ind_layer, (par_layer, _) in enumerate(layers)
+            for value_label, layer in zip(['vals'], [par_layer])
+            for par_label, par_vals in zip(
+                ('w', 'b'),
+                (layer.weight.ravel(), layer.bias.ravel()),
+                strict=False,
+            )
+        }
 
     if conf.dynamical_model == 'lotka_volterra':
         param_labels = ['alpha', 'delta']
@@ -208,7 +222,7 @@ def log_model_stats(
     else:
         raise ValueError(f"Unknown dynamical model: {conf.dynamical_model}!")
 
-    if not conf.freeze_mechanistic_params:
+    if not frozen_mechanistic:
         dynamic_param_stats = {
             f'dynamic_param.{par_label}_{value_label}': wandb.Histogram(
                 np.log10(np.abs(np.array(par_val[par_val != 0])))
@@ -231,8 +245,8 @@ def log_model_stats(
         dynamic_param_stats = {
             f'dynamic_param.{par_label}_{value_label}':  wandb.Histogram(par_val)
             for value_label, par_vals in zip(
-                'vals',
-                model.func.dynamic_parameters,
+                ('vals',),
+                (model.func.dynamic_parameters,),
                 strict=False
             )
             for par_label, par_val in zip(
@@ -293,18 +307,6 @@ def make_grads_finite(grads):
         lambda x: jnp.where(jnp.isfinite(x), x, jnp.zeros_like(x)),
         grads,
     )
-
-
-def get_model_after_step(
-        params: Union[PyTree, UDEProblem],
-        static: Union[PyTree, UDEProblem],
-        conf: Conf,
-):
-    if conf.use_lookahead:
-        model = eqx.combine(params.fast, static)
-    else:
-        model = eqx.combine(params, static)
-    return model
 
 
 def plot_model_weights(model: UDEProblem, conf: Conf, filename: str = None):
@@ -433,16 +435,17 @@ def eig_sv_plot(
         conf: Conf,
         epoch: int,
         plot: bool = True,
+        return_values: bool = False
 ):
     # flatten params PyTree and get unflatten function
-    flat_p_hess, unflatten_p_hess = jax.flatten_util.ravel_pytree(params)
+    flat_p, unflatten_p = jax.flatten_util.ravel_pytree(params)
     hessian_fn = {
         "lotka_volterra": compute_hess_array_lv,
         "sir": compute_hess_array_sir,
     }
     # compute hessian
     hessian = hessian_fn[conf.dynamical_model](
-        flat_p_hess, unflatten_p_hess, static,
+        flat_p, unflatten_p, static,
         u0, t_save, t_span, data,
         diffrax.DirectAdjoint(),
         conf.reg_exp, conf.reg_strength,
@@ -471,10 +474,10 @@ def eig_sv_plot(
         plt.savefig(
             plots_dir /
             conf.dynamical_model /
-            f"sv+eig_plot_{conf.curriculum_learning}_{N_EPOCHS}_{MAX_ITER_OPTX}_{epoch}.pdf"
+            f"sv+eig_plot_{conf.curriculum_learning}_{N_EPOCHS}_{MAX_ITER_OPTX_FINETUNE}_{epoch}.pdf"
         )
         plt.show()
-    else:
+    if return_values:
         return eigenvalues, singular_values
 
 
@@ -497,3 +500,22 @@ def sample_dynamical_params(true_params, deviation, seed, scale="log10"):
         maxval=jnp.log10(true_params)+deviation,
     )
     return sampled_params_log10 if scale == "log10" else jnp.power(10, sampled_params_log10)
+
+
+def enforce_minimum_spacing(arr: np.ndarray, min_dist: int) -> np.ndarray:
+    """
+    Filters an input array, arr, and keeps the original items that are at least min_dist apart.
+    """
+    prev = - np.inf  # ensure first element is always kept
+    return np.array([prev := x for x in arr if x - prev >= min_dist])
+
+
+def generate_log_epochs(n_epochs: int, num_samples: int, min_dist: int) -> np.ndarray:
+    """
+    Returns epochs regularly spaced in log10 space but no closer than min_dist
+    to prevent running into filestream rate limit in W&B.
+    """
+    log_epochs = np.unique(
+        np.logspace(0, np.log10(n_epochs), num=num_samples).astype(int)
+    )
+    return enforce_minimum_spacing(log_epochs, min_dist)

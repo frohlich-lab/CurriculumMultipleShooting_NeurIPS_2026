@@ -16,8 +16,8 @@ from src.model_examples.lotka_volterra.setup_diffrax_model import (get_fit_dfs a
                                                                    compute_hess_array as compute_hess_array_lv)
 from src.model_examples.sir.setup_diffrax_model import (get_fit_dfs as get_fit_dfs_sir,
                                                         compute_hess_array as compute_hess_array_sir)
-from src.model_training.model_util import regularise_mlp
-from src.model_training.training_util import (eig_sv_plot, generate_incremental_arrays, get_model_after_step,
+from src.model_training.model_util import regularise_mlp, set_weight_bias
+from src.model_training.training_util import (eig_sv_plot, generate_incremental_arrays, generate_log_epochs,
                                               get_opt_opt_state_params, get_scheduler,
                                               initialise_wandb, log_model_stats, log_plots,
                                               make_grads_finite, max_grad_norm)
@@ -68,7 +68,77 @@ def apply_hessian_preconditioning_to_grads(
     return grads
 
 
-def optx_solve(y, solver, fn, args, args_val, f_struct, aux_struct, options, tags, max_steps, starting_epoch, conf):
+def train_optimistix(
+        model: UDEProblem,
+        filter_spec: PyTree,
+        conf: Conf,
+        optx_config: dict[str: float],
+        loss_optx: Callable,
+        epoch: int,
+        num_epochs: int,
+        u0: object,
+        t_save_train: SaveAt, t_span_train: List, training_data: jnp.ndarray,
+        t_save_val: SaveAt, t_span_val: List, validation_data: jnp.ndarray,
+        frozen_mechanistic: bool = False, frozen_nn: bool = False,
+) -> tuple[UDEProblem, SimpleNamespace, UDEProblem]:
+    # Define options and tags for BFGS solver
+    options = {
+        "rtol": optx_config["rtol"],
+        "atol": optx_config["atol"],
+    }
+    tags = frozenset()
+    # Additional training with BFGS via optimistix
+    solver = optx.BFGS(**options)
+    # Set dropout behaviour to be deterministic
+    model_optx = model.copy(
+        new_mlp=eqx.nn.inference_mode(model.func.mlp, value=True)
+    )
+
+    # Split model_optx in learnable params and static component
+    params, static = eqx.partition(model_optx, filter_spec)
+
+    # Minimise via Optimistix - no access to params during solve
+    # sol = optx.minimise(
+    #     fn=loss_optx,
+    #     solver=solver,
+    #     y0=params,
+    #     args=(static, u0, t_save_train, t_span_train, training_data),
+    #     max_steps=max_iter_optx_finetune,
+    # )
+
+    # Define additional arguments to pass optimistix loss function (train and val) for step by step solve
+    args = (static, u0, t_save_train, t_span_train, training_data, conf.reg_exp, conf.reg_strength)
+    args_val = (static, u0, t_save_val, t_span_val, validation_data, conf.reg_exp, conf.reg_strength)
+    # Shape+dtype of the output of `fn`
+    f_struct = jax.ShapeDtypeStruct((), jnp.float64)
+    aux_struct = None
+
+    # Optimistix solve
+    sol = optx_solve(
+        y=params, solver=solver,
+        fn=loss_optx, args=args, args_val=args_val,
+        f_struct=f_struct, aux_struct=aux_struct,
+        options=options, tags=tags,
+        max_steps=num_epochs,
+        starting_epoch=epoch,
+        conf=conf,
+        frozen_mechanistic=frozen_mechanistic,
+        frozen_nn=frozen_nn,
+    )
+
+    # Get final model
+    model = eqx.combine(sol.value, static)
+    return model, sol, static
+
+
+def optx_solve(
+        y, solver, fn,
+        args, args_val,
+        f_struct, aux_struct,
+        options, tags, max_steps,
+        starting_epoch, conf,
+        frozen_mechanistic, frozen_nn,
+):
     # Initialise loss variables
     loss_train, loss_val = jnp.inf, jnp.inf
     aux = None
@@ -100,7 +170,8 @@ def optx_solve(y, solver, fn, args, args_val, f_struct, aux_struct, options, tag
                     **log_model_stats(
                         eqx.combine(y, args[0]),  # recombine updated params and static
                         state.f_info.grad,
-                        conf
+                        conf,
+                        frozen_mechanistic, frozen_nn,
                     ),
                 },
                 step=starting_epoch+iteration
@@ -172,16 +243,17 @@ def train(
         t_save_train: SaveAt,
         t_span_train: List,
         validation_data: jnp.ndarray,
-        t_save_val: List,
+        t_save_val: SaveAt,
         t_span_val: List,
         conf: Conf,
-        n_epochs: int,
         early_stopping_params: EarlyStoppingParams,
         loss_fn: Callable,
         loss_grad_fn: Callable,
         loss_optx: Callable,
         optx_config: Dict,
-        max_iter_optx: int,
+        max_iter_optx_mechanistic: int,
+        n_epochs: int,
+        max_iter_optx_finetune: int,
 ) -> UDEProblem:
     """
     Trains the UDEmodel (`model`).
@@ -206,8 +278,6 @@ def train(
         validation data for the model.
     :param conf:
         configuration (hyperparameters).
-    :param n_epochs:
-        Number of training iterations (epochs).
     :param early_stopping_params:
         Dictionary of parameters for Early-Stopping.
     :param loss_fn:
@@ -219,7 +289,11 @@ def train(
         i.e. dynamic portion of the model).
     :param optx_config:
         Configuration for optimistix solver (rtol, atol).
-    :param max_iter_optx:
+    :param max_iter_optx_mechanistic:
+        Maximum number of iterations for initial fitting of mechanistic parameters (dynamical parameters).
+    :param n_epochs:
+        Number of training iterations (epochs).
+    :param max_iter_optx_finetune:
         Maximum number of iterations for further training via optimistix.
     """
 
@@ -233,20 +307,24 @@ def train(
     # Initialise variables
     early_stopper, opt, opt_state, schedule = None, None, None, None
     epoch = 0
+    best_model, loss_val_min = model, jnp.inf
 
-    # Split model into params and static - depends on whether we are freezing mechanistic parameters or learning them
-    if conf.freeze_mechanistic_params:
-        # Initialise filter_spec with True for all arrays
-        filter_spec = jtu.tree_map(lambda x: eqx.is_array(x), model)
-        # Freeze dynamic (mechanistic) parameters
-        filter_spec = eqx.tree_at(
-            lambda x: x.func.dynamic_parameters,
-            filter_spec,
-            replace=jax.tree_map(lambda _: False, filter_spec.func.dynamic_parameters)
-        )
-    else:
-        filter_spec = eqx.is_array
-    params, static = eqx.partition(model, filter_spec)
+    # Create filter_spec allowing for training of mechanistic params only or neural network only
+    filter_spec_freeze_mechanistic = jtu.tree_map(lambda x: eqx.is_array(x), model)
+    # Freeze dynamic (mechanistic) parameters
+    filter_spec_freeze_mechanistic = eqx.tree_at(
+        lambda x: x.func.dynamic_parameters,
+        filter_spec_freeze_mechanistic,
+        replace=jax.tree_map(lambda _: False, filter_spec_freeze_mechanistic.func.dynamic_parameters)
+    )
+    # Freeze neural network
+    filter_spec_freeze_nn = jtu.tree_map(lambda x: False, model)
+    filter_spec_freeze_nn = eqx.tree_at(
+        lambda x: x.func.dynamic_parameters,
+        filter_spec_freeze_nn,
+        replace=jax.tree_map(lambda _: True, filter_spec_freeze_nn.func.dynamic_parameters)
+    )
+
 
     # Define plotting functions, labels and colours
     if conf.dynamical_model == "lotka_volterra":
@@ -260,8 +338,99 @@ def train(
     else:
         raise ValueError(f"Undefined dynamical model {conf.dynamical_model}.")
 
-    # Train with ADAM/ADAM-W
+    # Extract initialised MLP from model
+    initialised_mlp = model.func.mlp
+
+    # STAGE 1: fit mechanistic model parameters -- do not use curriculum learning
+    if max_iter_optx_mechanistic > 0:
+        # Zero-out the MLP contribution to train mechanistic parameters
+        zeroed_mlp = set_weight_bias(initialised_mlp, 0.0, jax.random.PRNGKey(0))
+        # In case dropout is enabled, set inference to True
+        model = model.copy(
+            new_mlp=eqx.nn.inference_mode(zeroed_mlp, value=True)
+        )
+        # Freeze neural network
+        model, sol, static = train_optimistix(
+            model=model,
+            filter_spec=filter_spec_freeze_nn,
+            conf=conf,
+            optx_config=optx_config,
+            loss_optx=loss_optx,
+            epoch=epoch,
+            num_epochs=max_iter_optx_mechanistic,
+            u0=u0,
+            t_save_train=t_save_train,
+            t_span_train=t_span_train,
+            training_data=training_data,
+            t_save_val=t_save_val,
+            t_span_val=t_span_val,
+            validation_data=validation_data,
+            frozen_mechanistic=False,
+            frozen_nn=True,
+        )
+
+        # Update epoch count
+        epoch = sol.stats["num_steps"]
+
+        # Compute validation loss of optimistix trained model
+        loss_val = loss_fn(
+            model,
+            u0,
+            t_save_val,
+            t_span_val,
+            validation_data,
+            conf.reg_exp,
+            conf.reg_strength,
+        )
+
+        # Update best_model
+        if loss_val < loss_val_min:
+            best_model = model
+
+        # Plot eigenvalue and singular value spectrum
+        # eig_sv_plot(
+        #     sol.value,
+        #     static,
+        #     u0,
+        #     t_save_train, t_span_train, training_data,
+        #     conf,
+        #     epoch,
+        # )
+
+        # Log plots again after further training with optimistix/BFGS
+        for dataset, t_save, t_span, data in zip(
+                ["train", "validation"],
+                [t_save_train, t_save_val],
+                [t_span_train, t_span_val],
+                [training_data, validation_data]
+        ):
+            df_predict, df_obs = get_fit_dfs(model, u0, t_save, t_span, data)
+            plot_dir = plots_dir / conf.dynamical_model / "mechanistic_optx"
+            plot_dir.mkdir(exist_ok=True, parents=True)
+            log_plots(
+                df_predict,
+                df_obs,
+                labels,
+                colors,
+                epoch,
+                f"{dataset}_mechanistic_optx",
+                save_plot=conf.save_plots,
+                plot_dir=plot_dir,
+                plot_fmt="svg",
+            )
+        # Increment epoch before moving to next stage
+        epoch +=1
+
+
+    # STAGE 2: Train with ADAM/ADAM-W -- freeze mechanistic model parameters
     if n_epochs > 0:
+        # Restore the previously initialised MLP
+        model = model.copy(
+            new_mlp=initialised_mlp
+        )
+        # Freeze mechanistic parameters
+        params, static = eqx.partition(model, filter_spec_freeze_mechanistic)
+
         # Get schedule
         schedule = get_scheduler(conf=conf, n_epochs=n_epochs)
 
@@ -280,27 +449,36 @@ def train(
                     patience=early_stopping_params.patience
                 )
 
+        # Generate training data - curriculum learning or not
         incremental_training_data, incremental_train_save, incremental_t_span = generate_incremental_arrays(
             conf,
             training_data,
             t_save_train,
             n_epochs, 10,
         )
+
+        # Generate regularly log-spaced epochs for early-stopping evaluation + model stat logging - from DMMs
+        log_epochs = generate_log_epochs(n_epochs=n_epochs, num_samples=100, min_dist=5)
+
         # Training loop
-        for epoch in range(n_epochs):
+        for nn_epoch in range(n_epochs):
             params, opt_state, loss_train, grads = make_step(
                 params=params,
                 static=static,
                 opt=opt,
                 opt_state=opt_state,
-                input_data=incremental_training_data[epoch],
+                input_data=incremental_training_data[nn_epoch],
                 u0=u0,
-                t_save=incremental_train_save[epoch],
-                t_span=incremental_t_span[epoch],
+                t_save=incremental_train_save[nn_epoch],
+                t_span=incremental_t_span[nn_epoch],
                 conf=conf,
                 loss_grad_fn=loss_grad_fn,
             )
-            model = get_model_after_step(params, static, conf)
+            # Recombine dynamic and static into full model
+            model = eqx.combine(
+                params.fast if conf.use_lookahead else params,
+                static,
+            )
 
             if conf.use_dropout:
                 # Get a copy of the model for inference
@@ -322,30 +500,23 @@ def train(
                 conf.reg_strength,
             )
 
-            # Plot eigenvalue and singular value spectrum at first and last ADAM epoch
-            if epoch in [0, n_epochs-1]:
-                eig_sv_plot(
-                    params,
-                    static,
-                    u0, t_save_train, t_span_train,
-                    training_data,
-                    conf,
-                    epoch,
-                    plot=True,
-                )
+            # Keep track of best performing model on validation dataset (and corresponding loss)
+            if loss_val < loss_val_min:
+                best_model = inference_model
+                loss_val_min = loss_val
 
-            # log loss_train, loss_val, learning rate, param values and grads every 5 epochs
-            if epoch % 10 == 0:
+            # log loss_train, loss_val, learning rate, param values and grads on log-spaced epochs
+            if nn_epoch in log_epochs:
                 wandb.log(
                     {
                         "loss_train": loss_train,
                         "loss_val": loss_val,
-                        "learning_rate": schedule(epoch),
-                        "num_train_samples": len(incremental_training_data[epoch]),
-                        **log_model_stats(model, grads, conf),
+                        "learning_rate": schedule(nn_epoch),
+                        "num_train_samples": len(incremental_training_data[nn_epoch]),
+                        **log_model_stats(model, grads, conf, frozen_mechanistic=True, frozen_nn=False),
                         "max_grad_norm": max_grad_norm(grads),
                     },
-                    step=epoch
+                    step=epoch+nn_epoch
                 )
 
                 # Log regularisation term if applied
@@ -358,35 +529,37 @@ def train(
                                 conf.reg_strength
                             )
                         },
-                        step=epoch
+                        step=epoch+nn_epoch
                     )
 
                 print(
-                    f"epoch {epoch} | "
+                    f"epoch {nn_epoch} | "
                     f"loss_train {loss_train} | "
                     f"loss_val {loss_val} | "
                 )
 
-                if epoch % 50 == 0:  # only compute every 50 epochs (1 every 5 eval epochs)
-                    eigenvalues, singular_values = eig_sv_plot(
-                        params,
-                        static,
-                        u0, t_save_train, t_span_train,
-                        training_data,
-                        conf,
-                        epoch,
-                        plot=False,
-                    )
-                    wandb.log(
-                        {
-                            "max_eigenvalue": jnp.max(eigenvalues),
-                            "min_eigenvalue": jnp.min(eigenvalues),
-                            "max_sv": jnp.max(singular_values),
-                            "min_sv": jnp.min(singular_values),
-                            "condition_number": jnp.max(singular_values)/jnp.min(singular_values),
-                        },
-                        step=epoch
-                    )
+                # # TODO @GiacomoFabrini: why is this so slow on SIR?
+                # if nn_epoch in log_epochs[::10]:  # every 10 log spaced epochs = 10 samples overall
+                #     eigenvalues, singular_values = eig_sv_plot(
+                #         params,
+                #         static,
+                #         u0, t_save_train, t_span_train,
+                #         training_data,
+                #         conf,
+                #         epoch,
+                #         plot=True,
+                #         return_values=True,
+                #     )
+                #     wandb.log(
+                #         {
+                #             "max_eigenvalue": jnp.max(eigenvalues),
+                #             "min_eigenvalue": jnp.min(eigenvalues),
+                #             "max_sv": jnp.max(singular_values),
+                #             "min_sv": jnp.min(singular_values),
+                #             "condition_number": jnp.max(singular_values)/jnp.min(singular_values),
+                #         },
+                #         step=epoch+nn_epoch
+                #     )
 
                 # Check early stopping criterion
                 if early_stopping_params.use_early_stopping:
@@ -402,21 +575,21 @@ def train(
                         {
                             "patience_counter": early_stopper.patience_count,
                         },
-                        step=epoch,
+                        step=epoch+nn_epoch,
                     )
                     # Stop training if we have run out of patience
                     if early_stopper.should_stop:
-                        print(f'Met early stopping criteria, breaking at epoch {epoch}')
+                        print(f'Met early stopping criteria, breaking at epoch {epoch+nn_epoch}')
                         break
 
-        # Plot fit (train/val) at end of training
+        # Plot fit (train/val) at end of training -- using best model on validation dataset
         for dataset, t_save, t_span, data in zip(
                 ["train", "validation"],
                 [t_save_train, t_save_val],
                 [t_span_train, t_span_val],
                 [training_data, validation_data]
         ):
-            df_predict, df_obs = get_fit_dfs(model, u0, t_save, t_span, data)
+            df_predict, df_obs = get_fit_dfs(best_model, u0, t_save, t_span, data)
             plot_dir = plots_dir / conf.dynamical_model / "optax"
             plot_dir.mkdir(exist_ok=True, parents=True)
             log_plots(
@@ -424,73 +597,64 @@ def train(
                 df_obs,
                 labels,
                 colors,
-                epoch,
+                epoch+nn_epoch,
                 f"{dataset}",
                 save_plot=conf.save_plots,
                 plot_dir=plot_dir,
                 plot_fmt="svg"
             )
 
-        wandb.log({"final_epoch": epoch})
+        wandb.log({"final_epoch": epoch+nn_epoch})
+        # Update epoch
+        epoch += nn_epoch + 1
 
     # Train with BFGS via optimistix
-    if max_iter_optx > 0:  # otherwise end training and return trained model
-        # Define options and tags for BFGS solver
-        options = {
-            "rtol": optx_config["rtol"],
-            "atol": optx_config["atol"],
-        }
-        tags = frozenset()
-        # Additional training with BFGS via optimistix
-        solver = optx.BFGS(**options)
-        # Set dropout behaviour to be deterministic
-        model_optx = model.copy(
-            new_mlp=eqx.nn.inference_mode(model.func.mlp, value=True)
-        )
-        # Split model_optx in learnable params and static component
-        if conf.freeze_mechanistic_params:
-            params, static = eqx.partition(model_optx, filter_spec)
-        else:
-            params, static = eqx.partition(model_optx, eqx.is_array)
-        # Minimise via Optimistix - no access to params during solve
-        # sol = optx.minimise(
-        #     fn=loss_optx,
-        #     solver=solver,
-        #     y0=params,
-        #     args=(static, u0, t_save_train, t_span_train, training_data),
-        #     max_steps=max_iter_optx,
-        # )
-        # Define additional arguments to pass optimistix loss function (train and val)
-        args = (static, u0, t_save_train, t_span_train, training_data, conf.reg_exp, conf.reg_strength)
-        args_val = (static, u0, t_save_val, t_span_val, validation_data, conf.reg_exp, conf.reg_strength)
-        # Shape+dtype of the output of `fn`
-        f_struct = jax.ShapeDtypeStruct((), jnp.float64)
-        aux_struct = None
-
-        sol = optx_solve(
-            y=params, solver=solver,
-            fn=loss_optx, args=args, args_val=args_val,
-            f_struct=f_struct, aux_struct=aux_struct,
-            options=options, tags=tags,
-            max_steps=max_iter_optx,
-            starting_epoch=epoch,
+    if max_iter_optx_finetune > 0:  # otherwise end training and return trained model
+        model, sol, static = train_optimistix(
+            model=model,
+            filter_spec=eqx.is_array,
             conf=conf,
+            optx_config=optx_config,
+            loss_optx=loss_optx,
+            epoch=epoch,
+            num_epochs=max_iter_optx_finetune,
+            u0=u0,
+            t_save_train=t_save_train,
+            t_span_train=t_span_train,
+            training_data=training_data,
+            t_save_val=t_save_val,
+            t_span_val=t_span_val,
+            validation_data=validation_data,
+            frozen_mechanistic=False,
+            frozen_nn=False,
         )
 
-        # Get final model
-        model = eqx.combine(sol.value, static)
+        # Compute validation loss of optimistix trained model
+        loss_val = loss_fn(
+            model,
+            u0,
+            t_save_val,
+            t_span_val,
+            validation_data,
+            conf.reg_exp,
+            conf.reg_strength,
+        )
+
+        # Update best_model
+        if loss_val < loss_val_min:
+            best_model = model
 
         # Plot eigenvalue and singular value spectrum
-        eig_sv_plot(
-            sol.value,
-            static,
-            u0, t_save_train, t_span_train,
-            training_data,
-            conf,
-            epoch+sol.stats["num_steps"],
-        )
+        # eig_sv_plot(
+        #     sol.value,
+        #     static,
+        #     u0, t_save_train, t_span_train,
+        #     training_data,
+        #     conf,
+        #     epoch+sol.stats["num_steps"],
+        # )
 
-        # Log plots again after further training
+        # Log plots again after further training with optimistix/BFGS
         for dataset, t_save, t_span, data in zip(
                 ["train", "validation"],
                 [t_save_train, t_save_val],
@@ -521,4 +685,5 @@ def train(
         _ = subprocess.run(command, shell=True)
     except subprocess.CalledProcessError as e:
         raise ValueError(f"Error syncing wandb directory: {e}")
-    return model
+    # Return best_model on validation dataset
+    return best_model

@@ -22,12 +22,14 @@ class UDEFunction(eqx.Module):
     dynamic_parameters: jax.Array
     mlp: Union[eqx.nn.MLP, eqx.Module]
     options: dict[str, bool]
+    state_dimension: int
 
-    def __init__(self, dynamic_parameters, mlp, options, **kwargs):
+    def __init__(self, dynamic_parameters, mlp, options, state_dimension, **kwargs):
         super().__init__(**kwargs)
         self.dynamic_parameters = dynamic_parameters
         self.mlp = mlp
         self.options = options
+        self.state_dimension = state_dimension
 
     def __call__(self, t, u, args):
         u0 = args
@@ -37,22 +39,21 @@ class UDEFunction(eqx.Module):
             beta, gamma, delta = self.dynamic_parameters
         else:
             raise ValueError(f"Unknown dynamic parameter scale: {self.options['dynamic_params_scale']}!")
-        s, i, r, t_ = u[0], u[1], u[2], u[3]
-        if len(u) > 4:
-            augmented_vars = u[4:]
+        s, i, r, t_ = u[:self.state_dimension]
+        if len(u) > self.state_dimension:
+            augmented_vars = u[self.state_dimension:]
             nn_q = self.mlp(jnp.array([s, i, r, *augmented_vars]))
         else:
             nn_q = self.mlp(jnp.array([s, i, r]))
 
-        # TODO @Sebastian: check whether u0[0] needs to appear in equations 2 and 4 + check whether u0[0] is actually
-        #  the total number (N)
+        # TODO @Giacomo: discuss with Sebastian
         ds = - beta * s * i / u0[0]
-        di = beta * s * i / u0[0] - gamma * i - nn_q[0] * i / u0[0]  # paper does not use N in denominator of last term
+        di = beta * s * i / u0[0] - gamma * i  - nn_q[0] * i / u0[0]
         dr = gamma * i + delta * t_
-        dt_ = nn_q[0] * i / u0[0] - delta * t_  # paper does not use N in denominator of first term
+        dt_ = nn_q[0] * i / u0[0]  - delta * t_
 
         derivatives = jnp.array([ds, di, dr, dt_])
-        if len(u) > 4:
+        if len(u) > self.state_dimension:
             derivatives = jnp.concatenate([derivatives, nn_q[1:]])
         return derivatives
 
@@ -63,7 +64,7 @@ def _compute_loss(sol, data):
     dead = data[:, 1]
     recovered = data[:, 2]
     loss1 = jnp.mean((jnp.log(infected) - jnp.log(jnp.absolute(sol.ys[:, 1] + sol.ys[:, 3]))) ** 2)
-    loss2 = jnp.mean((jnp.log(jnp.absolute(recovered + dead)) - jnp.log(jnp.absolute(sol.ys[:, 2]))) ** 2)
+    loss2 = jnp.mean((jnp.log(recovered + dead) - jnp.log(jnp.absolute(sol.ys[:, 2]))) ** 2)
     # loss is sum of MSE on Infected and Recovered+Dead
     return loss1 + loss2
 
