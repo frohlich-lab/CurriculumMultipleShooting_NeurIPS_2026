@@ -123,7 +123,7 @@ def initialise_wandb(
         ),
         tags=[
             "early_stop" if conf.use_early_stop else "no_early_stop",
-            "frozen_mechanistic_params" if conf.freeze_mechanistic_params else "learnable_mechanistic_params",
+            # "frozen_mechanistic_params" if conf.freeze_mechanistic_params else "learnable_mechanistic_params",
         ]
     )
 
