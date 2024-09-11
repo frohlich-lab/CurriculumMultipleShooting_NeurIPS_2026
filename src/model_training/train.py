@@ -22,7 +22,7 @@ seed = conf.multistart_job
 config.update("jax_enable_x64", True)
 
 # Key
-key = jr.PRNGKey(123)
+key = jr.PRNGKey(conf.multistart_job)
 key_mlp, key_init = jr.split(key, 2)
 
 state_dims = {

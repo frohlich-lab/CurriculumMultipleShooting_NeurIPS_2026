@@ -19,7 +19,7 @@ from src.model_examples.lotka_volterra.setup_diffrax_model import compute_hess_a
 from src.model_examples.sir.setup_diffrax_model import compute_hess_array as compute_hess_array_sir
 from src.model_training.training_configuration import N_EPOCHS, MAX_ITER_OPTX_FINETUNE
 from src.ude_problem import UDEProblem
-from typing import List, Union
+from typing import List, Optional, Union
 
 
 # Scheduler from Fabian's NeuralCoarseGraining
@@ -123,7 +123,8 @@ def initialise_wandb(
         ),
         tags=[
             "early_stop" if conf.use_early_stop else "no_early_stop",
-            # "frozen_mechanistic_params" if conf.freeze_mechanistic_params else "learnable_mechanistic_params",
+            "frozen_mechanistic_params_optx"
+            if conf.freeze_mechanistic_params_optx else "learnable_mechanistic_params_optx",
         ]
     )
 
@@ -368,47 +369,41 @@ def plot_model_weights(model: UDEProblem, conf: Conf, filename: str = None):
 
 
 def generate_incremental_arrays(
-        conf: Conf,
         data: Array,
         t_save: diffrax.SaveAt,
         n_epoch: int,
-        increment_percentage: int = 10,
-        single_step_switch: bool = False,
-        fraction_single_step: int = 10,
+        curriculum_learning: bool,
+        num_curriculum_steps: int,
+        max_curriculum_epochs: Optional[int],
 ):
-    # Checks
-    if increment_percentage <= 0 or increment_percentage > 100 or 100 % increment_percentage != 0:
-        raise ValueError("Increment percentage must be a divisor of 100 (e.g. 10, 20, 25, 50).")
-
-    if fraction_single_step <= 0 or fraction_single_step > 100:
-        raise ValueError("Fraction single step must be between 1 and 100.")
-
     # Initialize the list to store the results
     incremental_data = []
     incremental_t_save = []
     incremental_t_span = []
 
+    # Initialise variables
     epochs_filled = 0
 
-    if single_step_switch:
-        # Determine the number of epochs where the 10% data is used
-        single_step_epochs = int(n_epoch * (fraction_single_step / 100))
+    if curriculum_learning:
+        # Check number of curriculum steps
+        if num_curriculum_steps is None:
+            raise ValueError("Number of steps must be defined for curriculum learning!")
+        elif num_curriculum_steps <= 0:
+            raise ValueError("Number of steps must be positive!")
 
-        # Use only 10% of the data for the first single_step_epochs
-        length = int(len(data) * fraction_single_step/100)  # fraction_single_step% of the data
-        for _ in range(single_step_epochs):
-            incremental_data.append(data[:length])
-            incremental_t_save.append(diffrax.SaveAt(ts=t_save.subs.ts[:length]))
-            incremental_t_span.append([np.min(t_save.subs.ts[:length]), np.max(t_save.subs.ts[:length])])
+        # Check number of epochs to spend on curriculum learning
+        if max_curriculum_epochs is None:
+            raise ValueError("Max curriculum steps must be defined for curriculum learning!")
+        elif max_curriculum_epochs <= 0 or max_curriculum_epochs > n_epoch:
+            raise ValueError("Max curriculum steps cannot be negative!")
+        # Calculate the epoch at which to switch to full data
+        switch_epoch = min(max_curriculum_epochs, n_epoch)
 
-        epochs_filled = single_step_epochs
-
-    elif conf.curriculum_learning:
-        switch_epoch = min(int(0.50 * n_epoch), 2000)  # ramp up amount of training data for 2k / 50% of allotted epochs
-        for i in range(1, increment_percentage + 1):
-            length = int(len(data) * (i / increment_percentage))
-            start_epoch = int((i - 1) * (switch_epoch / increment_percentage))
-            end_epoch = int(i * (switch_epoch / increment_percentage))
+        # Fill the incremental data list with the incremental data
+        for step in range(1, num_curriculum_steps + 1):
+            length = int(len(data) * (step / num_curriculum_steps))
+            start_epoch = int((step - 1) * (switch_epoch / num_curriculum_steps))
+            end_epoch = int(step * (switch_epoch / num_curriculum_steps))
             for _ in range(end_epoch - start_epoch):
                 incremental_data.append(data[:length])
                 incremental_t_save.append(diffrax.SaveAt(ts=t_save.subs.ts[:length]))
@@ -416,7 +411,7 @@ def generate_incremental_arrays(
 
         epochs_filled = len(incremental_data)
 
-    # Add full data for the remaining epochs, re-using the same code block
+    # Add full data for the remaining epochs
     for _ in range(n_epoch - epochs_filled):
         incremental_data.append(data)
         incremental_t_save.append(t_save)

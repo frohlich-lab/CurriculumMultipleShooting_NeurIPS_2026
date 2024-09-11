@@ -5,6 +5,7 @@ import jax
 
 from pathlib import Path
 from jaxtyping import PyTree
+from typing import Optional
 
 
 @dataclasses.dataclass(frozen=True, repr=True, eq=True, order=True)
@@ -48,6 +49,8 @@ class Conf(dict):
     save_plots: bool = False
     hessian_precondition: bool = False
     curriculum_learning: bool = True
+    num_curriculum_steps: int = 5
+    max_curriculum_epochs: Optional[int] = 2000
     multistart_deviation: float = 0.0  # default: ground truth parameters
     multistart_job: int = 0
     mechanistic_fit_epochs: int = 0
