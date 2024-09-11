@@ -307,6 +307,7 @@ def train(
     # Initialise variables
     early_stopper, opt, opt_state, schedule = None, None, None, None
     epoch = 0
+    nn_epoch=0
     best_model, loss_val_min = model, jnp.inf
 
     # Create filter_spec allowing for training of mechanistic params only or neural network only
@@ -451,10 +452,12 @@ def train(
 
         # Generate training data - curriculum learning or not
         incremental_training_data, incremental_train_save, incremental_t_span = generate_incremental_arrays(
-            conf,
-            training_data,
-            t_save_train,
-            n_epochs, 10,
+            data=training_data,
+            t_save=t_save_train,
+            n_epoch=n_epochs,
+            curriculum_learning=conf.curriculum_learning,
+            num_curriculum_steps=conf.num_curriculum_steps,
+            max_curriculum_epochs=conf.max_curriculum_epochs,
         )
 
         # Generate regularly log-spaced epochs for early-stopping evaluation + model stat logging - from DMMs
@@ -539,27 +542,27 @@ def train(
                 )
 
                 # # TODO @GiacomoFabrini: why is this so slow on SIR?
-                # if nn_epoch in log_epochs[::10]:  # every 10 log spaced epochs = 10 samples overall
-                #     eigenvalues, singular_values = eig_sv_plot(
-                #         params,
-                #         static,
-                #         u0, t_save_train, t_span_train,
-                #         training_data,
-                #         conf,
-                #         epoch,
-                #         plot=True,
-                #         return_values=True,
-                #     )
-                #     wandb.log(
-                #         {
-                #             "max_eigenvalue": jnp.max(eigenvalues),
-                #             "min_eigenvalue": jnp.min(eigenvalues),
-                #             "max_sv": jnp.max(singular_values),
-                #             "min_sv": jnp.min(singular_values),
-                #             "condition_number": jnp.max(singular_values)/jnp.min(singular_values),
-                #         },
-                #         step=epoch+nn_epoch
-                #     )
+                if nn_epoch in log_epochs[::10]:  # every 10 log spaced epochs = 10 samples overall
+                    eigenvalues, singular_values = eig_sv_plot(
+                        params,
+                        static,
+                        u0, t_save_train, t_span_train,
+                        training_data,
+                        conf,
+                        epoch,
+                        plot=False,
+                        return_values=True,
+                    )
+                    wandb.log(
+                        {
+                            "max_eigenvalue": jnp.max(eigenvalues),
+                            "min_eigenvalue": jnp.min(eigenvalues),
+                            "max_sv": jnp.max(singular_values),
+                            "min_sv": jnp.min(singular_values),
+                            "condition_number": jnp.max(singular_values)/jnp.min(singular_values),
+                        },
+                        step=epoch+nn_epoch
+                    )
 
                 # Check early stopping criterion
                 if early_stopping_params.use_early_stopping:
@@ -612,7 +615,7 @@ def train(
     if max_iter_optx_finetune > 0:  # otherwise end training and return trained model
         model, sol, static = train_optimistix(
             model=model,
-            filter_spec=eqx.is_array,
+            filter_spec=filter_spec_freeze_mechanistic if conf.freeze_mechanistic_params_optx else eqx.is_array,
             conf=conf,
             optx_config=optx_config,
             loss_optx=loss_optx,
@@ -625,7 +628,7 @@ def train(
             t_save_val=t_save_val,
             t_span_val=t_span_val,
             validation_data=validation_data,
-            frozen_mechanistic=False,
+            frozen_mechanistic=True if conf.freeze_mechanistic_params_optx else False,
             frozen_nn=False,
         )
 
