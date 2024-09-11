@@ -69,15 +69,15 @@ def get_opt_opt_state_params(
     optimisers = {
         "adam": optax.adam(schedule),
         "adamw": optax.adamw(schedule),
-        "adam_lbfgs": optax.chain(
-            optax.adam(schedule),
-            optax.scale_by_lbfgs()
-        ),
+        # "adam_lbfgs": optax.chain(
+        #     optax.adam(schedule),
+        #     optax.scale_by_lbfgs()
+        # ),
         "sgd": optax.sgd(schedule),
-        "sgd_lbfgs": optax.chain(
-           optax.sgd(schedule),
-           optax.scale_by_lbfgs()
-        )
+        # "sgd_lbfgs": optax.chain(
+        #    optax.sgd(schedule),
+        #    optax.scale_by_lbfgs()
+        # )
     }
 
     if not conf.use_lookahead:

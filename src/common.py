@@ -53,7 +53,7 @@ class Conf(dict):
     max_curriculum_epochs: Optional[int] = 2000
     multistart_deviation: float = 0.0  # default: ground truth parameters
     multistart_job: int = 0
-    mechanistic_fit_epochs: int = 0
+    # mechanistic_fit_epochs: int = 0
 
     def __str__(self):
         """
