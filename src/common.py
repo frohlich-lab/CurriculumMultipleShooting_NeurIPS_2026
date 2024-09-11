@@ -41,7 +41,6 @@ class Conf(dict):
     lookahead_sync: int = 10
     lookahead_step_size: float = 0.5
     lookahead_reset_state: bool = False
-    # freeze_mechanistic_params: bool = False -- disabled after introduction of multistage training
     freeze_mechanistic_params_optx: bool = False
     # Extra options for UDEFunction
     node_augmentation: int = 0
