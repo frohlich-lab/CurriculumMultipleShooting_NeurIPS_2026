@@ -28,6 +28,7 @@ key = jr.PRNGKey(123)
 key_mlp, key_init = jr.split(key, 2)
 
 # Dynamical model params that regulate interaction terms (regression targets)
+alpha, delta = jnp.array([1.3, 1.8])
 beta, gamma = jnp.array([0.9, 0.8])
 
 # Setup input (x1, x2) and output (beta*x1*x2, gamma*x1*x2) sizes
@@ -43,7 +44,10 @@ mlp = build_mlp(
     width_size=conf.mlp_layer_width,
     hidden_layers=conf.mlp_depth,
     key=key_mlp,
+    use_bias=conf.use_bias,
+    use_final_bias=conf.use_final_bias,
     activation=activation_functions[conf.activation_fn_name],
+    final_activation=activation_functions[conf.final_activation_fn_name],
     use_dropout=conf.use_dropout,
     input_dropout_rate=conf.input_dropout_rate,
     hidden_dropout_rate=conf.hidden_dropout_rate,
@@ -58,10 +62,26 @@ mlp = set_weight_bias(mlp, conf.init_scale, key_init)
 
 
 targets = {}
+mode = "RHS"  # or "interaction"
 for dataset, data in zip(["train", "val"], [train_data, validation_data]):
     prey = data[:, 0]
     predator = data[:, 1]
-    targets[dataset] = jnp.stack([beta * prey * predator, gamma * prey * predator], axis=1)
+    if mode == "RHS":
+        targets[dataset] = jnp.stack(
+        [
+                alpha * prey - beta * prey * predator,
+                gamma * prey * predator - delta * predator
+            ], axis=1
+        )
+    elif mode == "interaction":
+        targets[dataset] = jnp.stack(
+            [
+                - beta * prey * predator,
+                gamma * prey * predator
+            ], axis=1
+        )
+    else:
+        raise ValueError(f"Unknown mode: {mode}!")
 
 # Setup early stopping
 early_stopping_params = EarlyStoppingParams(

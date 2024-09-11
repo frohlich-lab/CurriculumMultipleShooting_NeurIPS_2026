@@ -12,7 +12,7 @@ from jaxtyping import Array, Float, PyTree
 from src.common import Conf, EarlyStoppingParams
 from src.model_training.model_util import regularise_mlp
 from src.model_training.training import make_grads_finite
-from src.model_training.training_util import get_model_after_step, get_opt_opt_state_params, get_scheduler
+from src.model_training.training_util import get_opt_opt_state_params, get_scheduler
 from typing import Callable, Union
 
 
@@ -159,7 +159,7 @@ def mlp_train(
             static=static,
             opt=opt,
             opt_state=opt_state,
-            input=training_data,
+            input_data=training_data,
             targets=training_targets,
             conf=conf,
             loss_grad_fn=loss_grad_fn,
