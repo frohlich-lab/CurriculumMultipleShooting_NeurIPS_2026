@@ -14,9 +14,6 @@ from training_configuration import MECHANISTIC_FIT_EPOCHS, N_EPOCHS, MAX_ITER_OP
 
 conf = fire.Fire(Conf)
 
-# Set seed for sampling dynamical parameters
-seed = conf.multistart_job
-
 # Technically Float32 should work, but for consistency between the benchmarks
 # I think we should use Float64
 config.update("jax_enable_x64", True)

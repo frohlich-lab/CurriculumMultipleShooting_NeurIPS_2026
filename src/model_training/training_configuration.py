@@ -75,10 +75,6 @@ OPT_MULT = {
     # 3,
 }
 
-N_EPOCHS = 10000  # default from UDE paper: 2000 / SIR: 40000-100000
-
-MAX_ITER_OPTX_FINETUNE = 10000  # default from UDE paper -- used to fine-tune mechanistic params + NN together
-
 REG_EXPS = {
     1.0,
     2.0,
@@ -123,4 +119,7 @@ FREEZE_MECHANISTIC_PARAMS = {
 }
 
 N_STARTS = 10  # number of multi-starts
-MECHANISTIC_FIT_EPOCHS = 10000
+
+MECHANISTIC_FIT_EPOCHS = 0
+N_EPOCHS = 4000  # default from UDE paper: 2000 / SIR: 40000-100000
+MAX_ITER_OPTX_FINETUNE = 10000  # default from UDE paper -- used to fine-tune mechanistic params + NN together
