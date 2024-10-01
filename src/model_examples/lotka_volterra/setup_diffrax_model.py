@@ -5,15 +5,10 @@ import jax
 import os
 import pandas as pd
 
-from src.model_training.model_util import regularise_mlp, regularise_mlp_contribution
+from src.model_training.model_util import regularise_mlp, regularise_mlp_contribution, get_mse
 from jaxtyping import Array
 from typing import Union
 
-
-def get_mse_error(u_pred, prob, data: Array) -> Array:
-    return jnp.mean(
-        (u_pred.ys[:, :prob.func.state_dimension] - data) ** 2
-    )
 
 
 class UDEFunction(eqx.Module):
@@ -84,9 +79,16 @@ def compute_loss(
         u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span, adjoint=adjoint)
     else:
         u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
-    loss = get_mse_error(u_pred, prob, data)  # minimal loss: MSE
+    loss = get_mse(
+        pred=u_pred.ys[:, :prob.func.state_dimension],
+        data=data
+    )  # minimal loss: MSE
     if prob.func.regularise_network:
-        mlp_reg = regularise_mlp(prob.func.mlp, mlp_reg_exp, mlp_reg_strength)
+        mlp_reg = regularise_mlp(
+            mlp=prob.func.mlp,
+            reg_exp=mlp_reg_exp,
+            reg_strength=mlp_reg_strength
+        )
         mlp_output_reg = regularise_mlp_contribution(
             l2_norm_nn_contrib=u_pred.ys[:, prob.func.state_dimension],
             timespan_length=t_span[-1]-t_span[0],

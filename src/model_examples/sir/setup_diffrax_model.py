@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import os
 import pandas as pd
 
-from src.model_training.model_util import regularise_mlp, regularise_mlp_contribution
+from src.model_training.model_util import regularise_mlp, regularise_mlp_contribution, get_mse
 from typing import Union
 
 
@@ -70,8 +70,16 @@ class UDEFunction(eqx.Module):
 def _compute_loss(sol, data):
     infected, dead, recovered = data[:, 0], data[:, 1], data[:, 2]
     # loss is sum of MSE on Infected and Recovered+Dead
-    loss1 = jnp.mean((jnp.log(infected) - jnp.log(jnp.absolute(sol.ys[:, 1] + sol.ys[:, 3]))) ** 2)
-    loss2 = jnp.mean((jnp.log(recovered + dead) - jnp.log(jnp.absolute(sol.ys[:, 2]))) ** 2)
+    loss1 = get_mse(
+        data=jnp.log(infected),
+        pred=jnp.log(jnp.absolute(sol.ys[:, 1] + sol.ys[:, 3])),
+    )
+    loss2 = get_mse(
+        data=jnp.log(recovered + dead),
+        pred=jnp.log(jnp.absolute(sol.ys[:, 2])),
+    )
+    # loss1 = jnp.mean((jnp.log(infected) - jnp.log(jnp.absolute(sol.ys[:, 1] + sol.ys[:, 3]))) ** 2)
+    # loss2 = jnp.mean((jnp.log(recovered + dead) - jnp.log(jnp.absolute(sol.ys[:, 2]))) ** 2)
     return loss1 + loss2
 
 

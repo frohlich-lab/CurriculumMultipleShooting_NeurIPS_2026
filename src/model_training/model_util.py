@@ -3,7 +3,12 @@ import jax.numpy as jnp
 import jax.nn as jnn
 import jax.random as jr
 import jax.tree_util as jtu
+from jaxtyping import Array
 from typing import Any, Union
+
+
+def get_mse(pred: Array, data: Array):
+    return jnp.mean((pred - data) ** 2)
 
 
 def regularise_mlp(
