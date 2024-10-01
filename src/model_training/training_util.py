@@ -105,6 +105,8 @@ def initialise_wandb(
 ):
     # Link to repo
     repo = git.Repo(search_parent_directories=True)
+    # Require legacy back-end (for now, until we understand if the new core works with NEMO) TODO @GiacomoFabrini revisit this!
+    wandb.require("legacy-service")
     # Initialise run
     wandb.init(
         project=f"TestUDE.nf.{conf.dynamical_model}",  # nf = nextflow pipeline
