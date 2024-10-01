@@ -9,7 +9,7 @@ import subprocess
 import wandb
 import warnings
 
-from src.common import Conf, EarlyStoppingParams, plots_dir
+from src.common import Conf, EarlyStoppingParams, hessian_metrics_wandb, plots_dir
 from diffrax import DirectAdjoint, SaveAt
 from flax.training.early_stopping import EarlyStopping
 from functools import partial
@@ -22,7 +22,7 @@ from src.model_training.model_util import regularise_mlp, set_weight_bias
 from src.model_training.training_util import (eig_sv_plot, generate_incremental_arrays, generate_log_epochs,
                                               get_opt_opt_state_params, get_scheduler,
                                               initialise_wandb, log_model_stats, log_plots,
-                                              make_grads_finite, max_grad_norm)
+                                              make_grads_finite, max_grad_norm, get_hessian_metrics)
 from src.ude_problem import UDEProblem
 from types import SimpleNamespace
 from typing import Callable, Dict, List, Union
@@ -31,7 +31,7 @@ from typing import Callable, Dict, List, Union
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 
-def get_hessian_and_metrics(
+def get_hessian(
         params: Union[PyTree, UDEProblem],
         static: Union[PyTree, UDEProblem],
         args: tuple,
@@ -49,28 +49,13 @@ def get_hessian_and_metrics(
     flat_p, unflatten_p = jax.flatten_util.ravel_pytree(params)
     # compute hessian as a 2D array
     hessian = hessian_fn[conf.dynamical_model](
-        #equinox.debug.backward_nan(flat_p), unflatten_p, static,
+        # equinox.debug.backward_nan(flat_p), unflatten_p, static,
         flat_p, unflatten_p, static,
         u0, t_save, t_span, input_data,
         adjoint,
         conf.mlp_reg_exp, conf.mlp_reg_strength, conf.output_reg
     )
-
-    # Keep only the diagonal (experiment - Sebastian) -- disabled
-    # Track hessian metrics: Frobenius norm of off-diagonal, Frobenius norm of diagonal, max abs diagonal element
-    hessian_diag = hessian * jnp.eye(hessian.shape[0])
-    max_abs_diag = jnp.max(jnp.abs(hessian_diag))
-    frob_diag = jnp.linalg.norm(hessian_diag)
-    frob_off_diag = jnp.linalg.norm(hessian - hessian_diag)
-    frob_ratio_off_to_diag = frob_off_diag / frob_diag
-    hessian_metrics = {
-        "max_abs_diagonal_element": max_abs_diag,
-        "frobenius_norm_diagonal": frob_diag,
-        "frobenius_norm_off_diagonal": frob_off_diag,
-        "ratio_frobenius_norm_offdiag_to_diag": frob_ratio_off_to_diag,
-    }
-
-    return hessian, hessian_metrics
+    return hessian
 
 
 def apply_hessian_preconditioning_to_grads(
@@ -82,7 +67,8 @@ def apply_hessian_preconditioning_to_grads(
         method="cg",  # alternative: "cg" for conjugate gradient, "leastsquares" for least squares
 ):
     # Compute the Hessian and metrics for current epoch
-    hessian, hessian_metrics = get_hessian_and_metrics(params, static, args, conf)
+    hessian = get_hessian(params, static, args, conf)
+    hessian_metrics = get_hessian_metrics(hessian, return_eigs_svs=False)
 
     # Flatten the grads PyTree
     flat_grads, unravel_grads = jax.flatten_util.ravel_pytree(grads)
@@ -137,15 +123,6 @@ def train_optimistix(
 
     # Split model_optx in learnable params and static component
     params, static = eqx.partition(model_optx, filter_spec)
-
-    # Minimise via Optimistix - no access to params during solve
-    # sol = optx.minimise(
-    #     fn=loss_optx,
-    #     solver=solver,
-    #     y0=params,
-    #     args=(static, u0, t_save_train, t_span_train, training_data),
-    #     max_steps=max_iter_optx_finetune,
-    # )
 
     # Define additional arguments to pass optimistix loss function (train and val) for step by step solve
     args = (
@@ -277,19 +254,20 @@ def make_step(
     grads = make_grads_finite(grads)
     # Initialise hessian metrics with NaNs
     hessian_metrics = {
-        "max_abs_diagonal_element": jnp.nan,
-        "frobenius_norm_diagonal": jnp.nan,
-        "frobenius_norm_off_diagonal": jnp.nan,
-        "ratio_frobenius_norm_offdiag_to_diag": jnp.nan,
+        metric: jnp.nan
+        for metric in hessian_metrics_wandb.keys()
     }
     if conf.hessian_precondition:
         args = (u0, t_save, t_span, input_data)
-        grads, updated_hessian_metrics = apply_hessian_preconditioning_to_grads(grads, opt_params, static, args, conf)
-        if updated_hessian_metrics is not None:
-            hessian_metrics = updated_hessian_metrics
+        grads, updated_hessian_metrics = apply_hessian_preconditioning_to_grads(
+            grads, opt_params, static, args, conf
+        )
     elif compute_hessian_metrics:
         args = (u0, t_save, t_span, input_data)
-        _, hessian_metrics = get_hessian_and_metrics(opt_params, static, args, conf)
+        hessian_metrics = get_hessian_metrics(
+            get_hessian(opt_params, static, args, conf),
+            return_eigs_svs=False,
+        )
     updates, opt_state = opt.update(grads, opt_state, params)
     params = eqx.apply_updates(params, updates)
     return params, opt_state, loss_value, mlp_output_reg, grads, hessian_metrics
@@ -450,11 +428,10 @@ def train(
             best_model = model
 
         # Plot eigenvalue and singular value spectrum
+        # hessian = get_hessian(sol.value, static, (u0, t_save_train, t_span_train, training_data), conf)
+        # hessian_metrics, eigs, svs = get_hessian_metrics(hessian, return_eigs_svs=True)
         # eig_sv_plot(
-        #     sol.value,
-        #     static,
-        #     u0,
-        #     t_save_train, t_span_train, training_data,
+        #     eigs, svs,
         #     conf,
         #     epoch,
         # )
@@ -589,10 +566,18 @@ def train(
                             model, grads, conf, frozen_mechanistic=conf.freeze_mechanistic_params_adam, frozen_nn=False
                         ),
                         "max_grad_norm": max_grad_norm(grads),
-                        **hessian_metrics,  # log hessian metrics (if enabled, otherwise set to NaN by default)
                     },
                     step=epoch+nn_epoch
                 )
+
+                if conf.compute_hessian_metrics:
+                    # Log Hessian metrics
+                    wandb.log(
+                        {
+                            **hessian_metrics
+                        },
+                        step=epoch+nn_epoch
+                    )
 
                 # Log regularisation term if applied
                 if conf.mlp_reg_strength > 0:
@@ -619,29 +604,6 @@ def train(
                     f"loss_train {loss_train} | "
                     f"loss_val {loss_val} | "
                 )
-
-                # # TODO @GiacomoFabrini: why is this so slow on SIR?
-                if nn_epoch in log_epochs[::10]:  # every 10 log spaced epochs = 10 samples overall
-                    eigenvalues, singular_values = eig_sv_plot(
-                        params,
-                        static,
-                        u0, t_save_train, t_span_train,
-                        training_data,
-                        conf,
-                        epoch,
-                        plot=False,
-                        return_values=True,
-                    )
-                    wandb.log(
-                        {
-                            "max_eigenvalue": jnp.max(eigenvalues),
-                            "min_eigenvalue": jnp.min(eigenvalues),
-                            "max_sv": jnp.max(singular_values),
-                            "min_sv": jnp.min(singular_values),
-                            "condition_number": jnp.max(singular_values)/jnp.min(singular_values),
-                        },
-                        step=epoch+nn_epoch
-                    )
 
                 # Check early stopping criterion
                 if early_stopping_params.use_early_stopping:
@@ -729,11 +691,10 @@ def train(
             best_model = model
 
         # Plot eigenvalue and singular value spectrum
+        # hessian = get_hessian(sol.value, static, (u0, t_save_train, t_span_train, training_data), conf)
+        # hessian_metrics, eigs, svs = get_hessian_metrics(hessian, return_eigs_svs=True)
         # eig_sv_plot(
-        #     sol.value,
-        #     static,
-        #     u0, t_save_train, t_span_train,
-        #     training_data,
+        #     eigs, svs,
         #     conf,
         #     epoch+sol.stats["num_steps"],
         # )
