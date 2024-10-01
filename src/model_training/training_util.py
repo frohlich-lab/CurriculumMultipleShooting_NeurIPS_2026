@@ -11,15 +11,14 @@ import optax
 import pandas as pd
 import seaborn as sns
 import wandb
+from jax import Array
 
 from jaxtyping import Array, PyTree
 from pathlib import Path
-from src.common import Conf, EarlyStoppingParams, plots_dir
-from src.model_examples.lotka_volterra.setup_diffrax_model import compute_hess_array as compute_hess_array_lv
-from src.model_examples.sir.setup_diffrax_model import compute_hess_array as compute_hess_array_sir
+from src.common import Conf, EarlyStoppingParams, hessian_metrics_wandb, plots_dir
 from src.model_training.training_configuration import N_EPOCHS, MAX_ITER_OPTX_FINETUNE
 from src.ude_problem import UDEProblem
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Tuple, Dict, Any
 
 
 # Scheduler from Fabian's NeuralCoarseGraining
@@ -136,19 +135,12 @@ def initialise_wandb(
         "loss_train": "min",
         "loss_val": "min",
         "learning_rate": None,
-        "max_eigenvalue": None,
-        "min_eigenvalue": None,
-        "max_sv": None,
-        "min_sv": None,
-        "condition_number": "min",
         "max_grad_norm": "min",
         "num_train_samples": None,
         "patience_counter": None,
-        "max_abs_diagonal_element": None,
-        "frobenius_norm_diagonal": None,
-        "frobenius_norm_off_diagonal": None,
-        "ratio_frobenius_norm_offdiag_to_diag": None,
     }
+    if conf.compute_hessian_metrics:
+        metrics = {**metrics, **hessian_metrics_wandb}
     # Add regularisation term if applied
     if conf.mlp_reg_strength > 0:
         metrics["regularisation_loss"] = "min"
@@ -430,59 +422,30 @@ def generate_incremental_arrays(
 
 
 def eig_sv_plot(
-        params: Union[PyTree, UDEProblem],
-        static: Union[PyTree, UDEProblem],
-        u0: Array,
-        t_save: diffrax.SaveAt,
-        t_span: List,
-        data: jnp.ndarray,
+        eigenvalues: jnp.ndarray,
+        singular_values: jnp.ndarray,
         conf: Conf,
         epoch: int,
-        plot: bool = True,
-        return_values: bool = False
 ):
-    # flatten params PyTree and get unflatten function
-    flat_p, unflatten_p = jax.flatten_util.ravel_pytree(params)
-    hessian_fn = {
-        "lotka_volterra": compute_hess_array_lv,
-        "sir": compute_hess_array_sir,
-    }
-    # compute hessian
-    hessian = hessian_fn[conf.dynamical_model](
-        flat_p, unflatten_p, static,
-        u0, t_save, t_span, data,
-        diffrax.DirectAdjoint(),
-        conf.mlp_reg_exp, conf.mlp_reg_strength, conf.output_reg,
+    plt.subplots(1, 2, figsize=(10, 5))
+    plt.subplot(121)
+    # Discrete singular values
+    plt.stem(singular_values, jnp.ones_like(singular_values), label=f"Epoch {epoch}")
+    plt.xlabel("Singular Value")
+    plt.ylim([0, 1.2])
+    plt.legend()
+    plt.subplot(122)
+    # Discrete eigenvalues values
+    plt.stem(eigenvalues, jnp.ones_like(eigenvalues), label=f"Epoch {epoch}")
+    plt.xlabel("Eigenvalue")
+    plt.ylim([0, 1.2])
+    plt.legend()
+    plt.savefig(
+        plots_dir /
+        conf.dynamical_model /
+        f"sv+eig_plot_{conf.curriculum_learning}_{N_EPOCHS}_{MAX_ITER_OPTX_FINETUNE}_{epoch}.pdf"
     )
-    # compute both singular values and eigenvalues of hessian
-    singular_values = jnp.linalg.svd(
-        hessian,
-        hermitian=True,  # hermitian + real = symmetric
-        compute_uv=False  # only return singular values
-    )
-    eigenvalues, _ = jnp.linalg.eigh(hessian)
-    if plot:
-        plt.subplots(1, 2, figsize=(10, 5))
-        plt.subplot(121)
-        # Discrete singular values
-        plt.stem(singular_values, jnp.ones_like(singular_values), label=f"Epoch {epoch}")
-        plt.xlabel("Singular Value")
-        plt.ylim([0, 1.2])
-        plt.legend()
-        plt.subplot(122)
-        # Discrete eigenvalues values
-        plt.stem(eigenvalues, jnp.ones_like(eigenvalues), label=f"Epoch {epoch}")
-        plt.xlabel("Eigenvalue")
-        plt.ylim([0, 1.2])
-        plt.legend()
-        plt.savefig(
-            plots_dir /
-            conf.dynamical_model /
-            f"sv+eig_plot_{conf.curriculum_learning}_{N_EPOCHS}_{MAX_ITER_OPTX_FINETUNE}_{epoch}.pdf"
-        )
-        plt.show()
-    if return_values:
-        return eigenvalues, singular_values
+    plt.show()
 
 
 def max_grad_norm(grads: PyTree) -> Array:
@@ -534,3 +497,33 @@ def generate_log_epochs(n_epochs: int, num_samples: int, min_dist: int) -> np.nd
         np.logspace(0, np.log10(n_epochs), num=num_samples).astype(int)
     )
     return enforce_minimum_spacing(log_epochs, min_dist)
+
+
+def get_hessian_metrics(hessian: Array, return_eigs_svs: bool=False) -> Union[tuple[dict, Array, Array], dict]:
+    hessian_diag = hessian * jnp.eye(hessian.shape[0])
+    max_abs_diag = jnp.max(jnp.abs(hessian_diag))
+    frob_diag = jnp.linalg.norm(hessian_diag)
+    frob_off_diag = jnp.linalg.norm(hessian - hessian_diag)
+    max_abs_off_diag = jnp.max(jnp.abs(hessian - hessian_diag))
+    frob_ratio_off_to_diag = frob_off_diag / frob_diag
+
+    # Compute singular values and eigenvalues
+    singular_values = jnp.linalg.svd(
+        hessian,
+        hermitian=True,  # hermitian + real = symmetric
+        compute_uv=False  # only return singular values
+    )
+    eigenvalues, _ = jnp.linalg.eigh(hessian)
+    hessian_metrics = {
+        "max_abs_diagonal_element": max_abs_diag,
+        "max_abs_off_diagonal_element": max_abs_off_diag,
+        "frobenius_norm_diagonal": frob_diag,
+        "frobenius_norm_off_diagonal": frob_off_diag,
+        "ratio_frobenius_norm_offdiag_to_diag": frob_ratio_off_to_diag,
+        "max_eigenvalue": jnp.max(eigenvalues),
+        "min_eigenvalue": jnp.min(eigenvalues),
+        "max_sv": jnp.max(singular_values),
+        "min_sv": jnp.min(singular_values),
+        "condition_number": jnp.max(singular_values)/jnp.min(singular_values),
+    }
+    return (hessian_metrics, eigenvalues, singular_values) if return_eigs_svs else hessian_metrics
