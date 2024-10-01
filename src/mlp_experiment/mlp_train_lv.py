@@ -5,7 +5,7 @@ from jax import config
 import src.model_examples.lotka_volterra.setup_diffrax_model as setup_lv
 
 from src.common import activation_functions, Conf, EarlyStoppingParams
-from src.mlp_experiment.mlp_training_lv import compute_loss, compute_loss_grad, mlp_train
+from src.mlp_experiment.mlp_training_lv import mlp_train
 from src.model_training.model_util import set_weight_bias
 from src.ude_problem import build_mlp
 from src.model_training.training_configuration import N_EPOCHS
@@ -62,18 +62,17 @@ mlp = set_weight_bias(mlp, conf.init_scale, key_init)
 
 
 targets = {}
-mode = "RHS"  # or "interaction"
 for dataset, data in zip(["train", "val"], [train_data, validation_data]):
     prey = data[:, 0]
     predator = data[:, 1]
-    if mode == "RHS":
+    if conf.mlpexp_target == "RHS":
         targets[dataset] = jnp.stack(
         [
                 alpha * prey - beta * prey * predator,
                 gamma * prey * predator - delta * predator
             ], axis=1
         )
-    elif mode == "interaction":
+    elif conf.mlpexp_target == "interaction":
         targets[dataset] = jnp.stack(
             [
                 - beta * prey * predator,
@@ -81,7 +80,7 @@ for dataset, data in zip(["train", "val"], [train_data, validation_data]):
             ], axis=1
         )
     else:
-        raise ValueError(f"Unknown mode: {mode}!")
+        raise ValueError(f"Unknown mode: {conf.mlpexp_target}!")
 
 # Setup early stopping
 early_stopping_params = EarlyStoppingParams(
@@ -99,6 +98,4 @@ trained_mlp = mlp_train(
     conf=conf,
     n_epochs=N_EPOCHS,
     early_stopping_params=early_stopping_params,
-    loss_fn=compute_loss,
-    loss_grad_fn=compute_loss_grad,
 )
