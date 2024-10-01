@@ -144,6 +144,10 @@ def initialise_wandb(
         "max_grad_norm": "min",
         "num_train_samples": None,
         "patience_counter": None,
+        "max_abs_diagonal_element": None,
+        "frobenius_norm_diagonal": None,
+        "frobenius_norm_off_diagonal": None,
+        "ratio_frobenius_norm_offdiag_to_diag": None,
     }
     # Add regularisation term if applied
     if conf.mlp_reg_strength > 0:

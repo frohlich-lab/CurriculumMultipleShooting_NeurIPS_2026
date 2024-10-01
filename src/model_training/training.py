@@ -1,4 +1,5 @@
 import equinox as eqx
+# import equinox.debug
 import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
@@ -11,6 +12,7 @@ import warnings
 from src.common import Conf, EarlyStoppingParams, plots_dir
 from diffrax import DirectAdjoint, SaveAt
 from flax.training.early_stopping import EarlyStopping
+from functools import partial
 from jaxtyping import Array, Float, PyTree
 from src.model_examples.lotka_volterra.setup_diffrax_model import (get_fit_dfs as get_fit_dfs_lv,
                                                                    compute_hess_array as compute_hess_array_lv)
@@ -29,12 +31,12 @@ from typing import Callable, Dict, List, Union
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 
-def apply_hessian_preconditioning_to_grads(
-        grads: Union[PyTree, UDEProblem],
+def get_hessian_and_metrics(
         params: Union[PyTree, UDEProblem],
         static: Union[PyTree, UDEProblem],
         args: tuple,
         conf: Conf,
+        adjoint = DirectAdjoint(),  # TODO @GiacomoFabrini: add type hint?!
 ):
     # define hessian functions for different dynamical models
     hessian_fn = {
@@ -47,25 +49,64 @@ def apply_hessian_preconditioning_to_grads(
     flat_p, unflatten_p = jax.flatten_util.ravel_pytree(params)
     # compute hessian as a 2D array
     hessian = hessian_fn[conf.dynamical_model](
+        #equinox.debug.backward_nan(flat_p), unflatten_p, static,
         flat_p, unflatten_p, static,
         u0, t_save, t_span, input_data,
-        DirectAdjoint(),
-        conf.reg_exp, conf.reg_strength,
+        adjoint,
+        conf.mlp_reg_exp, conf.mlp_reg_strength, conf.output_reg
     )
 
     # Keep only the diagonal (experiment - Sebastian) -- disabled
-    # hessian_diag = hessian * jnp.eye(hessian.shape[0])
+    # Track hessian metrics: Frobenius norm of off-diagonal, Frobenius norm of diagonal, max abs diagonal element
+    hessian_diag = hessian * jnp.eye(hessian.shape[0])
+    max_abs_diag = jnp.max(jnp.abs(hessian_diag))
+    frob_diag = jnp.linalg.norm(hessian_diag)
+    frob_off_diag = jnp.linalg.norm(hessian - hessian_diag)
+    frob_ratio_off_to_diag = frob_off_diag / frob_diag
+    hessian_metrics = {
+        "max_abs_diagonal_element": max_abs_diag,
+        "frobenius_norm_diagonal": frob_diag,
+        "frobenius_norm_off_diagonal": frob_off_diag,
+        "ratio_frobenius_norm_offdiag_to_diag": frob_ratio_off_to_diag,
+    }
 
-    # Compute the inverse of the Hessian
-    inv_hessian = jnp.linalg.pinv(hessian)
+    return hessian, hessian_metrics
+
+
+def apply_hessian_preconditioning_to_grads(
+        grads: Union[PyTree, UDEProblem],
+        params: Union[PyTree, UDEProblem],
+        static: Union[PyTree, UDEProblem],
+        args: tuple,
+        conf: Conf,
+        method="cg",  # alternative: "cg" for conjugate gradient, "leastsquares" for least squares
+):
+    # Compute the Hessian and metrics for current epoch
+    hessian, hessian_metrics = get_hessian_and_metrics(params, static, args, conf)
 
     # Flatten the grads PyTree
     flat_grads, unravel_grads = jax.flatten_util.ravel_pytree(grads)
-    # Multiply the flat gradients by the inverse Hessian to precondition gradients
-    flat_precond_grads = jnp.dot(inv_hessian, flat_grads)
+
+    # Compute the Hessian-vector product function (Hv)
+    def hessian_vec_product(hessian, vec):
+        return jnp.dot(hessian, vec)
+
+    if method in ["cg", "gmres"]:
+        method_func = jax.scipy.sparse.linalg.cg if method == "cg" else jax.scipy.sparse.linalg.gmres
+        # Use GMRES or Conjugate Gradient to solve H @ x = grads
+        flat_precond_grads, _ = method_func(
+            partial(hessian_vec_product, hessian), flat_grads
+        )
+    elif method == "leastsquares":
+        # Compute the inverse of the Hessian
+        # inv_hessian = jnp.linalg.pinv(hessian)
+        # Solve the linear system H @ X = I, where I is the identity matrix of the same size as the hessian, H
+        flat_precond_grads = jax.scipy.linalg.solve(hessian, flat_grads)
+    else:
+        raise ValueError(f"Unknown preconditioning method: {method}!")
     # Unflatten the preconditioned gradients back to the PyTree structure + ensure they are finite
     grads = make_grads_finite(unravel_grads(flat_precond_grads))
-    return grads
+    return grads, hessian_metrics
 
 
 def train_optimistix(
@@ -107,8 +148,12 @@ def train_optimistix(
     # )
 
     # Define additional arguments to pass optimistix loss function (train and val) for step by step solve
-    args = (static, u0, t_save_train, t_span_train, training_data, conf.reg_exp, conf.reg_strength)
-    args_val = (static, u0, t_save_val, t_span_val, validation_data, conf.reg_exp, conf.reg_strength)
+    args = (
+        static, u0, t_save_train, t_span_train, training_data, conf.mlp_reg_exp, conf.mlp_reg_strength, conf.output_reg
+    )
+    args_val = (
+        static, u0, t_save_val, t_span_val, validation_data, conf.mlp_reg_exp, conf.mlp_reg_strength, conf.output_reg
+    )
     # Shape+dtype of the output of `fn`
     f_struct = jax.ShapeDtypeStruct((), jnp.float64)
     aux_struct = None
@@ -212,28 +257,42 @@ def make_step(
         t_span: List,
         conf: Conf,
         loss_grad_fn: Callable,
+        compute_hessian_metrics: bool,
 ):
     if conf.use_lookahead:
         opt_params = params.fast
     else:
         opt_params = params
-    loss_value, grads = loss_grad_fn(
-        opt_params,
-        static,
-        u0,
-        t_save,
-        t_span,
-        input_data,
-        conf.reg_exp,
-        conf.reg_strength,
+    (loss_value, mlp_output_reg), grads = loss_grad_fn(
+        prob_params=opt_params,
+        prob_static=static,
+        u0=u0,
+        t_save=t_save,
+        t_span=t_span,
+        data=input_data,
+        mlp_reg_exp=conf.mlp_reg_exp,
+        mlp_reg_strength=conf.mlp_reg_strength,
+        output_reg=conf.output_reg,
     )
     grads = make_grads_finite(grads)
+    # Initialise hessian metrics with NaNs
+    hessian_metrics = {
+        "max_abs_diagonal_element": jnp.nan,
+        "frobenius_norm_diagonal": jnp.nan,
+        "frobenius_norm_off_diagonal": jnp.nan,
+        "ratio_frobenius_norm_offdiag_to_diag": jnp.nan,
+    }
     if conf.hessian_precondition:
         args = (u0, t_save, t_span, input_data)
-        grads = apply_hessian_preconditioning_to_grads(grads, opt_params, static, args, conf)
+        grads, updated_hessian_metrics = apply_hessian_preconditioning_to_grads(grads, opt_params, static, args, conf)
+        if updated_hessian_metrics is not None:
+            hessian_metrics = updated_hessian_metrics
+    elif compute_hessian_metrics:
+        args = (u0, t_save, t_span, input_data)
+        _, hessian_metrics = get_hessian_and_metrics(opt_params, static, args, conf)
     updates, opt_state = opt.update(grads, opt_state, params)
     params = eqx.apply_updates(params, updates)
-    return params, opt_state, loss_value, grads
+    return params, opt_state, loss_value, mlp_output_reg, grads, hessian_metrics
 
 
 def train(
@@ -374,14 +433,16 @@ def train(
         epoch = sol.stats["num_steps"]
 
         # Compute validation loss of optimistix trained model
-        loss_val = loss_fn(
-            model,
-            u0,
-            t_save_val,
-            t_span_val,
-            validation_data,
-            conf.reg_exp,
-            conf.reg_strength,
+        loss_val, _ = loss_fn(
+            prob_params=sol.value,
+            prob_static=static,
+            u0=u0,
+            t_save=t_save_val,
+            t_span=t_span_val,
+            data=validation_data,
+            mlp_reg_exp=conf.mlp_reg_exp,
+            mlp_reg_strength=conf.mlp_reg_strength,
+            output_reg=conf.output_reg,
         )
 
         # Update best_model
@@ -425,16 +486,20 @@ def train(
 
     # STAGE 2: Train with ADAM/ADAM-W -- freeze mechanistic model parameters
     if n_epochs > 0:
-        # Restore the previously initialised MLP
+        # Restore the previously initialised MLP + enable network contribution regularisation
         model = model.copy(
-            new_mlp=initialised_mlp
+            new_mlp=initialised_mlp,
+            new_regularise_network=True,
         )
-        # Freeze mechanistic parameters
-        params, static = eqx.partition(model, filter_spec_freeze_mechanistic)
+        # Add initial zero as starting condition for the 2-norm of the neural network contribution
+        u0 = jnp.concatenate([u0, jnp.zeros(1)])
+
+        # Depending on conf settings, freeze mechanistic parameters for ADAM training or keep them learnable
+        adam_filter_spec = filter_spec_freeze_mechanistic if conf.freeze_mechanistic_params_adam else eqx.is_array
+        params, static = eqx.partition(model, adam_filter_spec)
 
         # Get schedule
         schedule = get_scheduler(conf=conf, n_epochs=n_epochs)
-
         # Initialise optimiser, optimiser state + update params if using lookahead
         opt, opt_state, params = get_opt_opt_state_params(conf, params, schedule)
 
@@ -465,7 +530,7 @@ def train(
 
         # Training loop
         for nn_epoch in range(n_epochs):
-            params, opt_state, loss_train, grads = make_step(
+            params, opt_state, loss_train, nn_contrib_reg, grads, hessian_metrics = make_step(
                 params=params,
                 static=static,
                 opt=opt,
@@ -476,6 +541,7 @@ def train(
                 t_span=incremental_t_span[nn_epoch],
                 conf=conf,
                 loss_grad_fn=loss_grad_fn,
+                compute_hessian_metrics=(conf.compute_hessian_metrics and (nn_epoch in log_epochs)),
             )
             # Recombine dynamic and static into full model
             model = eqx.combine(
@@ -492,15 +558,18 @@ def train(
                 # no need for difference in training/inference behaviour
                 inference_model = model
 
+            inference_params, inference_static = eqx.partition(inference_model, filter_spec_freeze_mechanistic)
             # compute validation loss
-            loss_val = loss_fn(
-                inference_model,
-                u0,
-                t_save_val,
-                t_span_val,
-                validation_data,
-                conf.reg_exp,
-                conf.reg_strength,
+            loss_val, _ = loss_fn(
+                prob_params=inference_params,
+                prob_static=inference_static,
+                u0=u0,
+                t_save=t_save_val,
+                t_span=t_span_val,
+                data=validation_data,
+                mlp_reg_exp=conf.mlp_reg_exp,
+                mlp_reg_strength=conf.mlp_reg_strength,
+                output_reg=conf.output_reg,
             )
 
             # Keep track of best performing model on validation dataset (and corresponding loss)
@@ -516,21 +585,31 @@ def train(
                         "loss_val": loss_val,
                         "learning_rate": schedule(nn_epoch),
                         "num_train_samples": len(incremental_training_data[nn_epoch]),
-                        **log_model_stats(model, grads, conf, frozen_mechanistic=True, frozen_nn=False),
+                        **log_model_stats(
+                            model, grads, conf, frozen_mechanistic=conf.freeze_mechanistic_params_adam, frozen_nn=False
+                        ),
                         "max_grad_norm": max_grad_norm(grads),
+                        **hessian_metrics,  # log hessian metrics (if enabled, otherwise set to NaN by default)
                     },
                     step=epoch+nn_epoch
                 )
 
                 # Log regularisation term if applied
-                if conf.reg_strength > 0:
+                if conf.mlp_reg_strength > 0:
                     wandb.log(
                         {
                             "regularisation_loss": regularise_mlp(
                                 model.func.mlp,
-                                conf.reg_exp,
-                                conf.reg_strength
-                            )
+                                conf.mlp_reg_exp,
+                                conf.mlp_reg_strength
+                            ),
+                        },
+                        step=epoch+nn_epoch
+                    )
+                if conf.output_reg > 0:
+                    wandb.log(
+                        {
+                            "output_regularisation_loss": nn_contrib_reg,
                         },
                         step=epoch+nn_epoch
                     )
@@ -633,14 +712,16 @@ def train(
         )
 
         # Compute validation loss of optimistix trained model
-        loss_val = loss_fn(
-            model,
-            u0,
-            t_save_val,
-            t_span_val,
-            validation_data,
-            conf.reg_exp,
-            conf.reg_strength,
+        loss_val, _ = loss_fn(
+            prob_params=sol.value,
+            prob_static=static,
+            u0=u0,
+            t_save=t_save_val,
+            t_span=t_span_val,
+            data=validation_data,
+            mlp_reg_exp=conf.mlp_reg_exp,
+            mlp_reg_strength=conf.mlp_reg_strength,
+            output_reg=conf.output_reg,
         )
 
         # Update best_model
