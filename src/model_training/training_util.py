@@ -69,6 +69,7 @@ def get_opt_opt_state_params(
     optimisers = {
         "adam": optax.adam(schedule),
         "adamw": optax.adamw(schedule),
+        "adagrad": optax.adagrad(schedule),
         # "adam_lbfgs": optax.chain(
         #     optax.adam(schedule),
         #     optax.scale_by_lbfgs()
