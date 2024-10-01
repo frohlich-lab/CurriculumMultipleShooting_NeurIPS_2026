@@ -27,7 +27,9 @@ class UDEProblem(eqx.Module):
     dynamical_model: str
     func: Union[UDEFunction_lv, UDEFunction_sir]
 
-    def __init__(self, dynamical_model, dynamic_parameters, mlp, options, state_dimension, **kwargs):
+    def __init__(
+            self, dynamical_model, dynamic_parameters, mlp, options, state_dimension, regularise_network=None, **kwargs
+    ):
         """
         Parameters
         ----------
@@ -52,7 +54,7 @@ class UDEProblem(eqx.Module):
         self.dynamical_model = dynamical_model
         if self.dynamical_model not in UDE_funcs.keys():
             raise ValueError(f"Unknown dynamical model: {dynamical_model}!")
-        self.func = UDE_funcs[dynamical_model](dynamic_parameters, mlp, options, state_dimension)
+        self.func = UDE_funcs[dynamical_model](dynamic_parameters, mlp, options, state_dimension, regularise_network)
 
     def solve(self, solver, u0, t_save, t_span,
               controller=diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8),
@@ -71,7 +73,7 @@ class UDEProblem(eqx.Module):
                                   adjoint=adjoint)
         return sol
 
-    def copy(self, new_mlp=None):
+    def copy(self, new_mlp=None, new_regularise_network=None):
         """
         Creates a copy of the UDEProblem with an optional new MLP for the UDEFunction.
         This allows to get a copy of the model for inference in case we are using Dropout layers in the MLP.
@@ -91,7 +93,8 @@ class UDEProblem(eqx.Module):
         options = self.func.options
         state_dimension = self.func.state_dimension
         mlp = new_mlp if new_mlp is not None else self.func.mlp
-        return UDEProblem(dynamical_model, dynamic_parameters, mlp, options, state_dimension)
+        regularise_network = new_regularise_network if new_regularise_network is not None else self.func.regularise_network
+        return UDEProblem(dynamical_model, dynamic_parameters, mlp, options, state_dimension, regularise_network)
 
 
 def build_mlp(

@@ -5,9 +5,15 @@ import jax
 import os
 import pandas as pd
 
-from src.model_training.model_util import regularise_mlp
+from src.model_training.model_util import regularise_mlp, regularise_mlp_contribution
 from jaxtyping import Array
 from typing import Union
+
+
+def get_mse_error(u_pred, prob, data: Array) -> Array:
+    return jnp.mean(
+        (u_pred.ys[:, :prob.func.state_dimension] - data) ** 2
+    )
 
 
 class UDEFunction(eqx.Module):
@@ -24,13 +30,15 @@ class UDEFunction(eqx.Module):
     mlp: Union[eqx.nn.MLP, eqx.Module]
     options: dict[str, bool]
     state_dimension: int
+    regularise_network: bool
 
-    def __init__(self, dynamic_parameters, mlp, options, state_dimension, **kwargs):
+    def __init__(self, dynamic_parameters, mlp, options, state_dimension, regularise_network, **kwargs):
         super().__init__(**kwargs)
         self.dynamic_parameters = dynamic_parameters
         self.mlp = mlp
         self.options = options
         self.state_dimension = state_dimension
+        self.regularise_network = regularise_network if regularise_network is not None else False
 
     def __call__(self, t, u, args):
         # Unpack dynamic parameters (learnable)
@@ -46,65 +54,87 @@ class UDEFunction(eqx.Module):
         #     nn_input = jnp.concatenate([u, jnp.array([prey * predator])])
         # else:
         #     nn_input = u
-        nn_out = self.mlp(u)
+        if len(u) > self.state_dimension + 1:
+            nn_input = jnp.concatenate([u[:self.state_dimension], u[self.state_dimension+1:]])
+        else:
+            nn_input = u[:self.state_dimension]
+        nn_out = self.mlp(nn_input)
         d_prey = alpha * prey + nn_out[0]
         d_predator = nn_out[1] - delta * predator
-        derivatives = jnp.array([d_prey, d_predator])
-        if len(u) > self.state_dimension:
+        if self.regularise_network:
+            # Add additional equation for regularisation term on network contribution
+            d_nn_reg = jnp.linalg.norm(nn_out[:self.state_dimension])
+            derivatives = jnp.array([d_prey, d_predator, d_nn_reg])
+        else:
+            derivatives = jnp.array([d_prey, d_predator])
+        if len(u) > self.state_dimension + 1:
+            # Further add augmented variables
             derivatives = jnp.concatenate([derivatives, nn_out[self.state_dimension:]])
         return derivatives
-
-
-# LOSS AND GRAD
-@eqx.filter_value_and_grad
-def compute_loss_grad(prob_params, prob_static, u0, t_save, t_span, data, reg_exp, reg_strength):
-    prob = eqx.combine(prob_params, prob_static)
-    u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
-    return jnp.mean(
-        (u_pred.ys[:, :prob_static.func.state_dimension] - data) ** 2
-    ) + regularise_mlp(prob.func.mlp, reg_exp, reg_strength)
 
 
 # TODO @GiacomoFabrini no magic numbers - add conf.node_augmentation and derive number of components for loss.
 #  Same for all functions on this page! Need to adapt SIR as well!
 @eqx.filter_jit
-def compute_loss(prob, u0, t_save, t_span, data, reg_exp, reg_strength):
-    u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
-    return jnp.mean(
-        (u_pred.ys[:, :prob.func.state_dimension] - data) ** 2
-    ) + regularise_mlp(prob.func.mlp, reg_exp, reg_strength)
+def compute_loss(
+        prob_params, prob_static, u0, t_save, t_span, data, mlp_reg_exp, mlp_reg_strength, output_reg, adjoint=None
+):
+    prob = eqx.combine(prob_params, prob_static)
+    if adjoint is not None:
+        u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span, adjoint=adjoint)
+    else:
+        u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
+    loss = get_mse_error(u_pred, prob, data)  # minimal loss: MSE
+    if prob.func.regularise_network:
+        mlp_reg = regularise_mlp(prob.func.mlp, mlp_reg_exp, mlp_reg_strength)
+        mlp_output_reg = regularise_mlp_contribution(
+            l2_norm_nn_contrib=u_pred.ys[:, prob.func.state_dimension],
+            timespan_length=t_span[-1]-t_span[0],
+            reg_strength=output_reg
+        )
+        loss += (mlp_reg + mlp_output_reg)
+        return loss, mlp_output_reg
+    return loss, None
 
 
-@eqx.filter_jit
+# LOSS AND GRAD
+def compute_loss_grad(prob_params, prob_static, u0, t_save, t_span, data, mlp_reg_exp, mlp_reg_strength, output_reg):
+    return eqx.filter_value_and_grad(compute_loss, has_aux=True)(
+        prob_params, prob_static, u0, t_save, t_span, data, mlp_reg_exp, mlp_reg_strength, output_reg, adjoint=None
+    )
+
+# Optimistix loss needs to return a None aux
 def compute_loss_optx(prob_params, args):
-    prob_static, u0, t_save, t_span, data, reg_exp, reg_strength = args
-    prob = eqx.combine(prob_params, prob_static)
-    u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
-    return jnp.mean(
-        (u_pred.ys[:, :prob.func.state_dimension] - data) ** 2
-    ) + regularise_mlp(prob.func.mlp, reg_exp, reg_strength), None
+    prob_static, u0, t_save, t_span, data, mlp_reg_exp, mlp_reg_strength, output_reg = args
+    loss, _ = compute_loss(
+        prob_params, prob_static, u0, t_save, t_span, data, mlp_reg_exp, mlp_reg_strength, output_reg, None
+    )
+    return loss, None
 
 
-# HESSIAN
+# HESSIAN -- UNUSED
+# @eqx.filter_jit
+# @jax.hessian
+# def compute_hess(prob_params, prob_static, u0, t_save, t_span, data, adjoint):
+#     prob = eqx.combine(prob_params, prob_static)
+#     u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span,
+#                         adjoint=adjoint)
+#     return jnp.mean((u_pred.ys[:, :prob.func.state_dimension] - data) ** 2)
+
+
 @eqx.filter_jit
 @jax.hessian
-def compute_hess(prob_params, prob_static, u0, t_save, t_span, data, adjoint):
-    prob = eqx.combine(prob_params, prob_static)
-    u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span,
-                        adjoint=adjoint)
-    return jnp.mean((u_pred.ys[:, :prob.func.state_dimension] - data) ** 2)
-
-
-@eqx.filter_jit
-@jax.hessian
-def compute_hess_array(flat_p, unflatten_p, prob_static, u0, t_save, t_span, data, adjoint, reg_exp, reg_strength):
+def compute_hess_array(
+        flat_p, unflatten_p,
+        prob_static,
+        u0, t_save, t_span, data, adjoint,
+        mlp_reg_exp, mlp_reg_strength, output_reg
+):
     prob_params = unflatten_p(flat_p)
-    prob = eqx.combine(prob_params, prob_static)
-    u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span,
-                        adjoint=adjoint)
-    return jnp.mean(
-        (u_pred.ys[:, :prob.func.state_dimension] - data) ** 2
-    ) + regularise_mlp(prob.func.mlp, reg_exp, reg_strength)
+    loss, _ = compute_loss(
+        prob_params, prob_static, u0, t_save, t_span, data, mlp_reg_exp, mlp_reg_strength, output_reg, adjoint=adjoint,
+    )
+    return loss
 
 
 # UTILS - DATA AND PLOTTING

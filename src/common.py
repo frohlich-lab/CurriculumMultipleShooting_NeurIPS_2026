@@ -32,8 +32,9 @@ class Conf(dict):
     opt_mult: int = 2  # Multiplier for the number of steps in each schedule
     # they did not use early_stop in original UDE paper
     use_early_stop: bool = False
-    reg_exp: float = 1.0
-    reg_strength: float = 0.0  # no regularisation by default
+    mlp_reg_exp: float = 1.0
+    mlp_reg_strength: float = 0.0  # no regularisation by default
+    output_reg: float = 0.0  # no regularisation by default on network contribution to UDE
     use_dropout: bool = False
     input_dropout_rate: float = 0.8
     hidden_dropout_rate: float = 0.5

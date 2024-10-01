@@ -22,6 +22,20 @@ def regularise_mlp(
     return reg_strength * reg_loss
 
 
+def regularise_mlp_contribution(
+        l2_norm_nn_contrib: jnp.ndarray,
+        timespan_length: float,
+        reg_strength: float,
+):
+    """
+    Regularise neural network contribution to UDE as per non-negative UDE paper, section 3.2.
+    ref: https://arxiv.org/pdf/2406.14246
+    """
+    # the l2_norm_nn_contrib is the integral of the 2-norm of the nn_contribution from t0 to t0, t1, ..., tf
+    # we only need the integral up to tf, final timepoint
+    return reg_strength * (l2_norm_nn_contrib[-1]/timespan_length)**2
+
+
 def _init_glorot(
         scale: float,
         shape: tuple,
