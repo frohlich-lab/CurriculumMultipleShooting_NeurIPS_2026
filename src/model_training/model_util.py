@@ -1,6 +1,7 @@
 import equinox as eqx
 import jax.numpy as jnp
 import jax.nn as jnn
+import jax.random as jr
 import jax.tree_util as jtu
 from typing import Any, Union
 
@@ -70,7 +71,9 @@ def set_weight_bias(
     weight_old = _get_weight(mlp)
     bias_old = _get_bias(mlp)
     weight_new = [_init_glorot(scale, w.shape, key) for w in weight_old]
-    bias_new = [jnp.zeros(b.shape) for b in bias_old]
+    # bias_new = [jnp.zeros(b.shape) for b in bias_old]
+    # Change bias initialisation to small random values to avoid NaNs in hessian computation
+    bias_new = [jr.normal(subkey, shape=b.shape) * scale for b, subkey in zip(bias_old, jr.split(key, len(bias_old)))]
 
     mlp = eqx.tree_at(_get_bias, mlp, bias_new)
     mlp = eqx.tree_at(_get_weight, mlp, weight_new)
