@@ -51,7 +51,8 @@ dynamic_parameters = {
         true_params=true_dynamic_parameters[dynamical_model],
         deviation=conf.multistart_deviation,
         seed=seed,
-        scale=conf.dynamic_params_scale
+        scale=conf.dynamic_params_scale,
+        method=conf.dynamic_params_perturb_method,
     )
     for dynamical_model in true_dynamic_parameters.keys()
 }
