@@ -42,6 +42,7 @@ class Conf(dict):
     lookahead_sync: int = 10
     lookahead_step_size: float = 0.5
     lookahead_reset_state: bool = False
+    freeze_mechanistic_params_adam: bool = False
     freeze_mechanistic_params_optx: bool = False
     # Extra options for UDEFunction
     node_augmentation: int = 0
@@ -49,6 +50,7 @@ class Conf(dict):
     dynamic_params_scale: str = "log10"
     save_plots: bool = False
     hessian_precondition: bool = False
+    compute_hessian_metrics: bool = False
     curriculum_learning: bool = True
     num_curriculum_steps: int = 5
     max_curriculum_epochs: Optional[int] = 2000
