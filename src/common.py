@@ -58,6 +58,7 @@ class Conf(dict):
     multistart_job: int = 0
     dynamic_params_perturb_method: str = "sample_uniform"
     # mechanistic_fit_epochs: int = 0
+    mlpexp_target: str = "interaction"
 
     def __str__(self):
         """
@@ -120,4 +121,17 @@ activation_functions = {
     "rbf": rbf,
     "softplus": jnn.softplus,
     "squareplus": jnn.squareplus,
+}
+
+hessian_metrics_wandb = {
+    "max_abs_diagonal_element": None,
+    "max_abs_off_diagonal_element": None,
+    "frobenius_norm_diagonal": None,
+    "frobenius_norm_off_diagonal": None,
+    "ratio_frobenius_norm_offdiag_to_diag": None,
+    "max_eigenvalue": None,
+    "min_eigenvalue": None,
+    "max_sv": None,
+    "min_sv": None,
+    "condition_number": "min",
 }
