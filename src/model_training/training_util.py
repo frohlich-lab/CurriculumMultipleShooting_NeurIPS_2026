@@ -446,7 +446,7 @@ def eig_sv_plot(
         flat_p, unflatten_p, static,
         u0, t_save, t_span, data,
         diffrax.DirectAdjoint(),
-        conf.reg_exp, conf.reg_strength,
+        conf.mlp_reg_exp, conf.mlp_reg_strength, conf.output_reg,
     )
     # compute both singular values and eigenvalues of hessian
     singular_values = jnp.linalg.svd(
