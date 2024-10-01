@@ -485,16 +485,27 @@ def max_grad_norm(grads: PyTree) -> Array:
     return jnp.max(jnp.array(grad_norms))
 
 
-def sample_dynamical_params(true_params, deviation, seed, scale="log10"):
+def sample_dynamical_params(true_params, deviation, seed, scale="log10", method="sample_uniform"):
     if scale not in ["log10", "linear"]:
         raise ValueError("Scale must be either 'log10' or 'linear'.")
-    sampled_params_log10 = jax.random.uniform(
-        key=jr.PRNGKey(seed),
-        shape=true_params.shape,
-        minval=jnp.log10(true_params)-deviation,
-        maxval=jnp.log10(true_params)+deviation,
-    )
-    return sampled_params_log10 if scale == "log10" else jnp.power(10, sampled_params_log10)
+    if method == "sample_uniform":
+        starting_params_log10 = jax.random.uniform(
+            key=jr.PRNGKey(seed),
+            shape=true_params.shape,
+            minval=jnp.log10(true_params)-deviation,
+            maxval=jnp.log10(true_params)+deviation,
+        )
+    elif method == "add_gaussian_noise":  # add option to perturb parameters with gaussian noise rather than sample from uniform
+        log_true_params = jnp.log10(true_params)
+        starting_params_log10 = log_true_params + deviation*jax.random.normal(
+            key=jr.PRNGKey(seed),
+            shape=true_params.shape,
+        )
+    else:
+        raise ValueError(
+            f"Found uknown method {method}. Method must be either 'sample_uniform' or 'add_gaussian_noise'."
+        )
+    return starting_params_log10 if scale == "log10" else jnp.power(10, starting_params_log10)
 
 
 def enforce_minimum_spacing(arr: np.ndarray, min_dist: int) -> np.ndarray:

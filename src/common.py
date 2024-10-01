@@ -54,6 +54,7 @@ class Conf(dict):
     max_curriculum_epochs: Optional[int] = 2000
     multistart_deviation: float = 0.0  # default: ground truth parameters
     multistart_job: int = 0
+    dynamic_params_perturb_method: str = "sample_uniform"
     # mechanistic_fit_epochs: int = 0
 
     def __str__(self):
