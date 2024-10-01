@@ -146,8 +146,10 @@ def initialise_wandb(
         "patience_counter": None,
     }
     # Add regularisation term if applied
-    if conf.reg_strength > 0:
+    if conf.mlp_reg_strength > 0:
         metrics["regularisation_loss"] = "min"
+    if conf.output_reg > 0:
+        metrics["output_regularisation_loss"] = "min"
 
     # Define metrics in W&B
     for metric in metrics.keys():
