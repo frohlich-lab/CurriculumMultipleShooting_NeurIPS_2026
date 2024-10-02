@@ -23,8 +23,11 @@ config.update("jax_enable_x64", True)
 # Fetch CLI arguments (MLP structure, etc.)
 conf = fire.Fire(Conf)
 
+# Set seed for MLP initialisation
+seed = conf.multistart_job
+
 # Key for MLP weight and bias init
-key = jr.PRNGKey(123)
+key = jr.PRNGKey(seed)
 key_mlp, key_init = jr.split(key, 2)
 
 # Dynamical model params that regulate interaction terms (regression targets)
