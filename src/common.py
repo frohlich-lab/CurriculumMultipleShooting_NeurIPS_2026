@@ -58,6 +58,7 @@ class Conf(dict):
     multistart_job: int = 0
     dynamic_params_perturb_method: str = "sample_uniform"
     # mechanistic_fit_epochs: int = 0
+    training_setting: str = "UDE"  # alternative: "MLP_experiment"
     mlpexp_target: str = "interaction"
 
     def __str__(self):
@@ -69,6 +70,16 @@ class Conf(dict):
         unwanted_fields = []
         if not self.use_dropout:  # if not using dropout, do not include dropout rates in run name
             unwanted_fields.extend(["input_dropout_rate", "hidden_dropout_rate"])
+        if not self.use_lookahead:  # if not using LookAhead, do not include related params
+            unwanted_fields.extend(["lookahead_sync", "lookahead_step_size", "lookahead_reset_state"])
+        if not self.curriculum_learning:  # if not using curriculum learning, do not include number of steps/epochs
+            unwanted_fields.extend(["num_curriculum_steps", "max_curriculum_epochs"])
+        if self.training_setting != "MLP_experiment":  # only include the kind of target for MLP experiments
+            unwanted_fields.extend(["mlpexp_target"])
+        else:  # remove UDE-specific params in the case of MLP experiments
+            unwanted_fields.extend(
+                ["node_augmentation", "freeze_mechanistic_params_adam", "freeze_mechanistic_params_optx"]
+            )
         values = (
             getattr(self, field.name)
             for field in dataclasses.fields(self)
