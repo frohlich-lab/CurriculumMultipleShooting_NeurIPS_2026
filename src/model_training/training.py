@@ -339,6 +339,7 @@ def train(
         conf=conf,
         early_stopping_params=early_stopping_params,
         model=model,
+        training_setting="UDE",
     )
 
     # Initialise variables

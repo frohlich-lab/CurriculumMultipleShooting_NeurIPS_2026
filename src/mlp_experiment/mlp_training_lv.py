@@ -13,7 +13,7 @@ from src.common import Conf, EarlyStoppingParams, hessian_metrics_wandb
 from src.model_training.model_util import regularise_mlp, get_mse
 from src.model_training.training import make_grads_finite
 from src.model_training.training_util import (get_hessian_metrics, generate_log_epochs,
-                                              get_opt_opt_state_params, get_scheduler)
+                                              get_opt_opt_state_params, get_scheduler, initialise_wandb)
 from typing import Union
 
 
@@ -68,63 +68,6 @@ def mlp_training_step(
     return params, opt_state, loss_value, grads
 
 
-def initialise_wandb_mlp(
-        conf: Conf,
-        early_stopping_params: EarlyStoppingParams,
-        model: eqx.nn.MLP,
-):
-    # Link to repo
-    repo = git.Repo(search_parent_directories=True)
-    # Require legacy back-end (for now, until we understand if the new core works with NEMO) TODO @GiacomoFabrini revisit this!
-    wandb.require("legacy-service")
-    # Initialise run
-    wandb.init(
-        project=f"TestUDE_LV_MLP",
-        group=f"{conf.dynamical_model}",
-        config={
-            **conf.__dict__,
-            "patience": early_stopping_params.patience
-            if conf.use_early_stop else None,
-            "min_improvement": early_stopping_params.min_improvement
-            if conf.use_early_stop else None,
-        },
-        name='__'.join(field for field in conf.__str__().split('__')[1:]),  # dynamical_system info already in project
-        settings=wandb.Settings(
-            start_method="fork",
-            git_commit=repo.head.object.hexsha,
-            git_remote_url=repo.remotes.origin.url,
-        ),
-        tags=[
-            "early_stop" if conf.use_early_stop else "no_early_stop",
-        ]
-    )
-
-    # Define some metrics
-    metrics = {
-        "loss_train": "min",
-        "loss_val": "min",
-        "learning_rate": None,
-        "patience_counter": None,
-    }
-    # Add hessian metrics if required
-    if conf.compute_hessian_metrics:
-        metrics = {**metrics, **hessian_metrics_wandb}
-    for metric in metrics.keys():
-        # if metric summary not specified
-        if metrics[metric] is None:
-            wandb.define_metric(metric)
-        else:
-            wandb.define_metric(metric, summary=metrics[metric])
-    # Define layer statistics (weight/bias value and grads)
-    # from Fabian's NeuralCoarseGraining
-    for il, _ in enumerate(model.layers):
-        for par_label, val_label in itt.product(('w', 'b'), ('vals', 'grads')):
-            wandb.define_metric(
-                f'layer{il}.{par_label}_{val_label}',
-                summary='last',
-            )
-
-
 def mlp_train(
         model: eqx.nn.MLP,
         training_data: jnp.ndarray,
@@ -136,10 +79,11 @@ def mlp_train(
         early_stopping_params: EarlyStoppingParams,
 ):
     # Initialise wandb and define metrics
-    initialise_wandb_mlp(
+    initialise_wandb(
         conf=conf,
         early_stopping_params=early_stopping_params,
         model=model,
+        training_setting="MLP",
     )
 
     # Initialise early stopper and epoch counter
@@ -256,25 +200,25 @@ def mlp_train(
                 break
 
     wandb.log({"final_epoch": epoch})
-    wandb.finish()
 
-    # Rudimentary plot
-    plt.subplots(1, 2, figsize=(10, 5))
-    plt.subplot(131)
-    plt.plot(training_data, 'o', label='Training data')
-    plt.plot(training_targets, 's', label='Targets')
-    plt.plot(jax.vmap(model)(training_data), '-', label='Model fit')
-    plt.title('Training')
-    plt.legend()
-    plt.subplot(132)
-    plt.plot(validation_data, 'o', label='Training data')
-    plt.plot(validation_targets, 's', label='Targets')
-    plt.plot(jax.vmap(model)(validation_data), '-', label='Model fit')
-    plt.title('Validation')
-    plt.legend()
+    # Rudimentary plot - log to wandb
+    plt.subplots(1, 3, figsize=(9, 4), sharey=True, sharex=True)
+    for data, targets, label, i in zip(
+            [training_data, validation_data],
+            [training_targets, validation_targets],
+            ['Training', 'Validation'],
+            [1, 2]
+    ):
+        plt.subplot(1, 3, i)
+        plt.plot(targets, 's', label=f'{label} targets')
+        plt.plot(jax.vmap(model)(data), '-', label='Model fit')
+        plt.title(label)
+        plt.legend()
     plt.subplot(133)
     plt.plot(training_targets[:, 0], jax.vmap(model)(training_data)[:, 0], 'o')
     plt.plot(training_targets[:, 1], jax.vmap(model)(training_data)[:, 1], 's')
     plt.title('Prediction (y) vs target (x)')
-    plt.show()
+    wandb.log({f"mlp_results": plt}, step=epoch+1)
+
+    wandb.finish()
     return model

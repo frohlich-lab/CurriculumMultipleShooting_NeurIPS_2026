@@ -100,16 +100,17 @@ def get_opt_opt_state_params(
 def initialise_wandb(
         conf: Conf,
         early_stopping_params: EarlyStoppingParams,
-        model: UDEProblem,
+        model: Union[UDEProblem, eqx.nn.MLP],
+        training_setting: str,
 ):
     # Link to repo
     repo = git.Repo(search_parent_directories=True)
     # Require legacy back-end (for now, until we understand if the new core works with NEMO) TODO @GiacomoFabrini revisit this!
-    wandb.require("legacy-service")
+    # wandb.require("legacy-service")
     # Initialise run
     wandb.init(
-        project=f"TestUDE.nf.{conf.dynamical_model}.Oct1Sync",  # nf = nextflow pipeline
-        group=f"{conf.dynamical_model}",
+        project=f"TestUDE.nf.{conf.dynamical_model}.Oct9",  # nf = nextflow pipeline
+        group=f"{conf.dynamical_model}.{training_setting}",
         config={
             **conf.__dict__,
             "patience": early_stopping_params.patience
@@ -125,8 +126,8 @@ def initialise_wandb(
         ),
         tags=[
             "early_stop" if conf.use_early_stop else "no_early_stop",
-            "frozen_mechanistic_params_optx"
-            if conf.freeze_mechanistic_params_optx else "learnable_mechanistic_params_optx",
+            # "frozen_mechanistic_params_optx"
+            # if conf.freeze_mechanistic_params_optx else "learnable_mechanistic_params_optx",  # DISABLED TO MERGE WITH MLP
         ]
     )
 
@@ -135,17 +136,26 @@ def initialise_wandb(
         "loss_train": "min",
         "loss_val": "min",
         "learning_rate": None,
-        "max_grad_norm": "min",
-        "num_train_samples": None,
         "patience_counter": None,
     }
-    if conf.compute_hessian_metrics:
-        metrics = {**metrics, **hessian_metrics_wandb}
-    # Add regularisation term if applied
-    if conf.mlp_reg_strength > 0:
-        metrics["regularisation_loss"] = "min"
-    if conf.output_reg > 0:
-        metrics["output_regularisation_loss"] = "min"
+
+    if training_setting == "UDE":
+        # Add UDE-only metrics
+        metrics = {
+            **metrics,
+            **{
+                "max_grad_norm": "min",
+                "num_train_samples": None
+            }
+        }
+        # Add optional Hessian metrics
+        if conf.compute_hessian_metrics:
+            metrics = {**metrics, **hessian_metrics_wandb}
+        # Add regularisation term if applied
+        if conf.mlp_reg_strength > 0:
+            metrics["regularisation_loss"] = "min"
+        if conf.output_reg > 0:
+            metrics["output_regularisation_loss"] = "min"
 
     # Define metrics in W&B
     for metric in metrics.keys():
@@ -155,10 +165,16 @@ def initialise_wandb(
         else:
             wandb.define_metric(metric, summary=metrics[metric])
 
+    if isinstance(model, UDEProblem):
+        mlp = model.func.mlp
+    elif isinstance(model, eqx.nn.MLP):
+        mlp = model
+    else:
+        raise ValueError(f"Unknown model type: {type(model)}!")
     # Define layer statistics (weight/bias value and grads)
     # from Fabian's NeuralCoarseGraining
     # https://github.com/frohlich-lab/NeuralCoarseGraining/blob/8c5cc42447b9b55cdf8b3bfc685388ba4bf6b751/ncg/training.py#L257
-    for il, _ in enumerate(model.func.mlp.layers):
+    for il, _ in enumerate(mlp.layers):
         for par_label, val_label in itt.product(('w', 'b'), ('vals', 'grads')):
             wandb.define_metric(
                 f'layer{il}.{par_label}_{val_label}',
