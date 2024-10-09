@@ -101,7 +101,6 @@ def initialise_wandb(
         conf: Conf,
         early_stopping_params: EarlyStoppingParams,
         model: Union[UDEProblem, eqx.nn.MLP],
-        training_setting: str,
 ):
     # Link to repo
     repo = git.Repo(search_parent_directories=True)
@@ -110,7 +109,7 @@ def initialise_wandb(
     # Initialise run
     wandb.init(
         project=f"TestUDE.nf.{conf.dynamical_model}.Oct9",  # nf = nextflow pipeline
-        group=f"{conf.dynamical_model}.{training_setting}",
+        group=f"{conf.dynamical_model}.{conf.training_setting}",
         config={
             **conf.__dict__,
             "patience": early_stopping_params.patience
@@ -139,7 +138,7 @@ def initialise_wandb(
         "patience_counter": None,
     }
 
-    if training_setting == "UDE":
+    if conf.training_setting == "UDE":
         # Add UDE-only metrics
         metrics = {
             **metrics,

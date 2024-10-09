@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import optax
 import wandb
 
+from dataclasses import replace
 from flax.training.early_stopping import EarlyStopping
 from jaxtyping import Array, Float, PyTree
 from src.common import Conf, EarlyStoppingParams, hessian_metrics_wandb
@@ -78,12 +79,13 @@ def mlp_train(
         n_epochs: int,
         early_stopping_params: EarlyStoppingParams,
 ):
+    # Set training setting in configuration
+    conf = replace(conf, training_setting="MLP")
     # Initialise wandb and define metrics
     initialise_wandb(
         conf=conf,
         early_stopping_params=early_stopping_params,
         model=model,
-        training_setting="MLP",
     )
 
     # Initialise early stopper and epoch counter

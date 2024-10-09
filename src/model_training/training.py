@@ -10,6 +10,7 @@ import wandb
 import warnings
 
 from src.common import Conf, EarlyStoppingParams, hessian_metrics_wandb, plots_dir
+from dataclasses import replace
 from diffrax import DirectAdjoint, SaveAt
 from flax.training.early_stopping import EarlyStopping
 from functools import partial
@@ -334,12 +335,13 @@ def train(
         Maximum number of iterations for further training via optimistix.
     """
 
+    # Set training setting in configuration
+    conf = replace(conf, training_setting="UDE")
     # Initialise wandb and define metrics
     initialise_wandb(
         conf=conf,
         early_stopping_params=early_stopping_params,
         model=model,
-        training_setting="UDE",
     )
 
     # Initialise variables
@@ -655,7 +657,7 @@ def train(
 
         # Log final epoch of ADAM training
         wandb.log({"final_epoch": epoch+nn_epoch})
-        
+
         # Update epoch
         epoch += nn_epoch + 1
 
