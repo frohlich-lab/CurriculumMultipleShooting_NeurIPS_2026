@@ -145,9 +145,17 @@ def initialise_wandb(
             **metrics,
             **{
                 "max_grad_norm": "min",
-                "num_train_samples": None
+                "num_train_samples": None,
             }
         }
+        if conf.dynamical_model == "lotka_volterra":
+            metrics = {
+                **metrics,
+                **{
+                    "final_alpha": "min",
+                    "final_delta": "min",
+                }
+            }
         # Add optional Hessian metrics
         if conf.compute_hessian_metrics:
             metrics = {**metrics, **hessian_metrics_wandb}

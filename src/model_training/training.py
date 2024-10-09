@@ -649,7 +649,13 @@ def train(
                 plot_fmt="svg"
             )
 
+        # Log final values of mechanistic parameters
+        wandb.log({"final_alpha": jnp.power(10, model.func.dynamic_parameters)[0]}, step=epoch+nn_epoch)
+        wandb.log({"final_delta": jnp.power(10, model.func.dynamic_parameters)[1]}, step=epoch+nn_epoch)
+
+        # Log final epoch of ADAM training
         wandb.log({"final_epoch": epoch+nn_epoch})
+        
         # Update epoch
         epoch += nn_epoch + 1
 
