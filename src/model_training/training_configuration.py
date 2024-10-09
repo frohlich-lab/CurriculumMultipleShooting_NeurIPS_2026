@@ -75,12 +75,22 @@ OPT_MULT = {
     # 3,
 }
 
-REG_EXPS = {
+MLP_REG_EXPS = {
     1.0,
     2.0,
 }
 
-REG_STRENGTHS = {
+MLP_REG_STRENGTHS = {
+    1e1,
+    1e2,
+    # 1e3,
+    # 1e4,
+    # 1e5,
+    # 1e6,
+}
+
+OUTPUT_REG = {
+    1e0,
     1e1,
     1e2,
     # 1e3,
@@ -113,8 +123,12 @@ USE_LOOKAHEAD = {
 LOOKAHEAD_SYNC = 5
 
 # Option to freeze the mechanistic parameters and only train the neural network component
-FREEZE_MECHANISTIC_PARAMS = {
-    True,
+FREEZE_MECHANISTIC_PARAMS_ADAM = {
+    # True,
+    False
+}
+FREEZE_MECHANISTIC_PARAMS_OPTX= {
+    # True,
     False
 }
 
