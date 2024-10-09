@@ -58,8 +58,8 @@ class Conf(dict):
     multistart_job: int = 0
     dynamic_params_perturb_method: str = "sample_uniform"
     # mechanistic_fit_epochs: int = 0
-    training_setting: str = "UDE"  # alternative: "MLP_experiment"
-    mlpexp_target: str = "interaction"
+    training_setting: str = None  # options: "UDE", "MLP"
+    mlpexp_target: str = "RHS"  # options: "RHS", "interaction"
 
     def __str__(self):
         """
