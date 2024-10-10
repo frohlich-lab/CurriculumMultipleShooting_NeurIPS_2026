@@ -491,7 +491,8 @@ def train(
             # Freeze mechanistic parameters, but not NN
             _, sol, static, loss_train, loss_val, epoch = train_optimistix(
                 model=model,
-                filter_spec=filter_spec_freeze_mechanistic,
+                filter_spec=filter_spec_freeze_mechanistic if conf.freeze_mechanistic_params_landscape_BFGS
+                    else eqx.is_array,
                 conf=conf,
                 optx_config=optx_config,
                 loss_optx=loss_optx,
@@ -505,7 +506,7 @@ def train(
                 t_span_val=t_span_val,
                 validation_data=validation_data,
                 loss_fn=loss_fn,
-                frozen_mechanistic=True,
+                frozen_mechanistic=conf.freeze_mechanistic_params_landscape_BFGS,
                 frozen_nn=False,
                 zero_out_mlp=False,
                 wandb_log=False,
@@ -514,8 +515,11 @@ def train(
             val_losses.append(loss_val)
 
         # Rudimentary loss/performance plot
-        plt.plot(range(conf.num_curriculum_steps), train_losses, marker='o')
-        plt.plot(range(conf.num_curriculum_steps), val_losses, marker='s')
+        for losses, plot_label in zip([train_losses, val_losses], ["Training Loss", "Validation Loss"]):
+            plt.plot(range(conf.num_curriculum_steps), losses, label=plot_label)
+        #plt.legend()
+        wandb.log({f"BFGS_waterfall_curriculum": plt})
+        wandb.finish()
         plt.show()
         return model
 

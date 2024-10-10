@@ -61,6 +61,7 @@ class Conf(dict):
     training_setting: str = None  # options: "UDE", "MLP"
     mlpexp_target: str = "RHS"  # options: "RHS", "interaction"
     curriculum_loss_landscape_BFGS: bool = False
+    freeze_mechanistic_params_landscape_BFGS: bool = False
 
     def __str__(self):
         """
