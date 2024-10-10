@@ -60,6 +60,7 @@ class Conf(dict):
     # mechanistic_fit_epochs: int = 0
     training_setting: str = None  # options: "UDE", "MLP"
     mlpexp_target: str = "RHS"  # options: "RHS", "interaction"
+    curriculum_loss_landscape_BFGS: bool = False
 
     def __str__(self):
         """
