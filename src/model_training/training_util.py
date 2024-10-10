@@ -405,6 +405,9 @@ def generate_incremental_arrays(
     incremental_t_save = []
     incremental_t_span = []
 
+    # Initialise step list
+    incremental_steps = []
+
     # Initialise variables
     epochs_filled = 0
 
@@ -428,6 +431,7 @@ def generate_incremental_arrays(
             length = int(len(data) * (step / num_curriculum_steps))
             start_epoch = int((step - 1) * (switch_epoch / num_curriculum_steps))
             end_epoch = int(step * (switch_epoch / num_curriculum_steps))
+            incremental_steps.append(start_epoch)
             for _ in range(end_epoch - start_epoch):
                 incremental_data.append(data[:length])
                 incremental_t_save.append(diffrax.SaveAt(ts=t_save.subs.ts[:length]))
@@ -441,7 +445,7 @@ def generate_incremental_arrays(
         incremental_t_save.append(t_save)
         incremental_t_span.append([np.min(t_save.subs.ts), np.max(t_save.subs.ts)])
 
-    return incremental_data, incremental_t_save, incremental_t_span
+    return incremental_data, incremental_t_save, incremental_t_span, incremental_steps
 
 
 def eig_sv_plot(
