@@ -1,8 +1,6 @@
 import equinox as eqx
-import git
 import jax
 import jax.numpy as jnp
-import itertools as itt
 import matplotlib.pyplot as plt
 import optax
 import wandb

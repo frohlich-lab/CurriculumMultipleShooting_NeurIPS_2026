@@ -327,6 +327,7 @@ def make_step(
         loss_grad_fn: Callable,
         compute_hessian_metrics: bool,
 ):
+    # TODO @GiacomoFabrini - check whether LookAhead still works with newer changes! If not, discuss and decide whether to keep or remove
     if conf.use_lookahead:
         opt_params = params.fast
     else:
@@ -497,7 +498,7 @@ def train(
                 optx_config=optx_config,
                 loss_optx=loss_optx,
                 epoch=epoch,
-                num_epochs=10000,
+                num_epochs=10000,  # TODO @GiacomoFabrini - do we want to include an extra hyperparam for this?
                 u0=u0,
                 t_save_train=incremental_train_save[steps[curriculum_step]],
                 t_span_train=incremental_t_span[steps[curriculum_step]],
