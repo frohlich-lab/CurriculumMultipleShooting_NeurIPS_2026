@@ -76,12 +76,34 @@ class Conf(dict):
             unwanted_fields.extend(["lookahead_sync", "lookahead_step_size", "lookahead_reset_state"])
         if not self.curriculum_learning:  # if not using curriculum learning, do not include number of steps/epochs
             unwanted_fields.extend(["num_curriculum_steps", "max_curriculum_epochs"])
+
         if self.training_setting != "MLP_experiment":  # only include the kind of target for MLP experiments
             unwanted_fields.extend(["mlpexp_target"])
         else:  # remove UDE-specific params in the case of MLP experiments
             unwanted_fields.extend(
                 ["node_augmentation", "freeze_mechanistic_params_adam", "freeze_mechanistic_params_optx"]
             )
+        # Handle BFGS loss landscape-specific parameters
+        if not self.curriculum_loss_landscape_BFGS:
+            unwanted_fields.extend(["freeze_mechanistic_params_landscape_BFGS"])
+        else:  # for BFGS baseline, no need to report NN optimiser and related hyperparams, nor hessian
+            unwanted_fields.extend(
+                [
+                    "optimiser",
+                    "max_lrate",
+                    "lrate_span",
+                    "lrate_decay",
+                    "warmup_fct",
+                    "opt_steps",
+                    "opt_mult",
+                    "use_early_stop",
+                    "freeze_mechanistic_params_adam",
+                    "freeze_mechanistic_params_optx",
+                    "hessian_precondition",
+                    "compute_hessian_metrics",
+                ]
+            )
+
         values = (
             getattr(self, field.name)
             for field in dataclasses.fields(self)

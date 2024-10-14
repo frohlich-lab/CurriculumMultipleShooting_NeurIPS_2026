@@ -108,7 +108,7 @@ def initialise_wandb(
     wandb.require("legacy-service")
     # Initialise run
     wandb.init(
-        project=f"TestUDE.nf.{conf.dynamical_model}.Oct10",  # nf = nextflow pipeline
+        project=f"TestUDE.nf.{conf.dynamical_model}.BFGS_local_minima_CL",  # nf = nextflow pipeline
         group=f"{conf.dynamical_model}.{conf.training_setting}",
         config={
             **conf.__dict__,
@@ -155,6 +155,13 @@ def initialise_wandb(
                     "final_delta": "min",
                 }
             }
+            if conf.curriculum_loss_landscape_BFGS:
+                metrics = {
+                    **metrics,
+                    **{
+                        "full_train_loss": "min",
+                    }
+                }
         # Add optional Hessian metrics
         if conf.compute_hessian_metrics:
             metrics = {**metrics, **hessian_metrics_wandb}

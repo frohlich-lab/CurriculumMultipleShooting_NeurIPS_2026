@@ -295,13 +295,14 @@ def optx_solve(
     y, _, _ = solver.postprocess(fn, y, aux, args, options, state, tags, result)
     # print(f"Found solution {y} with value {fn(y, args)}.")
     # Log final training and validation loss terms
-    wandb.log(
-        {
-            "loss_train": loss_train,
-            "loss_val": loss_val,
-        },
-        step=starting_epoch + iteration
-    )
+    if wandb_log:
+        wandb.log(
+            {
+                "loss_train": loss_train,
+                "loss_val": loss_val,
+            },
+            step=starting_epoch + iteration
+        )
     sol = {
         "value": y,
         "stats": {
@@ -484,13 +485,12 @@ def train(
     initialised_mlp = model.func.mlp
 
     if conf.curriculum_loss_landscape_BFGS and conf.curriculum_learning:
-        train_losses, val_losses = [], []
         # For each number of training datapoints, i.e. at each step in the curriculum learning ladder,
         # train the model with optimistix (BFGS)
         for curriculum_step in range(conf.num_curriculum_steps):
             print(len(incremental_training_data[steps[curriculum_step]]))
-            # Freeze mechanistic parameters, but not NN
-            _, sol, static, loss_train, loss_val, epoch = train_optimistix(
+            # NN learnable, mechanistic parameters can be learnable or frozen depending on conf.freeze_mechanistic_params_landscape_BFGS
+            cl_model, sol, static, loss_train, loss_val, epoch = train_optimistix(
                 model=model,
                 filter_spec=filter_spec_freeze_mechanistic if conf.freeze_mechanistic_params_landscape_BFGS
                     else eqx.is_array,
@@ -512,16 +512,37 @@ def train(
                 zero_out_mlp=False,
                 wandb_log=False,
             )
-            train_losses.append(loss_train)
-            val_losses.append(loss_val)
-
-        # Rudimentary loss/performance plot
-        for losses, plot_label in zip([train_losses, val_losses], ["Training Loss", "Validation Loss"]):
-            plt.plot(range(conf.num_curriculum_steps), losses, label=plot_label)
-        #plt.legend()
-        wandb.log({f"BFGS_waterfall_curriculum": plt})
-        wandb.finish()
-        plt.show()
+            # Compute training loss on the full training set
+            whole_train_loss,  _ = loss_fn(
+                prob_params=sol.value,
+                prob_static=static,
+                u0=u0,
+                t_save=t_save_train,
+                t_span=t_span_train,
+                data=training_data,
+                mlp_reg_exp=conf.mlp_reg_exp,
+                mlp_reg_strength=conf.mlp_reg_strength,
+                output_reg=conf.output_reg,
+            )
+            # Log metrics to wandb
+            wandb.log(
+                {
+                    "loss_train": loss_train,
+                    "full_train_loss": whole_train_loss,
+                    "loss_val": loss_val,
+                    "num_train_samples": len(incremental_training_data[steps[curriculum_step]]),
+                },
+                step=curriculum_step,
+            )
+            # Log fit plots to wandb
+            log_fit_plots(
+                cl_model, u0,
+                t_save_train, t_span_train, training_data,  # plot for full training set just for reference
+                t_save_val, t_span_val, validation_data,
+                conf, get_fit_dfs, labels, colors, curriculum_step,
+                f"BFGS_local_minima_{curriculum_step+1}",
+                "BFGS_local_minima"
+            )
         return model
 
 
