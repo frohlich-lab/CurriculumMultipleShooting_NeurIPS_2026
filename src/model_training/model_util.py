@@ -11,6 +11,7 @@ def get_mse(pred: Array, data: Array):
     return jnp.mean((pred - data) ** 2)
 
 
+# TODO @GiacomoFabrini - add unit test
 def regularise_mlp(
         mlp: eqx.nn.MLP,
         reg_exp: float,
@@ -28,6 +29,7 @@ def regularise_mlp(
     return reg_strength * reg_loss
 
 
+# TODO @GiacomoFabrini - add integration test
 def regularise_mlp_contribution(
         l2_norm_nn_contrib: jnp.ndarray,
         timespan_length: float,
@@ -47,6 +49,7 @@ def _init_glorot(
         shape: tuple,
         key: Any,  # TODO @Giacomo some weird error with KeyArray import with these package versions?!
 ):
+    # TODO @Giacomo: add option for mode / distribution
     init = jnn.initializers.variance_scaling(scale, "fan_avg", "uniform")
     return init(key, shape)
 
@@ -63,6 +66,7 @@ def _get_weight(m):
     return [x.weight for x in jtu.tree_leaves(m, is_leaf=_is_linear) if _is_linear(x)]
 
 
+# TODO @GiacomoFabrini - add unit test
 def set_weight_bias(
         mlp: Union[eqx.nn.MLP, eqx.Module],
         scale: float,

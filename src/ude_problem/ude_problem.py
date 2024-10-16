@@ -73,7 +73,7 @@ class UDEProblem(eqx.Module):
                                   adjoint=adjoint)
         return sol
 
-    def copy(self, new_mlp=None, new_regularise_network=None):
+    def copy(self, new_mlp: Union[eqx.nn.MLP, CustomDropoutMLP] = None, new_regularise_network: bool = None):
         """
         Creates a copy of the UDEProblem with an optional new MLP for the UDEFunction.
         This allows to get a copy of the model for inference in case we are using Dropout layers in the MLP.
@@ -82,6 +82,8 @@ class UDEProblem(eqx.Module):
         ----------
         new_mlp : eqx.nn.MLP or eqx.Module, optional
             If provided, this will replace the existing MLP in the copied UDEFunction.
+        new_regularise_network: bool
+            If provided, this will replace the existing regularise_network flag in the copied UDEFunction.
 
         Returns
         -------

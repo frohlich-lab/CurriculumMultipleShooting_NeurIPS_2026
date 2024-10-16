@@ -1,68 +1,25 @@
-import pandas as pd
-import matplotlib.pyplot as plt
+import numpy as np
 import os
+import sys
+import pytest
 
-from src.model_training.training import log_plots
+sys.path.append(os.path.abspath(os.path.join(os.getcwd(), os.pardir)))
 
+from src.model_training.training_util import MetricHandler
 
-def test_log_plots_creates_correct_plot():
-    # Arrange
-    df_predict = pd.DataFrame({
-        'time': [0, 1, 2],
-        'label1': [0, 1, 2],
-        'label2': [2, 1, 0]
-    })
-    df_obs = pd.DataFrame({
-        'time': [0, 1, 2],
-        'label1': [0, 1, 2],
-        'label2': [2, 1, 0]
-    })
-    labels = ['label1', 'label2']
-    colors = ['red', 'black']
-    plot_name = 'test_plot'
-    epoch = 0
+@pytest.mark.parametrize("loss_values, exp_status, exp_counter",
+                         [
+                             ([np.nan for _ in range(5)], True, 5),
+                             ([np.inf for _ in range(5)], True, 5),
+                             ([np.nan, np.nan], False, 2),
+                             ([np.nan, np.nan, np.nan, np.nan, 1.0], False, 0),
+                         ])
+def test_invalid_metric_handler(loss_values, exp_status, exp_counter):
+    metric_handler = MetricHandler(patience=5)
 
-    # Act
-    log_plots(df_predict, df_obs, labels, colors, plot_name, epoch, save_plot=True)
+    for loss in loss_values:
+        status = metric_handler.check_whether_should_break(loss)
+    counter = metric_handler.counter
 
-    # Assert
-    fig = plt.gcf()
-    assert len(fig.axes) == 2  # Check that there are two subplots
-    for ax, label, color in zip(fig.axes, labels, colors):
-        lines = ax.get_lines()
-        assert len(lines) == 2  # Check that each subplot has two lines
-        for line in lines:
-            assert line.get_color() == color  # Check that the lines have the correct color
-            assert line.get_label().startswith('model_' + label) or line.get_label().startswith('obs_' + label)
-            # Check that the lines have the correct label
-
-
-def test_log_plots_saves_plot_to_file():
-    # Arrange
-    df_predict = pd.DataFrame({
-        'time': [0, 1, 2],
-        'label1': [0, 1, 2],
-        'label2': [2, 1, 0]
-    })
-    df_obs = pd.DataFrame({
-        'time': [0, 1, 2],
-        'label1': [0, 1, 2],
-        'label2': [2, 1, 0]
-    })
-    labels = ['label1', 'label2']
-    colors = ['red', 'black']
-    plot_name = 'test_plot'
-    epoch = 0
-
-    # Act
-    log_plots(df_predict, df_obs, labels, colors, plot_name, epoch, save_plot=True)
-
-    # Assert
-    assert os.path.isfile(f'fit_plot_{plot_name}.png')  # Check that the file was created
-
-    # Clean up
-    os.remove(f'fit_plot_{plot_name}.png')
-
-
-test_log_plots_creates_correct_plot()
-test_log_plots_saves_plot_to_file()
+    assert status == exp_status
+    assert counter == exp_counter

@@ -11,6 +11,7 @@ class CustomDropoutMLP(eqx.Module):
     dropout_keys: Any
 
     # TODO @GiacomoFabrini consider adding bias behaviour (use_bias)
+    # TODO @GiacomoFabrini: test this class!
     def __init__(
             self,
             in_size: int,

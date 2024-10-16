@@ -89,18 +89,10 @@ class Conf(dict):
         else:  # for BFGS baseline, no need to report NN optimiser and related hyperparams, nor hessian
             unwanted_fields.extend(
                 [
-                    "optimiser",
-                    "max_lrate",
-                    "lrate_span",
-                    "lrate_decay",
-                    "warmup_fct",
-                    "opt_steps",
-                    "opt_mult",
+                    "optimiser", "max_lrate", "lrate_span", "lrate_decay", "warmup_fct", "opt_steps", "opt_mult",
                     "use_early_stop",
-                    "freeze_mechanistic_params_adam",
-                    "freeze_mechanistic_params_optx",
-                    "hessian_precondition",
-                    "compute_hessian_metrics",
+                    "freeze_mechanistic_params_adam", "freeze_mechanistic_params_optx",
+                    "hessian_precondition", "compute_hessian_metrics",
                 ]
             )
 

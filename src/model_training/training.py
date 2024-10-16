@@ -24,7 +24,8 @@ from src.model_training.model_util import regularise_mlp, set_weight_bias
 from src.model_training.training_util import (eig_sv_plot, generate_incremental_arrays, generate_log_epochs,
                                               get_opt_opt_state_params, get_scheduler,
                                               initialise_wandb, log_model_stats, log_plots,
-                                              make_grads_finite, max_grad_norm, get_hessian_metrics)
+                                              make_grads_finite, max_grad_norm, get_hessian_metrics,
+                                              MetricHandler)
 from src.ude_problem import UDEProblem
 from types import SimpleNamespace
 from typing import Callable, Dict, List, Union
@@ -54,6 +55,11 @@ def log_fit_plots(
             [t_span_train, t_span_val],
             [training_data, validation_data]
     ):
+        # TODO @GiacomoFabrini check this and whether more checks are needed!
+        if (len(u0) > model.func.state_dimension) and (conf.node_augmentation == 0):
+            assert model.func.regularise_network == True, ("Regularisation of the network is required, u0 has more "
+                                                           "elements than state dimension.")
+
         df_predict, df_obs = get_fit_dfs(model, u0, t_save, t_span, data)
         plot_dir = plots_dir / conf.dynamical_model / plot_subdir
         plot_dir.mkdir(exist_ok=True, parents=True)
@@ -152,6 +158,7 @@ def train_optimistix(
         zero_out_mlp: bool = False,
         wandb_log: bool = True,
 ) -> tuple[UDEProblem, SimpleNamespace, UDEProblem, float, float, int]:
+
     # Define options and tags for BFGS solver
     options = {
         "rtol": optx_config["rtol"],
@@ -279,15 +286,20 @@ def optx_solve(
                 {
                     "loss_train": loss_train,
                     "loss_val": loss_val,
+                },
+                step=starting_epoch+iteration
+            )
+            # Only log model stats if training loss is finite (can compute derivatives)
+            if jnp.isfinite(loss_train):
+                wandb.log(
                     **log_model_stats(
                         eqx.combine(y, args[0]),  # recombine updated params and static
                         state.f_info.grad,
                         conf,
                         frozen_mechanistic, frozen_nn,
                     ),
-                },
-                step=starting_epoch+iteration
-            )
+                    step=starting_epoch+iteration
+                )
         iteration += 1
         done, result = terminate(y=y, state=state)
     if result != optx.RESULTS.successful:
@@ -603,6 +615,10 @@ def train(
             new_mlp=initialised_mlp,
             new_regularise_network=True,
         )
+        best_model = best_model.copy(
+            new_mlp=initialised_mlp,
+            new_regularise_network=True,
+        )
         # Add initial zero as starting condition for the 2-norm of the neural network contribution
         u0 = jnp.concatenate([u0, jnp.zeros(1)])
 
@@ -631,6 +647,7 @@ def train(
         log_epochs = generate_log_epochs(n_epochs=n_epochs, num_samples=100, min_dist=5)
 
         # Training loop
+        metric_handler = MetricHandler(patience=5)
         for nn_epoch in range(n_epochs):
             params, opt_state, loss_train, nn_contrib_reg, grads, hessian_metrics = make_step(
                 params=params,
@@ -645,6 +662,10 @@ def train(
                 loss_grad_fn=loss_grad_fn,
                 compute_hessian_metrics=(conf.compute_hessian_metrics and (nn_epoch in log_epochs)),
             )
+
+            if metric_handler.check_whether_should_break(loss_train):
+                break
+
             # Recombine dynamic and static into full model
             model = eqx.combine(
                 params.fast if conf.use_lookahead else params,
@@ -687,13 +708,17 @@ def train(
                         "loss_val": loss_val,
                         "learning_rate": schedule(nn_epoch),
                         "num_train_samples": len(incremental_training_data[nn_epoch]),
-                        **log_model_stats(
-                            model, grads, conf, frozen_mechanistic=conf.freeze_mechanistic_params_adam, frozen_nn=False
-                        ),
                         "max_grad_norm": max_grad_norm(grads),
                     },
                     step=epoch+nn_epoch
                 )
+                if jnp.isfinite(loss_train):
+                    wandb.log(
+                        **log_model_stats(
+                            model, grads, conf, frozen_mechanistic=conf.freeze_mechanistic_params_adam, frozen_nn=False
+                        ),
+                        step=epoch+nn_epoch
+                    )
 
                 if conf.compute_hessian_metrics:
                     # Log Hessian metrics
@@ -769,6 +794,11 @@ def train(
 
         # Log final epoch of ADAM training
         wandb.log({"final_epoch": epoch})
+
+        # Skip optimistix altogether if NN training failed due to too many invalid losses
+        if metric_handler.should_break:
+            wandb.finish()
+            return best_model
 
         # Update epoch
         epoch += 1

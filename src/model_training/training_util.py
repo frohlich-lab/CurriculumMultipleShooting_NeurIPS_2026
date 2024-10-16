@@ -11,7 +11,7 @@ import optax
 import pandas as pd
 import seaborn as sns
 import wandb
-from jax import Array
+# from jax import Array
 
 from jaxtyping import Array, PyTree
 from pathlib import Path
@@ -80,6 +80,9 @@ def get_opt_opt_state_params(
         # )
     }
 
+    if conf.optimiser not in optimisers.keys():
+        raise ValueError(f"Unknown optimiser: {conf.optimiser}!")
+
     if not conf.use_lookahead:
         opt = optimisers[conf.optimiser]
         opt_state = opt.init(params)
@@ -108,7 +111,7 @@ def initialise_wandb(
     wandb.require("legacy-service")
     # Initialise run
     wandb.init(
-        project=f"TestUDE.nf.{conf.dynamical_model}.BFGS_local_minima_CL",  # nf = nextflow pipeline
+        project=f"TestUDE.nf.{conf.dynamical_model}.PYTEST",  # nf = nextflow pipeline
         group=f"{conf.dynamical_model}.{conf.training_setting}",
         config={
             **conf.__dict__,
@@ -561,3 +564,21 @@ def get_hessian_metrics(hessian: Array, return_eigs_svs: bool=False) -> Union[tu
         "condition_number": jnp.max(singular_values)/jnp.min(singular_values),
     }
     return (hessian_metrics, eigenvalues, singular_values) if return_eigs_svs else hessian_metrics
+
+
+# Tested (tests/test_training.py)
+class MetricHandler:
+    def __init__(self, patience=5):
+        self.counter = 0
+        self.patience = patience
+        self.should_break = False
+
+    def check_whether_should_break(self, metric):
+        if not jnp.isfinite(metric):
+            self.counter += 1
+            if self.counter >= self.patience:  # fixed budget of patience
+                print("Too many invalid values, breaking now.")
+                self.should_break = True
+        else:
+            self.counter = 0
+        return self.should_break
