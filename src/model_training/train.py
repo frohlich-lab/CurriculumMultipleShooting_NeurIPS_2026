@@ -102,8 +102,8 @@ if conf.dynamical_model == 'lotka_volterra':
     loss_grad_fn = setup_lv.compute_loss_grad
     loss_optx = setup_lv.compute_loss_optx
     optx_config = {
-        "rtol": 1e-3,
-        "atol": 1e-3,
+        "rtol": 1e-6,  # changed from 1e-3
+        "atol": 1e-6,  # changed from 1e-3
     }
 elif conf.dynamical_model == 'sir':
     # TODO @GiacomoFabrini find better way to express filepath and pass it as argument - same as above
@@ -114,8 +114,8 @@ elif conf.dynamical_model == 'sir':
     loss_grad_fn = setup_sir.compute_loss_grad
     loss_optx = setup_sir.compute_loss_optx
     optx_config = {
-        "rtol": 1e-4,
-        "atol": 1e-4,
+         "rtol": 1e-6,  # changed from 1e-4
+         "atol": 1e-6,  # changed from 1e-4
     }
 else:
     raise ValueError(f"Unknown dynamical model: {conf.dynamical_model}!")
