@@ -292,7 +292,7 @@ def optx_solve(
             # Only log model stats if training loss is finite (can compute derivatives)
             if jnp.isfinite(loss_train):
                 wandb.log(
-                    **log_model_stats(
+                    log_model_stats(
                         eqx.combine(y, args[0]),  # recombine updated params and static
                         state.f_info.grad,
                         conf,
@@ -714,7 +714,7 @@ def train(
                 )
                 if jnp.isfinite(loss_train):
                     wandb.log(
-                        **log_model_stats(
+                        log_model_stats(
                             model, grads, conf, frozen_mechanistic=conf.freeze_mechanistic_params_adam, frozen_nn=False
                         ),
                         step=epoch+nn_epoch
