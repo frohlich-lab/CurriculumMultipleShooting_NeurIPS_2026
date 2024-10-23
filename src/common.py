@@ -162,3 +162,8 @@ hessian_metrics_wandb = {
     "min_sv": None,
     "condition_number": "min",
 }
+
+dynamic_param_labels = {
+    "lotka_volterra": ["alpha", "delta"],
+    "SIR": ['beta', 'gamma', 'delta'],
+}
