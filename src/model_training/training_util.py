@@ -111,7 +111,7 @@ def initialise_wandb(
     wandb.require("legacy-service")
     # Initialise run
     wandb.init(
-        project=f"TestUDE.nf.{conf.dynamical_model}.PYTEST",  # nf = nextflow pipeline
+        project=f"TestUDE.nf.{conf.dynamical_model}.Oct23_nstarts1000",  # nf = nextflow pipeline
         group=f"{conf.dynamical_model}.{conf.training_setting}",
         config={
             **conf.__dict__,
