@@ -157,6 +157,7 @@ def train_optimistix(
         frozen_mechanistic: bool = False, frozen_nn: bool = False,
         zero_out_mlp: bool = False,
         wandb_log: bool = True,
+        wandb_log_final: bool = True,
 ) -> tuple[UDEProblem, SimpleNamespace, UDEProblem, float, float, int]:
 
     # Define options and tags for BFGS solver
@@ -204,6 +205,7 @@ def train_optimistix(
         frozen_mechanistic=frozen_mechanistic,
         frozen_nn=frozen_nn,
         wandb_log=wandb_log,
+        wandb_log_final=wandb_log_final,
     )
 
     # Compute training loss
@@ -256,7 +258,8 @@ def optx_solve(
         options, tags, max_steps,
         starting_epoch, conf,
         frozen_mechanistic, frozen_nn,
-        wandb_log: bool = True
+        wandb_log: bool = True,
+        wandb_log_final: bool = True,
 ):
     # Initialise loss variables
     loss_train, loss_val = jnp.inf, jnp.inf
@@ -306,15 +309,19 @@ def optx_solve(
         print(f"Oh no! Got error {result}.")
     y, _, _ = solver.postprocess(fn, y, aux, args, options, state, tags, result)
     # print(f"Found solution {y} with value {fn(y, args)}.")
-    # Log final training and validation loss terms
-    if wandb_log:
+
+    # Log final training and validation loss terms + dynamic parameter values for final BFGS fine-tuning (third stage)
+    if wandb_log_final:
         wandb.log(
             {
-                "loss_train": loss_train,
-                "loss_val": loss_val,
+                "final_alpha_BFGS": eqx.combine(y, args[0]).func.dynamic_parameters[0],
+                "final_delta_BFGS": eqx.combine(y, args[0]).func.dynamic_parameters[1],
+                "final_loss_train_BFGS": loss_train,
+                "final_loss_val_BFGS": loss_val,
             },
             step=starting_epoch + iteration
         )
+
     sol = {
         "value": y,
         "stats": {
@@ -580,6 +587,8 @@ def train(
             frozen_mechanistic=False,
             frozen_nn=True,
             zero_out_mlp=True,
+            wandb_log=True,
+            wandb_log_final=False,
         )
 
         # Update best_model
@@ -775,6 +784,15 @@ def train(
                     if early_stopper.should_stop:
                         print(f'Met early stopping criteria, breaking at epoch {epoch+nn_epoch}')
                         break
+            elif nn_epoch == n_epochs - 1:
+                # Log final loss values for ADAM training stage
+                wandb.log(
+                    {
+                        "final_loss_train_ADAM": loss_train,
+                        "final_loss_val_ADAM": loss_val,
+                    },
+                    step=epoch+nn_epoch,
+                )
 
         # Update epoch
         epoch += nn_epoch
@@ -788,12 +806,15 @@ def train(
             "optax", "optax"
         )
 
-        # Log final values of mechanistic parameters
-        wandb.log({"final_alpha": jnp.power(10, model.func.dynamic_parameters)[0]}, step=epoch)
-        wandb.log({"final_delta": jnp.power(10, model.func.dynamic_parameters)[1]}, step=epoch)
-
-        # Log final epoch of ADAM training
-        wandb.log({"final_epoch": epoch})
+        # Log final values of mechanistic parameters + final epoch value (can vary if using early stopping)
+        wandb.log(
+            {
+                "final_alpha_ADAM": jnp.power(10, model.func.dynamic_parameters)[0],
+                "final_delta_ADAM": jnp.power(10, model.func.dynamic_parameters)[1],
+                "final_epoch": epoch,
+            },
+            step=epoch
+        )
 
         # Skip optimistix altogether if NN training failed due to too many invalid losses
         if metric_handler.should_break:
@@ -824,6 +845,8 @@ def train(
             frozen_mechanistic=True if conf.freeze_mechanistic_params_optx else False,
             frozen_nn=False,
             zero_out_mlp=False,
+            wandb_log=True,
+            wandb_log_final=True,
         )
 
         # Update best_model
