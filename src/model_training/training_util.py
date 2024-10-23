@@ -15,7 +15,7 @@ import wandb
 
 from jaxtyping import Array, PyTree
 from pathlib import Path
-from src.common import Conf, EarlyStoppingParams, hessian_metrics_wandb, plots_dir
+from src.common import Conf, dynamic_param_labels, EarlyStoppingParams, hessian_metrics_wandb, plots_dir
 from src.model_training.training_configuration import N_EPOCHS, MAX_ITER_OPTX_FINETUNE
 from src.ude_problem import UDEProblem
 from typing import List, Optional, Union, Tuple, Dict, Any
@@ -133,7 +133,7 @@ def initialise_wandb(
         ]
     )
 
-    # Define some metrics
+    # Define shared metrics
     metrics = {
         "loss_train": "min",
         "loss_val": "min",
@@ -141,38 +141,48 @@ def initialise_wandb(
         "patience_counter": None,
     }
 
+    # Add optional Hessian metrics -- both UDE and MLP
+    if conf.compute_hessian_metrics:
+        metrics = {**metrics, **hessian_metrics_wandb}
+    # Add regularisation term if applied -- both UDE and MLP
+    if conf.mlp_reg_strength > 0:
+        metrics["regularisation_loss"] = "min"
+
+    # Add UDE-only metrics
     if conf.training_setting == "UDE":
-        # Add UDE-only metrics
+        metrics["max_grad_norm"] = "min"
+        metrics["num_train_samples"] = None
+
+        # neural network contribution/output regularisation
+        if conf.output_reg > 0:
+            metrics["output_regularisation_loss"] = "min"
+
+        # Add LV BFGS local minima experiment-specific metrics (loss on entire training set at each curriculum learning step)
+        if conf.dynamical_model == "lotka_volterra":
+            if conf.curriculum_loss_landscape_BFGS:
+                metrics["full_train_loss"] = "min"
+
+        # End of training metrics (ADAM/BFGS)
+        final_metrics = []
+        for opt_num_epochs, opt_label in zip([N_EPOCHS, MAX_ITER_OPTX_FINETUNE], ["ADAM", "BFGS"]):
+            if opt_num_epochs > 0:
+                final_metrics.extend(
+                    [
+                        f"final_loss_{dataset}_{opt_label}" for dataset in ["train", "val"]
+                    ] +
+                    [
+                        f"final_{param_label}_{opt_label}"
+                        for param_label in dynamic_param_labels[conf.dynamical_model]
+                    ]
+                )
         metrics = {
             **metrics,
             **{
-                "max_grad_norm": "min",
-                "num_train_samples": None,
+                final_metric: None
+                for final_metric in final_metrics
             }
         }
-        if conf.dynamical_model == "lotka_volterra":
-            metrics = {
-                **metrics,
-                **{
-                    "final_alpha": "min",
-                    "final_delta": "min",
-                }
-            }
-            if conf.curriculum_loss_landscape_BFGS:
-                metrics = {
-                    **metrics,
-                    **{
-                        "full_train_loss": "min",
-                    }
-                }
-        # Add optional Hessian metrics
-        if conf.compute_hessian_metrics:
-            metrics = {**metrics, **hessian_metrics_wandb}
-        # Add regularisation term if applied
-        if conf.mlp_reg_strength > 0:
-            metrics["regularisation_loss"] = "min"
-        if conf.output_reg > 0:
-            metrics["output_regularisation_loss"] = "min"
+
 
     # Define metrics in W&B
     for metric in metrics.keys():
@@ -197,7 +207,6 @@ def initialise_wandb(
                 f'layer{il}.{par_label}_{val_label}',
                 summary='last',
             )
-
 
 # from Fabian's NeuralCoarseGraining
 def log_model_stats(
@@ -250,12 +259,8 @@ def log_model_stats(
             )
         }
 
-    if conf.dynamical_model == 'lotka_volterra':
-        param_labels = ['alpha', 'delta']
-    elif conf.dynamical_model == 'sir':
-        param_labels = ['beta', 'gamma', 'delta']
-    else:
-        raise ValueError(f"Unknown dynamical model: {conf.dynamical_model}!")
+    # Define parameter labels
+    param_labels = dynamic_param_labels[conf.dynamical_model]
 
     if not frozen_mechanistic:
         dynamic_param_stats = {
