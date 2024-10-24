@@ -10,7 +10,7 @@ import subprocess
 import wandb
 import warnings
 
-from src.common import Conf, EarlyStoppingParams, hessian_metrics_wandb, plots_dir
+from src.common import Conf, dynamic_param_labels, EarlyStoppingParams, hessian_metrics_wandb, plots_dir
 from dataclasses import replace
 from diffrax import DirectAdjoint, SaveAt
 from flax.training.early_stopping import EarlyStopping
@@ -32,6 +32,15 @@ from typing import Callable, Dict, List, Union
 
 # Some FutureWarning with unhashable DynamicJaxprTracer object in the diffeq solve/call
 warnings.simplefilter(action='ignore', category=FutureWarning)
+
+
+def transform_dynamic_params(dynamic_parameters: jnp.ndarray, conf: Conf) -> jnp.ndarray:
+    if conf.dynamic_params_scale == "log10":
+        return jnp.power(10, dynamic_parameters)
+    elif conf.dynamic_params_scale == "linear":
+        return dynamic_parameters
+    else:
+        raise ValueError(f"Unknown dynamic parameter scale: {conf.dynamic_params_scale}!")
 
 
 # PLOTTING HELPER FUNCTION
@@ -314,8 +323,12 @@ def optx_solve(
     if wandb_log_final:
         wandb.log(
             {
-                "final_alpha_BFGS": eqx.combine(y, args[0]).func.dynamic_parameters[0],
-                "final_delta_BFGS": eqx.combine(y, args[0]).func.dynamic_parameters[1],
+                **{
+                    f"final_{param}_BFGS": transform_dynamic_params(
+                        eqx.combine(y, args[0]).func.dynamic_parameters, conf
+                    )[i]
+                    for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
+                },
                 "final_loss_train_BFGS": loss_train,
                 "final_loss_val_BFGS": loss_val,
             },
@@ -809,8 +822,10 @@ def train(
         # Log final values of mechanistic parameters + final epoch value (can vary if using early stopping)
         wandb.log(
             {
-                "final_alpha_ADAM": jnp.power(10, model.func.dynamic_parameters)[0],
-                "final_delta_ADAM": jnp.power(10, model.func.dynamic_parameters)[1],
+                **{
+                    f"final_{param}_ADAM": transform_dynamic_params(model.func.dynamic_parameters, conf)[i]
+                    for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
+                },
                 "final_epoch": epoch,
             },
             step=epoch
