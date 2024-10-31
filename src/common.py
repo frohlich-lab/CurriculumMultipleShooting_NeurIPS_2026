@@ -62,6 +62,7 @@ class Conf(dict):
     mlpexp_target: str = "RHS"  # options: "RHS", "interaction"
     curriculum_loss_landscape_BFGS: bool = False
     freeze_mechanistic_params_landscape_BFGS: bool = False
+    use_fides: bool = False
 
     def __str__(self):
         """
