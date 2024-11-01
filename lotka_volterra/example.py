@@ -114,9 +114,7 @@ def mycost(x):
                              diffrax.DirectAdjoint())
 
 grad_fd = nd.Gradient(mycost, order = 4)(flat_p)
-grad_fd - grad
 hess_fd = nd.Hessian(mycost, order = 2)(flat_p)
-hess_fd - hess
 # When magnitudes are large (in this case entries of order 1e8 in gradient 
 # and Hessian, it can make sense to test on the normalized values)
 diff_g = np.sum(np.abs(grad_fd / np.linalg.norm(grad_fd) - grad / np.linalg.norm(grad)))
