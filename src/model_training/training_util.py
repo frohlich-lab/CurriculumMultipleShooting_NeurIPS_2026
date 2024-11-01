@@ -111,7 +111,7 @@ def initialise_wandb(
     wandb.require("legacy-service")
     # Initialise run
     wandb.init(
-        project=f"TestUDE.nf.{conf.dynamical_model}.Oct24_nstarts1000",  # nf = nextflow pipeline
+        project=f"TestUDE.nf.{conf.dynamical_model}.BFGS_CL_Nov1",  # nf = nextflow pipeline
         group=f"{conf.dynamical_model}.{conf.training_setting}",
         config={
             **conf.__dict__,
@@ -587,3 +587,12 @@ class MetricHandler:
         else:
             self.counter = 0
         return self.should_break
+
+
+def transform_dynamic_params(dynamic_parameters: jnp.ndarray, conf: Conf) -> jnp.ndarray:
+    if conf.dynamic_params_scale == "log10":
+        return jnp.power(10, dynamic_parameters)
+    elif conf.dynamic_params_scale == "linear":
+        return dynamic_parameters
+    else:
+        raise ValueError(f"Unknown dynamic parameter scale: {conf.dynamic_params_scale}!")
