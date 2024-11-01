@@ -85,18 +85,38 @@ def compute_hess(prob_params, prob_static, u0, t_save, t_span, data, adjoint):
     return jnp.sum((u_pred.ys - data)**2)
 
 @eqx.filter_jit
-@jax.hessian
-def compute_hess_array(flat_p, unflatten_p, prob_static, u0, t_save, t_span, data, adjoint):
+def compute_cost_array(flat_p, unflatten_p, prob_static, u0, t_save, t_span, data, adjoint):
     prob_params = unflatten_p(flat_p)
     prob = eqx.combine(prob_params, prob_static)
     u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span, 
                         adjoint=adjoint)
     return jnp.sum((u_pred.ys - data)**2)
 
-params, static = eqx.partition(uprob, eqx.is_array)
-hess = compute_hess(params, static, u0, t_save_train, [0.0, 10.0], train_data,
-                    diffrax.DirectAdjoint())
+compute_grad_array = jax.grad(compute_cost_array, argnums=0)
+compute_hessian_array = jax.hessian(compute_cost_array, argnums=0)
 
+# Getting the cost, grad and Hessian as arrays (we shall check against this later)
+params, static = eqx.partition(uprob, eqx.is_array)
 flat_p, unflatten_p = jax.flatten_util.ravel_pytree(params)
-hess = compute_hess_array(flat_p, unflatten_p, static, u0, t_save_train, [0.0, 10.0], train_data,
+cost = compute_cost_array(flat_p, unflatten_p, static, u0, t_save_train, [0.0, 10.0], train_data, 
                           diffrax.DirectAdjoint())
+grad = compute_grad_array(flat_p, unflatten_p, static, u0, t_save_train, [0.0, 10.0], train_data, 
+                          diffrax.DirectAdjoint())
+hess = compute_hessian_array(flat_p, unflatten_p, static, u0, t_save_train, [0.0, 10.0], train_data, 
+                             diffrax.DirectAdjoint())
+
+# Test gradients + Hessian with high-order finite difference scheme
+import numpy as np
+import numdifftools as nd
+# Function needs to be on the form where it only takes input x
+def mycost(x):
+   return compute_cost_array(x, unflatten_p, static, u0, t_save_train, [0.0, 10.0], train_data, 
+                             diffrax.DirectAdjoint())
+
+grad_fd = nd.Gradient(mycost, order = 4)(flat_p)
+hess_fd = nd.Hessian(mycost, order = 2)(flat_p)
+# When magnitudes are large (in this case entries of order 1e8 in gradient 
+# and Hessian, it can make sense to test on the normalized values)
+diff_g = np.sum(np.abs(grad_fd / np.linalg.norm(grad_fd) - grad / np.linalg.norm(grad)))
+diff_h = np.sum(np.abs(hess_fd / np.linalg.norm(hess_fd) - hess / np.linalg.norm(hess)))
+print("diff_g = {:.3e} and diff_h = {:.3e}".format(diff_g, diff_h))
