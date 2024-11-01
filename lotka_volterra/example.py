@@ -1,14 +1,13 @@
-import jax.random as jr
-import os
-import pandas as pd
+import common
 import diffrax
 import equinox as eqx
-import jax.numpy as jnp
 import jax
-import matplotlib.pyplot as plt
-
-import common
+import jax.numpy as jnp
+import jax.random as jr
 import lotka_volterra.setup_diffrax_model as setup_lv
+import matplotlib.pyplot as plt
+import os
+import pandas as pd
 
 # Flatten a tree to an array to allow gradient and Hessian functions to 
 # produce Array output
@@ -19,9 +18,12 @@ def flatten(v):
   out, pullback = jax.vjp(f, v)
   return out, lambda x: pullback(x)[0]
 
+
 # Setup the model (this mlp was used in the paper)
 width_size = 5
-hidden_layers = 1
+hidden_layers = 2
+# they say they have 2 hidden layers with 5 neurons, whereas this results in
+# an input layer, a hidden layer with 5 neurons and an output layer
 key = jr.PRNGKey(123)
 mlp = eqx.nn.MLP(in_size=2,
                  out_size=2,
