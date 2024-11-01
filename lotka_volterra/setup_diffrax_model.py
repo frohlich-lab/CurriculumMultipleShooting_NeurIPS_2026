@@ -70,7 +70,7 @@ class UDEProblem(eqx.Module):
         self.func = UDEFunction(dynamic_parameters, mlp)
 
     def solve(self, solver, u0, t_save, t_span,
-              controller = diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8),
+              controller = diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-10, atol=1e-10),
               adjoint=diffrax.RecursiveCheckpointAdjoint()):
         t0, t1 = t_span
         sol = diffrax.diffeqsolve(diffrax.ODETerm(self.func),
