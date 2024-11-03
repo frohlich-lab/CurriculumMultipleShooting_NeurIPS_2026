@@ -89,12 +89,32 @@ def train_fides(
         options={"maxiter": max_iter},
     )
 
-    # Optimise
-    opt_f, opt_x, opt_grad, opt_hess = fides_opt.minimize(
-        np.array(flat_params)  # move flat_params to numpy array to avoid JAX immutability
-    )
-
-    opt_params = unflatten_params(opt_x)
+    try:
+        # Optimise
+        opt_f, opt_x, opt_grad, opt_hess = fides_opt.minimize(
+            np.array(flat_params)  # move flat_params to numpy array to avoid JAX immutability
+        )
+        # Unflatten optimised parameters into UDEProblem-like opt_params
+        opt_params = unflatten_params(opt_x)
+    except RuntimeError as e:
+        # catch RuntimeError in case of not finite initial loss
+        loss_train, _ = loss_fn(
+            prob_params=params,
+            prob_static=static,
+            u0=u0,
+            t_save=t_save_train,
+            t_span=t_span_train,
+            data=training_data,
+            mlp_reg_exp=conf.mlp_reg_exp,
+            mlp_reg_strength=conf.mlp_reg_strength,
+            output_reg=conf.output_reg,
+        )
+        # In that case, keep the initial params as opt_params -- fides could not optimise
+        if not np.isfinite(loss_train):
+            print("Warning: fides could not optimise due to initial non-finite loss - reporting unoptimised parameters!")
+            opt_params = params
+        else:
+            raise ValueError(f"finite loss, but encountered exception {e} in fides minimisation")
 
     # Compute training loss
     loss_train, _ = loss_fn(
