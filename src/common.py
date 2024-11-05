@@ -63,6 +63,7 @@ class Conf(dict):
     curriculum_loss_landscape_BFGS: bool = False
     freeze_mechanistic_params_landscape_BFGS: bool = False
     use_fides: bool = False
+    experiment_name: str = None
 
     def __str__(self):
         """
@@ -166,5 +167,5 @@ hessian_metrics_wandb = {
 
 dynamic_param_labels = {
     "lotka_volterra": ["alpha", "delta"],
-    "SIR": ['beta', 'gamma', 'delta'],
+    "sir": ['beta', 'gamma', 'delta'],
 }

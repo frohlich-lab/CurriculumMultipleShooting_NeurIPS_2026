@@ -145,6 +145,9 @@ def train_fides(
     # Get final model
     model = eqx.combine(opt_params, static)
 
+    # create optimistix-like sol object
+    sol = SimpleNamespace(value=opt_params, stats={"num_steps": fides_opt.iteration})
+
     # Log final training and validation loss terms + dynamic parameter values for final BFGS fine-tuning (third stage)
     if wandb_log_final:
         wandb.log(
@@ -158,12 +161,12 @@ def train_fides(
                 "final_loss_train_BFGS": loss_train,
                 "final_loss_val_BFGS": loss_val,
             },
-            step=epoch + fides_opt.iteration
+            step=epoch + sol.stats["num_steps"]
         )
 
 
     # Update epoch
-    epoch += fides_opt.iteration
+    epoch += sol.stats["num_steps"]
 
     # Plot eigenvalue and singular value spectrum
     # hessian = get_hessian(sol.value, static, (u0, t_save_train, t_span_train, training_data), conf)
@@ -173,5 +176,4 @@ def train_fides(
     #     conf,
     #     epoch,
     # )
-
-    return model, SimpleNamespace(value=opt_params), static, loss_train, loss_val, epoch
+    return model, sol, static, loss_train, loss_val, epoch
