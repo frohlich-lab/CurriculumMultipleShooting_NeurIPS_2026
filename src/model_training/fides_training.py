@@ -97,24 +97,16 @@ def train_fides(
         # Unflatten optimised parameters into UDEProblem-like opt_params
         opt_params = unflatten_params(opt_x)
     except RuntimeError as e:
-        # catch RuntimeError in case of not finite initial loss
-        loss_train, _ = loss_fn(
-            prob_params=params,
-            prob_static=static,
-            u0=u0,
-            t_save=t_save_train,
-            t_span=t_span_train,
-            data=training_data,
-            mlp_reg_exp=conf.mlp_reg_exp,
-            mlp_reg_strength=conf.mlp_reg_strength,
-            output_reg=conf.output_reg,
-        )
-        # In that case, keep the initial params as opt_params -- fides could not optimise
-        if not np.isfinite(loss_train):
-            print("Warning: fides could not optimise due to initial non-finite loss - reporting unoptimised parameters!")
-            opt_params = params
-        else:
-            raise ValueError(f"finite loss, but encountered exception {e} in fides minimisation")
+        # catch RuntimeError in case of not finite initial loss, initial gradients (or inital gradient Hessian)
+        # try to report on type of failure
+        if "function" in e.__str__():
+            print("Invalid function value - fides optimisation skipped.")
+        elif "gradient entries" in e.__str__():
+            print("Invalid gradients - fides optimisation skipped.")
+        elif "gradient hessian" in e.__str__():
+            print("Invalid hessian estimate - fides optimisation skipped.")
+        # In any case, keep the initial params as opt_params -- fides could not optimise
+        opt_params = params
 
     # Compute training loss
     loss_train, _ = loss_fn(
