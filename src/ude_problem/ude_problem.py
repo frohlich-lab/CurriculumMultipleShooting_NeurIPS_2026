@@ -1,5 +1,6 @@
 import diffrax
 import equinox as eqx
+import jax.numpy as jnp
 
 from src.model_examples.lotka_volterra.setup_diffrax_model import UDEFunction as UDEFunction_lv
 from src.model_examples.sir.setup_diffrax_model import UDEFunction as UDEFunction_sir
@@ -59,6 +60,8 @@ class UDEProblem(eqx.Module):
     def solve(self, solver, u0, t_save, t_span,
               controller=diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8),
               adjoint=diffrax.RecursiveCheckpointAdjoint()):
+        if not isinstance(t_save, diffrax.SaveAt):
+            t_save = diffrax.SaveAt(ts=t_save)
         t0, t1 = t_span
         sol = diffrax.diffeqsolve(diffrax.ODETerm(self.func),
                                   solver,
@@ -73,7 +76,13 @@ class UDEProblem(eqx.Module):
                                   adjoint=adjoint)
         return sol
 
-    def copy(self, new_mlp: Union[eqx.nn.MLP, CustomDropoutMLP] = None, new_regularise_network: bool = None):
+    def copy(
+            self,
+            new_mlp: Union[eqx.nn.MLP, CustomDropoutMLP] = None,
+            new_regularise_network: bool = None,
+            new_dynamic_parameters: jnp.ndarray = None,
+            new_options: dict = None,
+    ):
         """
         Creates a copy of the UDEProblem with an optional new MLP for the UDEFunction.
         This allows to get a copy of the model for inference in case we are using Dropout layers in the MLP.
@@ -84,18 +93,24 @@ class UDEProblem(eqx.Module):
             If provided, this will replace the existing MLP in the copied UDEFunction.
         new_regularise_network: bool
             If provided, this will replace the existing regularise_network flag in the copied UDEFunction.
-
+        new_dynamic_parameters: jnp.ndarray
+            If provided, this will overwrite the existing self.func.dynamic_parameters
+        new_options: dict
+            If provided, this will replace the existing self.func.options (e.g. linear/log10 scale to estimate parameters)
         Returns
         -------
         UDEProblem
             A new instance of UDEProblem with the specified modifications.
         """
         dynamical_model = self.dynamical_model
-        dynamic_parameters = self.func.dynamic_parameters
-        options = self.func.options
+        dynamic_parameters = new_dynamic_parameters if new_dynamic_parameters is not None \
+            else self.func.dynamic_parameters
+        options = new_options if new_options is not None \
+            else self.func.options
         state_dimension = self.func.state_dimension
         mlp = new_mlp if new_mlp is not None else self.func.mlp
-        regularise_network = new_regularise_network if new_regularise_network is not None else self.func.regularise_network
+        regularise_network = new_regularise_network if new_regularise_network is not None \
+            else self.func.regularise_network
         return UDEProblem(dynamical_model, dynamic_parameters, mlp, options, state_dimension, regularise_network)
 
 
