@@ -596,3 +596,28 @@ def transform_dynamic_params(dynamic_parameters: jnp.ndarray, conf: Conf) -> jnp
         return dynamic_parameters
     else:
         raise ValueError(f"Unknown dynamic parameter scale: {conf.dynamic_params_scale}!")
+
+
+def get_ude_trajectory(model: UDEProblem, u0, t_save, t_span, mlp_only: bool = False):
+    solver = diffrax.Tsit5()
+
+    if len(u0) == model.func.state_dimension and model.func.regularise_network:
+        u0 = jnp.concatenate([u0, jnp.zeros(1)])
+
+    if mlp_only:
+        # Zero out dynamical parameters -- only use MLP contribution to determine dynamics
+        model = model.copy(
+            new_dynamic_parameters=jnp.zeros(len(model.func.dynamic_parameters)),
+            new_options={"dynamic_params_scale": "linear"}
+        )
+
+    # Compute solution
+    solution = model.solve(
+        solver,
+        u0,
+        t_save,
+        t_span
+    )
+
+    return solution.ys[:, :model.func.state_dimension]
+
