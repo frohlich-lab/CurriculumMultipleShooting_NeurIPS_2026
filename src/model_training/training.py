@@ -26,7 +26,7 @@ from src.model_training.optimistix_training import train_optimistix
 from src.model_training.fides_training import train_fides
 from src.model_training.hessian import get_hessian, apply_hessian_preconditioning_to_grads
 from src.ude_problem import UDEProblem
-from typing import Callable, Dict, List, Union
+from typing import Callable, Dict, List, Tuple, Union
 
 # Some FutureWarning with unhashable DynamicJaxprTracer object in the diffeq solve/call
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -146,7 +146,7 @@ def train(
         max_iter_optx_mechanistic: int,
         n_epochs: int,
         max_iter_optx_finetune: int,
-) -> UDEProblem:
+) -> Union[UDEProblem, Tuple[UDEProblem, Dict[int, UDEProblem]]]:
     """
     Trains the UDEmodel (`model`).
 
@@ -440,6 +440,11 @@ def train(
         # Generate regularly log-spaced epochs for early-stopping evaluation + model stat logging - from DMMs
         log_epochs = generate_log_epochs(n_epochs=n_epochs, num_samples=100, min_dist=5)
 
+        # Define epochs at which to save curriculum-step models: just before increasing number of datapoints or last epoch
+        if conf.curriculum_learning:
+            model_save_steps = steps[1:] + [n_epochs-1]
+            curriculum_models = {}
+
         # Training loop
         metric_handler = MetricHandler(patience=5)
         for nn_epoch in range(n_epochs):
@@ -493,6 +498,10 @@ def train(
             if loss_val < loss_val_min:
                 best_model = inference_model
                 loss_val_min = loss_val
+
+            # Save model at edge between consecutive curriculum learning steps
+            if nn_epoch in model_save_steps:
+                curriculum_models[nn_epoch] = inference_model
 
             # log loss_train, loss_val, learning rate, param values and grads on log-spaced epochs
             if nn_epoch in log_epochs:
@@ -690,3 +699,8 @@ def train(
         raise ValueError(f"Error syncing wandb directory: {e}")
     # Return best_model on validation dataset
     return best_model
+    if not conf.curriculum_learning:
+        # Return best_model on validation dataset
+        return best_model
+    else:
+        return best_model, curriculum_models
