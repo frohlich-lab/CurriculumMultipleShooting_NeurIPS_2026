@@ -8,7 +8,7 @@ import wandb
 from dataclasses import replace
 from flax.training.early_stopping import EarlyStopping
 from jaxtyping import Array, Float, PyTree
-from src.common import Conf, EarlyStoppingParams, hessian_metrics_wandb
+from src.common import Conf, EarlyStoppingParams
 from src.model_training.model_util import regularise_mlp, get_mse
 from src.model_training.training import make_grads_finite
 from src.model_training.training_util import (get_hessian_metrics, generate_log_epochs,
@@ -76,15 +76,17 @@ def mlp_train(
         conf: Conf,
         n_epochs: int,
         early_stopping_params: EarlyStoppingParams,
+        use_wandb: bool = True,
 ):
     # Set training setting in configuration
     conf = replace(conf, training_setting="MLP")
     # Initialise wandb and define metrics
-    initialise_wandb(
-        conf=conf,
-        early_stopping_params=early_stopping_params,
-        model=model,
-    )
+    if use_wandb:
+        initialise_wandb(
+            conf=conf,
+            early_stopping_params=early_stopping_params,
+            model=model,
+        )
 
     # Initialise early stopper and epoch counter
     early_stopper = None
@@ -151,14 +153,15 @@ def mlp_train(
 
         # log loss_train, loss_val, learning rate every 5 epochs
         if epoch in log_epochs:
-            wandb.log(
-                {
-                    "loss_train": loss_train,
-                    "loss_val": loss_val,
-                    "learning_rate": schedule(epoch),
-                },
-                step=epoch
-            )
+            if use_wandb:
+                wandb.log(
+                    {
+                        "loss_train": loss_train,
+                        "loss_val": loss_val,
+                        "learning_rate": schedule(epoch),
+                    },
+                    step=epoch
+                )
             if conf.compute_hessian_metrics:
                 # flatten params PyTree and get unflatten function
                 flat_p, unflatten_p = jax.flatten_util.ravel_pytree(params)
@@ -168,13 +171,14 @@ def mlp_train(
                     training_data, training_targets,
                     conf.mlp_reg_exp, conf.mlp_reg_strength,
                 )
-                # Log Hessian
-                wandb.log(
-                    {
-                        **get_hessian_metrics(hessian, return_eigs_svs=False),
-                    },
-                    step=epoch
-                )
+                if use_wandb:
+                    # Log Hessian
+                    wandb.log(
+                        {
+                            **get_hessian_metrics(hessian, return_eigs_svs=False),
+                        },
+                        step=epoch
+                    )
 
         # Check early stopping criterion
         if early_stopping_params.use_early_stopping:
@@ -187,19 +191,21 @@ def mlp_train(
                 f"has improved? {early_stopper.has_improved} | "
                 f"patience count {early_stopper.patience_count}"
             )
-            # Log current patience count
-            wandb.log(
-                {
-                    "patience_counter": early_stopper.patience_count,
-                },
-                step=epoch,
-            )
+            if use_wandb:
+                # Log current patience count
+                wandb.log(
+                    {
+                        "patience_counter": early_stopper.patience_count,
+                    },
+                    step=epoch,
+                )
             # Stop training if we have run out of patience
             if early_stopper.should_stop:
                 print(f'Met early stopping criteria, breaking at epoch {epoch}')
                 break
 
-    wandb.log({"final_epoch": epoch})
+    if use_wandb:
+        wandb.log({"final_epoch": epoch})
 
     # Rudimentary plot - log to wandb
     plt.subplots(1, 3, figsize=(9, 4), sharey=True, sharex=True)
@@ -218,7 +224,8 @@ def mlp_train(
     plt.plot(training_targets[:, 0], jax.vmap(model)(training_data)[:, 0], 'o')
     plt.plot(training_targets[:, 1], jax.vmap(model)(training_data)[:, 1], 's')
     plt.title('Prediction (y) vs target (x)')
-    wandb.log({f"mlp_results": plt}, step=epoch+1)
+    if use_wandb:
+        wandb.log({f"mlp_results": plt}, step=epoch+1)
+        wandb.finish()
 
-    wandb.finish()
     return model
