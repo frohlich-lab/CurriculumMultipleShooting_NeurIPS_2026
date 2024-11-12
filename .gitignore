@@ -11,5 +11,5 @@ __pycache__/*
 .env
 
 src/old/*
-Src/*.csv
+src/results/*
 plots/*
