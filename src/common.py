@@ -71,15 +71,13 @@ class Conf(dict):
 
         Note: enables printing of Conf objects in fire
         """
-        unwanted_fields = ["experiment_name"]
+        unwanted_fields = []
         if not self.use_dropout:  # if not using dropout, do not include dropout rates in run name
             unwanted_fields.extend(["input_dropout_rate", "hidden_dropout_rate"])
         if not self.use_lookahead:  # if not using LookAhead, do not include related params
             unwanted_fields.extend(["lookahead_sync", "lookahead_step_size", "lookahead_reset_state"])
         if not self.curriculum_learning:  # if not using curriculum learning, do not include number of steps/epochs
             unwanted_fields.extend(["num_curriculum_steps", "max_curriculum_epochs"])
-        if self.mlp_reg_strength == 0:
-            unwanted_fields.extend(["mlp_reg_exp", "mlp_reg_strength"])
 
         if self.training_setting != "MLP_experiment":  # only include the kind of target for MLP experiments
             unwanted_fields.extend(["mlpexp_target"])
@@ -103,7 +101,7 @@ class Conf(dict):
         values = (
             getattr(self, field.name)
             for field in dataclasses.fields(self)
-            if field.name not in unwanted_fields
+            if field not in unwanted_fields
         )
         return '__'.join(map(str, values))
 
@@ -132,7 +130,6 @@ def flatten(v: PyTree):
 
 basedir: Path = Path(__file__).resolve().parent
 plots_dir = basedir / "plots"
-model_save_dir = basedir / "serialised_models"
 
 
 def rbf(x):

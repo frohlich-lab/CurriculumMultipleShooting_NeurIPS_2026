@@ -1,13 +1,7 @@
 import diffrax
 import equinox as eqx
 import jax.numpy as jnp
-import jax.random as jr
-import json
-import numpy as np
 
-from pathlib import Path
-
-from src.common import activation_functions
 from src.model_examples.lotka_volterra.setup_diffrax_model import UDEFunction as UDEFunction_lv
 from src.model_examples.sir.setup_diffrax_model import UDEFunction as UDEFunction_sir
 from src.ude_problem import CustomDropoutMLP
@@ -118,115 +112,6 @@ class UDEProblem(eqx.Module):
         regularise_network = new_regularise_network if new_regularise_network is not None \
             else self.func.regularise_network
         return UDEProblem(dynamical_model, dynamic_parameters, mlp, options, state_dimension, regularise_network)
-
-
-    def get_hyperparams(self) -> dict[str, Any]:
-        """
-        Get UDEProblem (hyper)parameters.
-
-        Note: used in model serialisation
-        """
-        # Cannot seri
-        activation_fn_name = None
-        final_activation_fn_name = None
-        for key in activation_functions.keys():
-            if self.func.mlp.activation == activation_functions[key]:
-                activation_fn_name = key
-            if self.func.mlp.final_activation == activation_functions[key]:
-                final_activation_fn_name = key
-
-        return {
-            'dynamical_model': self.dynamical_model,
-            'dynamic_parameters': np.array(self.func.dynamic_parameters).tolist(),
-            'options': self.func.options,
-            'state_dimension': self.func.state_dimension,
-            'regularise_network': self.func.regularise_network,
-            'in_size': self.func.mlp.in_size,
-            'out_size': self.func.mlp.out_size,
-            'width_size': self.func.mlp.width_size,
-            'depth': self.func.mlp.depth,
-            'use_bias' : self.func.mlp.use_bias,
-            'use_final_bias': self.func.mlp.use_final_bias,
-            'activation': activation_fn_name,
-            'final_activation': final_activation_fn_name,
-            'key': jr.PRNGKey(seed=0).tolist(),  # key is unimportant - parameters will be overwritten by serialised MLP
-            'input_dropout_rate': self.func.mlp.input_dropout_rate
-            if isinstance(self.func.mlp, CustomDropoutMLP) else None,
-            'hidden_dropout_rate': self.func.mlp.hidden_dropout_rate
-            if isinstance(self.func.mlp, CustomDropoutMLP) else None,
-        }
-
-
-    def save(self, filename: Path) -> None:
-        """
-        Save the model to a file.
-
-        :param filename: path of file to serialise UDEFunction
-        """
-        # Serialise UDEFunction (and MLP)
-        filename.parent.mkdir(exist_ok=True, parents=True)
-        with Path.open(filename, 'wb') as f:
-            # Save model hyperparameters
-            hyperparam_str = json.dumps(self.get_hyperparams())
-            f.write((hyperparam_str + '\n').encode())
-            # Serialise MLP
-            eqx.tree_serialise_leaves(f, self.func.mlp)
-
-
-    @classmethod
-    def load(
-            cls,
-            filename: Union[Path, str],
-    ) -> 'UDEProblem':
-        """
-        Loads UDEProblem from serialised UDEFunction file.
-
-        :param filename: path of file
-        :return: UDEProblem instance
-        """
-        # Ensure filename is a Path object
-        filename = Path(filename)
-        with Path.open(filename, 'rb') as f:
-            # Load model hyperparameters
-            hyperparam_str = f.readline().decode().strip()
-            hyperparams = json.loads(hyperparam_str)
-            # Key: convert back to ArrayImpl with expected dtype
-            hyperparams['key'] = jnp.array(hyperparams['key'], dtype=jnp.uint32)
-            # Subset to MLP params
-            mlp_hyperparams = {
-                param_key: hyperparams[param_key]
-                for param_key in [
-                    "in_size", "out_size",
-                    "width_size", "depth",
-                    "use_bias", "use_final_bias",
-                    "key"
-                ]
-            }
-            mlp_skeleton_func = eqx.nn.MLP
-            # Handle CustomDropoutMLP-specific params
-            for param_key in ["input_dropout_rate", "hidden_dropout_rate"]:
-                if hyperparams[param_key] is not None:
-                    mlp_hyperparams[param_key] = hyperparams[param_key]
-                    # Override default MLP function
-                    mlp_skeleton_func = CustomDropoutMLP
-
-            # Make MLP skeleton
-            mlp = mlp_skeleton_func(
-                **mlp_hyperparams,
-                activation=activation_functions[hyperparams["activation"]],
-                final_activation=activation_functions[hyperparams["final_activation"]]
-            )
-            # Apply serialised weights and biases to MLP skeleton
-            mlp = eqx.tree_deserialise_leaves(f, mlp)
-            ude_prob = UDEProblem(
-                dynamical_model=hyperparams["dynamical_model"],
-                dynamic_parameters=jnp.array(hyperparams["dynamic_parameters"]),  # from list to JAX Array
-                mlp=mlp,
-                options=hyperparams["options"],
-                state_dimension=hyperparams["state_dimension"],
-                regularise_network=hyperparams["regularise_network"],
-            )
-        return ude_prob
 
 
 def build_mlp(

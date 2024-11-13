@@ -9,8 +9,6 @@ class CustomDropoutMLP(eqx.Module):
     activation: Callable
     final_activation: Callable
     dropout_keys: Any
-    input_dropout_rate: float
-    hidden_dropout_rate: float
 
     # TODO @GiacomoFabrini consider adding bias behaviour (use_bias)
     # TODO @GiacomoFabrini: test this class!
@@ -32,8 +30,6 @@ class CustomDropoutMLP(eqx.Module):
         lyr_key, dropout_key = jr.split(key)
         layer_keys = jr.split(lyr_key, num=depth+1)
         self.dropout_keys = jr.split(dropout_key, num=depth)
-        self.input_dropout_rate = dropout_rates["input"]
-        self.hidden_dropout_rate = dropout_rates["hidden"]
 
         # Define layer-wise architecture
         layer_sizes = [in_size] + [width_size] * depth + [out_size]
@@ -47,9 +43,9 @@ class CustomDropoutMLP(eqx.Module):
             )
         ):
             if fan_in == in_size:
-                p = self.input_dropout_rate
+                p = dropout_rates["input"]
             else:
-                p = self.hidden_dropout_rate
+                p = dropout_rates["hidden"]
             # Dropout layers on inputs and hidden layers, but not outputs
             self.layers.append(
                 eqx.nn.Dropout(p=p)
