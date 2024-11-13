@@ -13,3 +13,4 @@ __pycache__/*
 src/old/*
 src/results/*
 plots/*
+Src/serialised_models/*
