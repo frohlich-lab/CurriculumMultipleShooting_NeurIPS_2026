@@ -14,6 +14,7 @@ from dataclasses import replace
 from diffrax import SaveAt
 from flax.training.early_stopping import EarlyStopping
 from jaxtyping import Array, Float, PyTree
+from pathlib import Path
 from src.model_examples.lotka_volterra.setup_diffrax_model import get_fit_dfs as get_fit_dfs_lv
 from src.model_examples.sir.setup_diffrax_model import get_fit_dfs as get_fit_dfs_sir
 from src.model_training.model_util import regularise_mlp
@@ -146,6 +147,7 @@ def train(
         max_iter_optx_mechanistic: int,
         n_epochs: int,
         max_iter_optx_finetune: int,
+        model_save_dir: Path,
 ) -> Union[UDEProblem, Tuple[UDEProblem, Dict[int, UDEProblem]]]:
     """
     Trains the UDEmodel (`model`).
@@ -619,6 +621,8 @@ def train(
 
         # Update epoch
         epoch += 1
+        # Serialise the best ADAM model
+        best_model.save(model_save_dir / (conf.__str__() + "_best_ADAM.eqx"))
 
     # Train with BFGS via optimistix
     if max_iter_optx_finetune > 0:  # otherwise end training and return trained model
@@ -699,6 +703,8 @@ def train(
         raise ValueError(f"Error syncing wandb directory: {e}")
     # Return best_model on validation dataset
     return best_model
+    # Serialise best model overall
+    best_model.save(model_save_dir / (conf.__str__() + "_best_final.eqx"))
     if not conf.curriculum_learning:
         # Return best_model on validation dataset
         return best_model

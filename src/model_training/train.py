@@ -5,7 +5,7 @@ import src.model_examples.lotka_volterra.setup_diffrax_model as setup_lv
 import src.model_examples.sir.setup_diffrax_model as setup_sir
 
 from jax import config
-from src.common import activation_functions, Conf, EarlyStoppingParams
+from src.common import activation_functions, Conf, EarlyStoppingParams, model_save_dir
 from src.model_training.model_util import set_weight_bias
 from src.model_training.training_util import sample_dynamical_params
 from src.ude_problem import UDEProblem, build_mlp
@@ -150,7 +150,7 @@ early_stopping_params = EarlyStoppingParams(
 # if conf.node_augmentation > 0:
 #     u0 = jnp.concatenate([u0, jnp.zeros(conf.node_augmentation)])
 
-trained_model = train(
+training_output = train(
     model=ude_problem,
     u0=u0[conf.dynamical_model],
     training_data=train_data,
@@ -168,4 +168,5 @@ trained_model = train(
     max_iter_optx_mechanistic=MECHANISTIC_FIT_EPOCHS,
     n_epochs=N_EPOCHS,
     max_iter_optx_finetune=MAX_ITER_OPTX_FINETUNE,
+    model_save_dir=model_save_dir,
 )
