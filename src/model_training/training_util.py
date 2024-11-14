@@ -598,7 +598,14 @@ def transform_dynamic_params(dynamic_parameters: jnp.ndarray, conf: Conf) -> jnp
         raise ValueError(f"Unknown dynamic parameter scale: {conf.dynamic_params_scale}!")
 
 
-def get_ude_trajectory(model: UDEProblem, u0, t_save, t_span, mlp_only: bool = False):
+def get_ude_trajectory(
+        model: UDEProblem,
+        u0,
+        t_save,
+        t_span,
+        mlp_only: bool = False,
+        return_full_solution: bool = False
+):
     solver = diffrax.Tsit5()
 
     if len(u0) == model.func.state_dimension and model.func.regularise_network:
@@ -620,4 +627,22 @@ def get_ude_trajectory(model: UDEProblem, u0, t_save, t_span, mlp_only: bool = F
     )
 
     return solution.ys[:, :model.func.state_dimension]
+    return solution if return_full_solution else solution.ys[:, :model.func.state_dimension]
 
+
+def get_ude_trajectory_and_derivatives(model: UDEProblem, u0, t_save, t_span, mlp_only: bool = False):
+    # Save dense solution
+    t_save = diffrax.SaveAt(ts=t_save.subs.ts, dense=True)
+    trajectory_solution = get_ude_trajectory(model, u0, t_save, t_span, mlp_only, return_full_solution=True)
+    # Evaluate the vector field to get true derivatives
+    vector_field = model.func
+    derivatives = np.array(
+        [
+            vector_field(t, trajectory_solution.evaluate(t), args=u0)
+            for t in t_save.subs.ts
+        ]
+    )
+    return dict(
+        traj=trajectory_solution.ys[:, :model.func.state_dimension],
+        der=derivatives[:, :model.func.state_dimension]
+    )
