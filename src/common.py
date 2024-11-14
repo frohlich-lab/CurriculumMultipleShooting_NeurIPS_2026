@@ -64,6 +64,7 @@ class Conf(dict):
     freeze_mechanistic_params_landscape_BFGS: bool = False
     use_fides: bool = False
     experiment_name: str = None
+    serialise_curriculum_models: bool = False
 
     def __str__(self):
         """
@@ -71,7 +72,7 @@ class Conf(dict):
 
         Note: enables printing of Conf objects in fire
         """
-        unwanted_fields = ["experiment_name"]
+        unwanted_fields = ["experiment_name", "serialise_curriculum_models"]
         if not self.use_dropout:  # if not using dropout, do not include dropout rates in run name
             unwanted_fields.extend(["input_dropout_rate", "hidden_dropout_rate"])
         if not self.use_lookahead:  # if not using LookAhead, do not include related params

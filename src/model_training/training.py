@@ -443,9 +443,11 @@ def train(
         log_epochs = generate_log_epochs(n_epochs=n_epochs, num_samples=100, min_dist=5)
 
         # Define epochs at which to save curriculum-step models: just before increasing number of datapoints or last epoch
-        if conf.curriculum_learning:
-            model_save_steps = steps[1:] + [n_epochs-1]
-            curriculum_models = {}
+        if conf.curriculum_learning and conf.serialise_curriculum_models:
+            model_save_steps_start = steps  # start of CL stages
+            models_curriculum_stage_start = {}
+            model_save_steps_end = [step-1 for step in steps[1:]] + [n_epochs-1]  # end of CL stages
+            models_curriculum_stage_end = {}
 
         # Training loop
         metric_handler = MetricHandler(patience=5)
@@ -501,9 +503,12 @@ def train(
                 best_model = inference_model
                 loss_val_min = loss_val
 
-            # Save model at edge between consecutive curriculum learning steps
-            if nn_epoch in model_save_steps:
-                curriculum_models[nn_epoch] = inference_model
+            # Save model at the start/end of each curriculum learning stage
+            if conf.serialise_curriculum_models:
+                if nn_epoch in model_save_steps_start:
+                    models_curriculum_stage_start[nn_epoch] = inference_model
+                elif nn_epoch in model_save_steps_end:
+                    models_curriculum_stage_end[nn_epoch] = inference_model
 
             # log loss_train, loss_val, learning rate, param values and grads on log-spaced epochs
             if nn_epoch in log_epochs:
@@ -709,4 +714,13 @@ def train(
         # Return best_model on validation dataset
         return best_model
     else:
-        return best_model, curriculum_models
+        if conf.serialise_curriculum_models:
+            for cl_ind, epoch in enumerate(model_save_steps_start):
+                models_curriculum_stage_start[epoch].save(
+                    model_save_dir / (conf.__str__() + f"_ADAM_CL{cl_ind}_start.eqx")
+                )
+            for cl_ind, epoch in enumerate(model_save_steps_end):
+                models_curriculum_stage_end[epoch].save(
+                    model_save_dir / (conf.__str__() + f"_ADAM_CL{cl_ind}_end.eqx")
+                )
+        return best_model, {**models_curriculum_stage_start, **models_curriculum_stage_end}
