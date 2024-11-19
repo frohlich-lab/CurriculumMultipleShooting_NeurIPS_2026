@@ -45,10 +45,6 @@ class UDEFunction(eqx.Module):
             raise ValueError(f"Unknown dynamic parameter scale: {self.options['dynamic_params_scale']}!")
         # Unpack state variables
         prey, predator = u[:self.state_dimension]
-        # if self.options["add_interaction"]:
-        #     nn_input = jnp.concatenate([u, jnp.array([prey * predator])])
-        # else:
-        #     nn_input = u
         if len(u) > self.state_dimension + 1:
             nn_input = jnp.concatenate([u[:self.state_dimension], u[self.state_dimension+1:]])
         else:

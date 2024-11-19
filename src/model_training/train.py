@@ -71,10 +71,6 @@ out_size = {
 if conf.activation_fn_name not in activation_functions:
     raise ValueError(f"Unknown activation function: {conf.activation_fn_name}!")
 
-# if conf.add_interaction:
-#     # increase input size for interaction term
-#     in_size["lotka_volterra"] += 1
-
 mlp = build_mlp(
     in_size=in_size[conf.dynamical_model],
     out_size=out_size[conf.dynamical_model],

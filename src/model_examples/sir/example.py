@@ -38,7 +38,6 @@ mlp = set_weight_bias(mlp, 0.1, key)
 u0 = jnp.array([51000000.0, 578, 24, 10])
 dynamic_parameters = jnp.array([0.15, 0.013, 0.01])
 options = {
-    # "add_interaction": False,
     "dynamic_params_scale": False,
 }
 u_prob = UDEProblem("sir", dynamic_parameters, mlp, options)

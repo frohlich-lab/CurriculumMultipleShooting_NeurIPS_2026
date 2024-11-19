@@ -55,7 +55,6 @@ mlp = set_weight_bias(mlp, 0.05, key_init)
 u0 = jnp.array([0.44249296, 4.6280594])
 dynamic_parameters = jnp.array([1.3, 1.8])
 options = {
-    # "add_interaction": False,
     "dynamic_params_scale": "log10",
 }
 uprob = UDEProblem("lotka_volterra", dynamic_parameters, mlp, options)

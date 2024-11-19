@@ -46,7 +46,6 @@ class Conf(dict):
     freeze_mechanistic_params_optx: bool = False
     # Extra options for UDEFunction
     node_augmentation: int = 0
-    # add_interaction: bool = False
     dynamic_params_scale: str = "log10"
     save_plots: bool = False
     hessian_precondition: bool = False
