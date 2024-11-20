@@ -3,7 +3,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import optax
 import subprocess
 import wandb
@@ -18,7 +18,7 @@ from pathlib import Path
 from src.model_examples.lotka_volterra.setup_diffrax_model import get_fit_dfs as get_fit_dfs_lv
 from src.model_examples.sir.setup_diffrax_model import get_fit_dfs as get_fit_dfs_sir
 from src.model_training.model_util import regularise_mlp
-from src.model_training.training_util import (eig_sv_plot, generate_incremental_arrays, generate_log_epochs,
+from src.model_training.training_util import (generate_incremental_arrays, generate_log_epochs,
                                               get_opt_opt_state_params, get_scheduler,
                                               initialise_wandb, log_model_stats, log_plots,
                                               make_grads_finite, max_grad_norm, get_hessian_metrics,
@@ -189,10 +189,19 @@ def train(
         Number of training iterations (epochs).
     :param max_iter_optx_finetune:
         Maximum number of iterations for further training via optimistix.
+    :param model_save_dir:
+        Filepath of directory to save the trained models.
     """
 
-    # Set training setting in configuration
-    conf = replace(conf, training_setting="UDE")
+    # Check training setting in configuration
+    if conf.training_setting not in ["UDE", "NODE"]:
+        # if not properly set, set to default value of UDE
+        conf = replace(conf, training_setting="UDE")
+
+    # Check curriculum learning (CL) settings
+    if not conf.curriculum_learning:
+        conf = replace(conf, serialise_curriculum_models=False)  # cannot serialise CL models if not using CL
+
     # Initialise wandb and define metrics
     initialise_wandb(
         conf=conf,
@@ -418,8 +427,13 @@ def train(
         # Add initial zero as starting condition for the 2-norm of the neural network contribution
         u0 = jnp.concatenate([u0, jnp.zeros(1)])
 
-        # Depending on conf settings, freeze mechanistic parameters for ADAM training or keep them learnable
-        adam_filter_spec = filter_spec_freeze_mechanistic if conf.freeze_mechanistic_params_adam else eqx.is_array
+        # Depending on conf settings, freeze mechanistic params/neural network or keep everything learnable
+        if conf.freeze_mechanistic_params_adam:
+            adam_filter_spec = filter_spec_freeze_mechanistic
+        elif conf.freeze_nn_adam:
+            adam_filter_spec = filter_spec_freeze_nn
+        else:
+            adam_filter_spec = eqx.is_array
         params, static = eqx.partition(model, adam_filter_spec)
 
         # Get schedule
@@ -484,7 +498,7 @@ def train(
                 # no need for difference in training/inference behaviour
                 inference_model = model
 
-            inference_params, inference_static = eqx.partition(inference_model, filter_spec_freeze_mechanistic)
+            inference_params, inference_static = eqx.partition(inference_model, adam_filter_spec)
             # compute validation loss
             loss_val, _ = loss_fn(
                 prob_params=inference_params,
@@ -525,7 +539,9 @@ def train(
                 if jnp.isfinite(loss_train):
                     wandb.log(
                         log_model_stats(
-                            model, grads, conf, frozen_mechanistic=conf.freeze_mechanistic_params_adam, frozen_nn=False
+                            model, grads, conf,
+                            frozen_mechanistic=conf.freeze_mechanistic_params_adam,
+                            frozen_nn=conf.freeze_nn_adam
                         ),
                         step=epoch+nn_epoch
                     )
@@ -631,10 +647,18 @@ def train(
 
     # Train with BFGS via optimistix
     if max_iter_optx_finetune > 0:  # otherwise end training and return trained model
+        # Setup filter spec
+        if conf.freeze_mechanistic_params_optx:
+            bfgs_filter_spec = filter_spec_freeze_mechanistic
+        elif conf.freeze_nn_optx:
+            bfgs_filter_spec = filter_spec_freeze_nn
+        else:
+            bfgs_filter_spec = eqx.is_array
+
         if not conf.use_fides:
             model, sol, static, _, loss_val, epoch = train_optimistix(
                 model=model,
-                filter_spec=filter_spec_freeze_mechanistic if conf.freeze_mechanistic_params_optx else eqx.is_array,
+                filter_spec=bfgs_filter_spec,
                 conf=conf,
                 optx_config=optx_config,
                 loss_optx=loss_optx,
@@ -648,8 +672,8 @@ def train(
                 t_span_val=t_span_val,
                 validation_data=validation_data,
                 loss_fn=loss_fn,
-                frozen_mechanistic=True if conf.freeze_mechanistic_params_optx else False,
-                frozen_nn=False,
+                frozen_mechanistic=conf.freeze_mechanistic_params_optx,
+                frozen_nn=conf.freeze_nn_optx,
                 zero_out_mlp=False,
                 wandb_log=True,
                 wandb_log_final=True,
@@ -657,7 +681,7 @@ def train(
         else:
             model, sol, static, _, loss_val, epoch = train_fides(
                 model=model,
-                filter_spec=filter_spec_freeze_mechanistic if conf.freeze_mechanistic_params_optx else eqx.is_array,
+                filter_spec=bfgs_filter_spec,
                 conf=conf,
                 loss_grad_fn=loss_grad_fn,
                 epoch=epoch,
@@ -701,26 +725,23 @@ def train(
     wandb_stripped_dir = wandb.run.dir.rsplit('/files', 1)[0]
     command = f"wandb sync {wandb_stripped_dir}"
     wandb.finish()
-    # Log everything to W&B after end of run
-    try:
-        _ = subprocess.run(command, shell=True)
-    except subprocess.CalledProcessError as e:
-        raise ValueError(f"Error syncing wandb directory: {e}")
-    # Return best_model on validation dataset
-    return best_model
+    # # Log everything to W&B after end of run
+    # try:
+    #     _ = subprocess.run(command, shell=True)
+    # except subprocess.CalledProcessError as e:
+    #     raise ValueError(f"Error syncing wandb directory: {e}")
     # Serialise best model overall
     best_model.save(model_save_dir / (conf.__str__() + "_best_final.eqx"))
-    if not conf.curriculum_learning:
+    if not conf.serialise_curriculum_models:
         # Return best_model on validation dataset
         return best_model
     else:
-        if conf.serialise_curriculum_models:
-            for cl_ind, epoch in enumerate(model_save_steps_start):
-                models_curriculum_stage_start[epoch].save(
-                    model_save_dir / (conf.__str__() + f"_ADAM_CL{cl_ind}_start.eqx")
-                )
-            for cl_ind, epoch in enumerate(model_save_steps_end):
-                models_curriculum_stage_end[epoch].save(
-                    model_save_dir / (conf.__str__() + f"_ADAM_CL{cl_ind}_end.eqx")
-                )
+        for cl_ind, epoch in enumerate(model_save_steps_start):
+            models_curriculum_stage_start[epoch].save(
+                model_save_dir / (conf.__str__() + f"_ADAM_CL{cl_ind}_start.eqx")
+            )
+        for cl_ind, epoch in enumerate(model_save_steps_end):
+            models_curriculum_stage_end[epoch].save(
+                model_save_dir / (conf.__str__() + f"_ADAM_CL{cl_ind}_end.eqx")
+            )
         return best_model, {**models_curriculum_stage_start, **models_curriculum_stage_end}

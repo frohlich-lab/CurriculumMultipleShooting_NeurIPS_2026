@@ -9,16 +9,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 import optax
 import pandas as pd
+import pysindy as ps
 import seaborn as sns
 import wandb
-# from jax import Array
 
 from jaxtyping import Array, PyTree
 from pathlib import Path
 from src.common import Conf, dynamic_param_labels, EarlyStoppingParams, hessian_metrics_wandb, plots_dir
 from src.model_training.training_configuration import N_EPOCHS, MAX_ITER_OPTX_FINETUNE
 from src.ude_problem import UDEProblem
-from typing import List, Optional, Union, Tuple, Dict, Any
+from typing import List, Optional, Union
 
 
 # Scheduler from Fabian's NeuralCoarseGraining
@@ -130,7 +130,8 @@ def initialise_wandb(
             "early_stop" if conf.use_early_stop else "no_early_stop",
             # "frozen_mechanistic_params_optx"
             # if conf.freeze_mechanistic_params_optx else "learnable_mechanistic_params_optx",  # DISABLED TO MERGE WITH MLP
-        ]
+        ],
+        mode="offline",  # TODO remove this!!! DEBUG ONLY (PyCharm ENV EXPORT not working)
     )
 
     # Define shared metrics
@@ -222,6 +223,8 @@ def log_model_stats(
     :param model: model containing weight information
     :param grad: model containing gradient information
     :param conf: configuration object
+    :param frozen_mechanistic: bool, whether the mechanistic parameters are frozen
+    :param frozen_nn: bool, whether the neural network is frozen
     """
     layers = [
         (par_layer, grad_layer)
@@ -626,7 +629,6 @@ def get_ude_trajectory(
         t_span
     )
 
-    return solution.ys[:, :model.func.state_dimension]
     return solution if return_full_solution else solution.ys[:, :model.func.state_dimension]
 
 
@@ -646,3 +648,58 @@ def get_ude_trajectory_and_derivatives(model: UDEProblem, u0, t_save, t_span, ml
         traj=trajectory_solution.ys[:, :model.func.state_dimension],
         der=derivatives[:, :model.func.state_dimension]
     )
+
+
+def get_sindy_formula(
+        model: UDEProblem,
+        u0: jnp.ndarray,
+        t_save: diffrax.SaveAt,
+        t_span: List[float],
+        settings: List[str],
+        use_derivatives: bool
+):
+    # Get trajectories + true derivatives (vector field)
+    traj_der = {
+        tag: get_ude_trajectory_and_derivatives(
+            model, u0, t_save, t_span, mlp_only=zero_mlp
+        )
+        for tag, zero_mlp in zip(["MLP", "UDE"], [True, False])
+    }
+    ps_models = {}
+    for setting in settings:  # missing physics & full model (known + missing)
+        ps_models[setting] = ps.SINDy(
+            feature_names=[f"x{i + 1}" for i in range(model.func.state_dimension)]
+        )
+        if not use_derivatives:
+            ps_models[setting].fit(
+                x=traj_der[setting]["traj"],
+                t=np.array(t_save.subs.ts)
+            )  # numerically estimate derivatives
+        else:
+            ps_models[setting].fit(
+                x=traj_der[setting]["traj"],
+                t=np.array(t_save.subs.ts),
+                x_dot=traj_der[setting]["der"],  # use derivatives from vector field evaluations
+            )
+        # Print found symbolic regression model
+        ps_models[setting].print()
+        print(
+            f"Number of non-zero coefficients in SINDy model of {setting}: "
+            f"{(np.abs(ps_models[setting].coefficients()) > 0).sum()}"
+        )
+
+
+def generate_epochs_dict(epochs_list):
+    # Validate that the list has an even number of elements
+    if len(epochs_list) % 2 != 0:
+        raise ValueError("The epochs list must have an even number of elements.")
+
+    # Create the dictionary
+    epochs_dict = {}
+    num_steps = len(epochs_list) // 2
+
+    for i in range(num_steps):
+        start_epoch = epochs_list[2 * i]
+        end_epoch = epochs_list[2 * i + 1]
+        epochs_dict[i] = {"start": start_epoch, "end": end_epoch}
+    return epochs_dict

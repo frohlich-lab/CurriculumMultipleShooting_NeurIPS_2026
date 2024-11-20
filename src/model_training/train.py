@@ -4,10 +4,12 @@ import jax.numpy as jnp
 import src.model_examples.lotka_volterra.setup_diffrax_model as setup_lv
 import src.model_examples.sir.setup_diffrax_model as setup_sir
 
+from dataclasses import replace
 from jax import config
-from src.common import activation_functions, Conf, EarlyStoppingParams, model_save_dir
+from src.common import (activation_functions, Conf, EarlyStoppingParams, model_save_dir,
+                        u0s, state_dims, true_dynamic_parameters)
 from src.model_training.model_util import set_weight_bias
-from src.model_training.training_util import sample_dynamical_params
+from src.model_training.training_util import sample_dynamical_params, get_sindy_formula
 from src.ude_problem import UDEProblem, build_mlp
 from training import train
 from training_configuration import MECHANISTIC_FIT_EPOCHS, N_EPOCHS, MAX_ITER_OPTX_FINETUNE
@@ -25,70 +27,80 @@ config.update("jax_enable_x64", True)
 key = jr.PRNGKey(seed)
 key_mlp, key_init = jr.split(key, 2)
 
-state_dims = {
-    "lotka_volterra": 2,
-    "sir": 4,
-}
+# Copy default initial conditions
+u0 = u0s.copy()
 
-# Setup default u0, dynamic parameters, in_size, out_size
-u0 = {
-    'lotka_volterra': jnp.array([0.44249296, 4.6280594]),
-    'sir': jnp.array([51000000.0, 578, 24, 10]),
-}
-
+# Apply NODE-like augmentation
 if conf.node_augmentation > 0:
     for dynamical_model in u0.keys():
         u0[dynamical_model] = jnp.concatenate([u0[dynamical_model], jnp.zeros(conf.node_augmentation)])
 
-true_dynamic_parameters = {
-    'lotka_volterra': jnp.array([1.3, 1.8]),
-    'sir': jnp.array([0.15, 0.013, 0.01]),
-}
-
-# Sample dynamic parameters and convert to correct scale (linear/log10)
-dynamic_parameters = {
-    dynamical_model: sample_dynamical_params(
-        true_params=true_dynamic_parameters[dynamical_model],
-        deviation=conf.multistart_deviation,
-        seed=seed,
-        scale=conf.dynamic_params_scale,
-        method=conf.dynamic_params_perturb_method,
+# Sample dynamic parameters and apply correct estimation scale (linear/log10)
+if conf.training_setting != "NODE":
+    # Sample dynamic parameters and convert to correct scale (linear/log10)
+    dynamic_parameters = {
+        dynamical_model: sample_dynamical_params(
+            true_params=true_dynamic_parameters[dynamical_model],
+            deviation=conf.multistart_deviation,
+            seed=seed,
+            scale=conf.dynamic_params_scale,
+            method=conf.dynamic_params_perturb_method,
+        )
+        for dynamical_model in true_dynamic_parameters.keys()
+    }
+else:
+    # if training NODEs, zero out dynamic parameters (no known terms), freeze them and set their scale to linear
+    dynamic_parameters = {
+        dynamical_model: jnp.zeros_like(true_dynamic_parameters[dynamical_model])
+        for dynamical_model in true_dynamic_parameters.keys()
+    }
+    conf = replace(
+        conf,
+       dynamic_params_scale="linear",
+       freeze_mechanistic_params_adam=True,
+       freeze_mechanistic_params_optx=True
     )
-    for dynamical_model in true_dynamic_parameters.keys()
-}
 
+# ================================================================
+#                         SET UP MLP
+# ================================================================
+# Define input and output sizes for MLP
 in_size = {
     'lotka_volterra': len(u0['lotka_volterra']),  # i.e. 2 (prey, predator) + conf.node_augmentation
     'sir': len(u0['sir'])-1,  # i.e. 4 (S, I, R) + conf.node_augmentation -- does not include t (quarantined)
 }
-
 out_size = {
     'lotka_volterra': 2+conf.node_augmentation,  # prey, predator, augmentation variables
     'sir': 1+conf.node_augmentation,  # Q (quarantine strength), augmentation variables
 }
 
-# Setup MLP (same as the original paper for now)
+# Check activation function is valid
 if conf.activation_fn_name not in activation_functions:
     raise ValueError(f"Unknown activation function: {conf.activation_fn_name}!")
 
-mlp = build_mlp(
-    in_size=in_size[conf.dynamical_model],
-    out_size=out_size[conf.dynamical_model],
-    width_size=conf.mlp_layer_width,
-    hidden_layers=conf.mlp_depth,
-    key=key_mlp,
-    use_bias=conf.use_bias,
-    use_final_bias=conf.use_final_bias,
-    activation=activation_functions[conf.activation_fn_name],
-    final_activation=activation_functions[conf.final_activation_fn_name],
-    use_dropout=conf.use_dropout,
-    input_dropout_rate=conf.input_dropout_rate,
-    hidden_dropout_rate=conf.hidden_dropout_rate,
+# Build the MLP, initialise its weights and biases
+mlp = set_weight_bias(
+        build_mlp(
+        in_size=in_size[conf.dynamical_model],
+        out_size=out_size[conf.dynamical_model],
+        width_size=conf.mlp_layer_width,
+        hidden_layers=conf.mlp_depth,
+        key=key_mlp,
+        use_bias=conf.use_bias,
+        use_final_bias=conf.use_final_bias,
+        activation=activation_functions[conf.activation_fn_name],
+        final_activation=activation_functions[conf.final_activation_fn_name],
+        use_dropout=conf.use_dropout,
+        input_dropout_rate=conf.input_dropout_rate,
+        hidden_dropout_rate=conf.hidden_dropout_rate,
+    ),
+    conf.init_scale,
+    key_init
 )
-# Initialise weights and biases of MLP
-mlp = set_weight_bias(mlp, conf.init_scale, key_init)
 
-# Setup UDEProblem to train
+# ================================================================
+#                   SET UP UDE PROBLEM TO TRAIN
+# ================================================================
 if conf.dynamical_model == 'lotka_volterra':
     # TODO @GiacomoFabrini find better way to express filepath and pass it as argument
     (train_data, t_save_train, t_span_train,
@@ -117,7 +129,6 @@ else:
     raise ValueError(f"Unknown dynamical model: {conf.dynamical_model}!")
 
 options = {
-    # "add_interaction": conf.add_interaction,
     "dynamic_params_scale": conf.dynamic_params_scale,
 }
 ude_problem = UDEProblem(
@@ -141,11 +152,9 @@ early_stopping_params = EarlyStoppingParams(
     min_improvement=0,  # absolute improvement in loss_val to consider as improvement
 )
 
-# TODO @GiacomoFabrini - can we get u0 from data? fix this!
-# u0 = train_data[0]
-# if conf.node_augmentation > 0:
-#     u0 = jnp.concatenate([u0, jnp.zeros(conf.node_augmentation)])
-
+# ================================================================
+#                            TRAIN
+# ================================================================
 training_output = train(
     model=ude_problem,
     u0=u0[conf.dynamical_model],
@@ -166,3 +175,23 @@ training_output = train(
     max_iter_optx_finetune=MAX_ITER_OPTX_FINETUNE,
     model_save_dir=model_save_dir,
 )
+
+# ================================================================
+#                  GET SYMBOLIC EXPRESSION (SINDy)
+# ================================================================
+# SINDy on final CL model (if enabled)
+if conf.serialise_curriculum_models:
+    best_model, curriculum_models = training_output
+    if conf.get_sindy_formula:
+        # Final CL step (complete training dataset fit)
+        sindy_model = curriculum_models[list(curriculum_models.keys())[-1]]
+        get_sindy_formula(
+            model=sindy_model,
+            u0=u0[conf.dynamical_model],
+            t_save=t_save_train,
+            t_span=t_span_train,
+            settings=["MLP", "UDE"],
+            use_derivatives=conf.sindy_use_derivatives,
+        )
+else:
+    best_model = training_output
