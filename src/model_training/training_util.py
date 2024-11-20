@@ -131,7 +131,6 @@ def initialise_wandb(
             # "frozen_mechanistic_params_optx"
             # if conf.freeze_mechanistic_params_optx else "learnable_mechanistic_params_optx",  # DISABLED TO MERGE WITH MLP
         ],
-        mode="offline",  # TODO remove this!!! DEBUG ONLY (PyCharm ENV EXPORT not working)
     )
 
     # Define shared metrics
