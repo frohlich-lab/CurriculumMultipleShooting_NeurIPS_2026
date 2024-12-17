@@ -13,6 +13,7 @@ import pysindy as ps
 import seaborn as sns
 import wandb
 
+from flax.training.early_stopping import EarlyStopping
 from jaxtyping import Array, PyTree
 from pathlib import Path
 from src.common import Conf, dynamic_param_labels, EarlyStoppingParams, hessian_metrics_wandb, plots_dir
@@ -702,3 +703,18 @@ def generate_epochs_dict(epochs_list):
         end_epoch = epochs_list[2 * i + 1]
         epochs_dict[i] = {"start": start_epoch, "end": end_epoch}
     return epochs_dict
+
+def configure_early_stopping(early_stopping_params):
+    if early_stopping_params.use_early_stopping:
+        if early_stopping_params.patience is None:
+            raise ValueError("Patience value for early stopping is undefined.")
+        elif early_stopping_params.min_improvement is None:
+            raise ValueError("Minimum absolute improvement for early stopping is undefined.")
+        else:
+            early_stopper = EarlyStopping(
+                min_delta=early_stopping_params.min_improvement,
+                patience=early_stopping_params.patience
+            )
+    else:
+        early_stopper = None
+    return early_stopper

@@ -12,13 +12,12 @@ import warnings
 from src.common import Conf, dynamic_param_labels, EarlyStoppingParams, hessian_metrics_wandb, plots_dir
 from dataclasses import replace
 from diffrax import SaveAt
-from flax.training.early_stopping import EarlyStopping
 from jaxtyping import Array, Float, PyTree
 from pathlib import Path
 from src.model_examples.lotka_volterra.setup_diffrax_model import get_fit_dfs as get_fit_dfs_lv
 from src.model_examples.sir.setup_diffrax_model import get_fit_dfs as get_fit_dfs_sir
 from src.model_training.model_util import regularise_mlp
-from src.model_training.training_util import (generate_incremental_arrays, generate_log_epochs,
+from src.model_training.training_util import (configure_early_stopping, generate_incremental_arrays, generate_log_epochs,
                                               get_opt_opt_state_params, get_scheduler,
                                               initialise_wandb, log_model_stats, log_plots,
                                               make_grads_finite, max_grad_norm, get_hessian_metrics,
@@ -210,9 +209,7 @@ def train(
     )
 
     # Initialise variables
-    early_stopper, opt, opt_state, schedule = None, None, None, None
-    epoch = 0
-    nn_epoch=0
+    epoch, nn_epoch = 0, 0
     best_model, loss_val_min = model, jnp.inf
 
     # Create filter_spec allowing for training of mechanistic params only or neural network only
@@ -442,16 +439,7 @@ def train(
         opt, opt_state, params = get_opt_opt_state_params(conf, params, schedule)
 
         # Check Early-stopping parameters have been set correctly and instantiate early stopper
-        if early_stopping_params.use_early_stopping:
-            if early_stopping_params.patience is None:
-                raise ValueError("Patience value for early stopping is undefined.")
-            elif early_stopping_params.min_improvement is None:
-                raise ValueError("Minimum absolute improvement for early stopping is undefined.")
-            else:
-                early_stopper = EarlyStopping(
-                    min_delta=early_stopping_params.min_improvement,
-                    patience=early_stopping_params.patience
-                )
+        early_stopper = configure_early_stopping(early_stopping_params)
 
         # Generate regularly log-spaced epochs for early-stopping evaluation + model stat logging - from DMMs
         log_epochs = generate_log_epochs(n_epochs=n_epochs, num_samples=100, min_dist=5)
@@ -722,9 +710,10 @@ def train(
         )
 
     # Get W&B run directory
-    wandb_stripped_dir = wandb.run.dir.rsplit('/files', 1)[0]
-    command = f"wandb sync {wandb_stripped_dir}"
+    # wandb_stripped_dir = wandb.run.dir.rsplit('/files', 1)[0]
+    # command = f"wandb sync {wandb_stripped_dir}"
     wandb.finish()
+    # TODO check whether we are using online/offline mode on cluster!
     # # Log everything to W&B after end of run
     # try:
     #     _ = subprocess.run(command, shell=True)

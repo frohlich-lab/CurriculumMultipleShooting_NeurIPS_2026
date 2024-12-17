@@ -6,12 +6,11 @@ import optax
 import wandb
 
 from dataclasses import replace
-from flax.training.early_stopping import EarlyStopping
 from jaxtyping import Array, Float, PyTree
 from src.common import Conf, EarlyStoppingParams
 from src.model_training.model_util import regularise_mlp, get_mse
 from src.model_training.training import make_grads_finite
-from src.model_training.training_util import (get_hessian_metrics, generate_log_epochs,
+from src.model_training.training_util import (configure_early_stopping, get_hessian_metrics, generate_log_epochs,
                                               get_opt_opt_state_params, get_scheduler, initialise_wandb)
 from typing import Union
 
@@ -88,8 +87,7 @@ def mlp_train(
             model=model,
         )
 
-    # Initialise early stopper and epoch counter
-    early_stopper = None
+    # Initialise epoch counter
     epoch = 0
 
     # Get schedule and partition model
@@ -100,16 +98,7 @@ def mlp_train(
     opt, opt_state, params = get_opt_opt_state_params(conf, params, schedule)
 
     # Check Early-stopping parameters have been set correctly and instantiate early stopper
-    if early_stopping_params.use_early_stopping:
-        if early_stopping_params.patience is None:
-            raise ValueError("Patience value for early stopping is undefined.")
-        elif early_stopping_params.min_improvement is None:
-            raise ValueError("Minimum absolute improvement for early stopping is undefined.")
-        else:
-            early_stopper = EarlyStopping(
-                min_delta=early_stopping_params.min_improvement,
-                patience=early_stopping_params.patience
-            )
+    early_stopper = configure_early_stopping(early_stopping_params)
 
     # Generate log-spaced epochs
     log_epochs = generate_log_epochs(n_epochs=n_epochs, num_samples=100, min_dist=5)
