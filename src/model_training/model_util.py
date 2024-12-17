@@ -3,6 +3,8 @@ import jax.numpy as jnp
 import jax.nn as jnn
 import jax.random as jr
 import jax.tree_util as jtu
+import numpy as np
+
 from jaxtyping import Array
 from typing import Any, Union
 
@@ -87,3 +89,56 @@ def set_weight_bias(
     mlp = eqx.tree_at(_get_bias, mlp, bias_new)
     mlp = eqx.tree_at(_get_weight, mlp, weight_new)
     return mlp
+
+def bounded_tanh_transform_params(
+        params: Union[Array, jnp.ndarray],
+        lb: np.ndarray,
+        ub: np.ndarray,
+        loc: float = 1.73,   # same as in Philipps et al. 2024
+) -> jnp.ndarray:
+    """
+    Transforms `params` from linear scale to bounded tanh/arctanh scale (lower bounds: `lb`, upper bounds: `ub`).
+    `loc` shifts the center of the tanh function.
+    """
+    # For numerical stability, shift the bounds slightly // https://www.biorxiv.org/content/10.1101/2024.11.29.626122v1
+    lb = np.array([max(0.0, item * (1 - 1e-6)) for item in lb])
+    ub = ub * (1 + 1e-6)
+    return np.arctanh(2 * (params - lb) / (ub - lb) - 1) + loc
+
+def bounded_tanh_recover_params(
+        params: Union[Array, jnp.ndarray],
+        lb: np.ndarray,
+        ub: np.ndarray,
+        loc: float = 1.73,  # same as in Philipps et al. 2024
+) -> jnp.ndarray:
+    """
+    Inverse-transforms `params` from bounded tanh/arctanh scale to linear one (lower bounds: `lb`, upper bounds: `ub`).
+    `loc` shifts the center of the tanh function.
+    """
+    # For numerical stability, shift the bounds slightly // https://www.biorxiv.org/content/10.1101/2024.11.29.626122v1
+    lb = lb * (1 - 1e-6)
+    ub = ub * (1 + 1e-6)
+    return lb + (np.tanh(params - loc) + 1) * (ub - lb) / 2
+
+
+def process_mechanistic_params(
+        dynamic_parameters: Union[Array, jnp.ndarray],
+        options: dict[str, Union[bool, dict[str, Any]]]
+) -> jnp.ndarray:
+    """
+    Process `dynamic_parameters` based on the scale specified in the `options` dictionary, returning
+    the (possibly) transformed parameters `mech_params`.
+    """
+    if options["dynamic_params_scale"] == "log10":
+        mech_params = jnp.power(10, dynamic_parameters)
+    elif options["dynamic_params_scale"] == "linear":
+        mech_params = dynamic_parameters
+    elif (options["dynamic_params_scale"] == "bounded_tanh") and ("bounded_tanh_params" in options.keys()):
+        mech_params = bounded_tanh_recover_params(
+            params=dynamic_parameters,
+            **options["bounded_tanh_params"],
+        )
+    else:
+        raise ValueError(f"Unknown dynamic parameter scale: {options['dynamic_params_scale']}!")
+    return mech_params
+
