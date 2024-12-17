@@ -86,6 +86,7 @@ class UDEProblem(eqx.Module):
     shooting_iv_init: str
     initial_values: Optional[Array]
     u0_guess: Optional[Array]
+    init_random_seed: Optional[int]
 
     def __init__(
             self, dynamical_model, dynamic_parameters, mlp, options, state_dimension, training_horizon,
