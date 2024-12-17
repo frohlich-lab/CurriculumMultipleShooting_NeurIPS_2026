@@ -85,8 +85,15 @@ class Conf(dict):
             "get_sindy_formula", "sindy_use_derivatives", 
             "dynamic_params_lb", "dynamic_params_ub"
         ]
+        # Remove some default values from the run name to avoid excessively long filenames
+        if self.final_activation_fn_name == "identity":  # if using identity activation, do not include in run name
+            unwanted_fields.append("final_activation_fn_name")
+        if self.dynamic_params_perturb_method == "sample_uniform":  # if using uniform sampling, do not include in run name
+            unwanted_fields.append("dynamic_params_perturb_method")
         if not self.use_dropout:  # if not using dropout, do not include dropout rates in run name
             unwanted_fields.extend(["input_dropout_rate", "hidden_dropout_rate"])
+        if not self.use_skip_connections:
+            unwanted_fields.append("use_skip_connections")
         if not self.use_lookahead:  # if not using LookAhead, do not include related params
             unwanted_fields.extend(["lookahead_sync", "lookahead_step_size", "lookahead_reset_state"])
         if not self.curriculum_learning:  # if not using curriculum learning, do not include number of steps/epochs
