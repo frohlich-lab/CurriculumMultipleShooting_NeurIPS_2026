@@ -5,7 +5,7 @@ import jax
 import os
 import pandas as pd
 
-from src.model_training.model_util import regularise_mlp, regularise_mlp_contribution, get_mse
+from src.model_training.model_util import regularise_mlp, regularise_mlp_contribution, get_mse, process_mechanistic_params
 from jaxtyping import Array
 from typing import Union
 
@@ -36,13 +36,8 @@ class UDEFunction(eqx.Module):
         self.regularise_network = regularise_network if regularise_network is not None else False
 
     def __call__(self, t, u, args):
-        # Unpack dynamic parameters (learnable)
-        if self.options["dynamic_params_scale"] == "log10":
-            alpha, delta = jnp.power(10, self.dynamic_parameters)
-        elif self.options["dynamic_params_scale"] == "linear":
-            alpha, delta = self.dynamic_parameters
-        else:
-            raise ValueError(f"Unknown dynamic parameter scale: {self.options['dynamic_params_scale']}!")
+        # Get dynamic parameters on correct scale for ODE
+        alpha, delta = process_mechanistic_params(self.dynamic_parameters, self.options)
         # Unpack state variables
         prey, predator = u[:self.state_dimension]
         if len(u) > self.state_dimension + 1:

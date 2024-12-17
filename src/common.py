@@ -19,6 +19,7 @@ class Conf(dict):
     use_final_bias: bool = True
     activation_fn_name: str = "relu"
     final_activation_fn_name: str = "identity"
+    use_skip_connections: bool = False
     # Optimiser and learning rate schedule
     optimiser: str = "adam"
     # default max_lrate is 0.01 as in UDE paper
@@ -48,7 +49,7 @@ class Conf(dict):
     freeze_nn_optx: bool = False
     # Extra options for UDEFunction
     node_augmentation: int = 0
-    dynamic_params_scale: str = "log10"
+    dynamic_params_scale: str = "log10"  # can be linear, log10 or bounded tanh
     save_plots: bool = False
     hessian_precondition: bool = False
     compute_hessian_metrics: bool = False
@@ -61,6 +62,8 @@ class Conf(dict):
     multistart_deviation: float = 0.0  # default: ground truth parameters
     multistart_job: int = 0
     dynamic_params_perturb_method: str = "sample_uniform"
+    dynamic_params_lb: float = 1e-3  # default lower bound
+    dynamic_params_ub: float = 1e3  # default upper bound
     # mechanistic_fit_epochs: int = 0
     training_setting: str = None  # options: "UDE", "MLP"
     mlpexp_target: str = "RHS"  # options: "RHS", "interaction"
@@ -79,7 +82,8 @@ class Conf(dict):
         """
         unwanted_fields = [
             "experiment_name", "serialise_curriculum_models",
-            "get_sindy_formula", "sindy_use_derivatives"
+            "get_sindy_formula", "sindy_use_derivatives", 
+            "dynamic_params_lb", "dynamic_params_ub"
         ]
         if not self.use_dropout:  # if not using dropout, do not include dropout rates in run name
             unwanted_fields.extend(["input_dropout_rate", "hidden_dropout_rate"])

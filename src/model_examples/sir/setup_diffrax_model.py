@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import os
 import pandas as pd
 
-from src.model_training.model_util import regularise_mlp, regularise_mlp_contribution, get_mse
+from src.model_training.model_util import regularise_mlp, regularise_mlp_contribution, get_mse, process_mechanistic_params
 from typing import Union
 
 
@@ -35,12 +35,8 @@ class UDEFunction(eqx.Module):
 
     def __call__(self, t, u, args):
         u0 = args
-        if self.options["dynamic_params_scale"] == "log10":
-            beta, gamma, delta = jnp.power(10, self.dynamic_parameters)
-        elif self.options["dynamic_params_scale"] == "linear":
-            beta, gamma, delta = self.dynamic_parameters
-        else:
-            raise ValueError(f"Unknown dynamic parameter scale: {self.options['dynamic_params_scale']}!")
+        # Get dynamic parameters on correct scale for ODE
+        beta, gamma, delta = process_mechanistic_params(self.dynamic_parameters, self.options)
         s, i, r, t_ = u[:self.state_dimension]
         if len(u) > self.state_dimension + 1:
             augmented_vars = u[self.state_dimension+1:]  # exclude evolution of 2-norm of network contribution
