@@ -2,9 +2,14 @@ wandb/*
 .idea/*
 .DS_Store
 __pycache__/*
+
 *.pdf
 *.png
 *.svg
+
+*.csv
+*.pkl
+
 *.pyc
 *.ipynb
 .bashrc
@@ -13,4 +18,4 @@ __pycache__/*
 src/old/*
 src/results/*
 plots/*
-Src/serialised_models/*
+src/models/*
