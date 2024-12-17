@@ -92,6 +92,7 @@ class Conf(dict):
             "experiment_name", "serialise_curriculum_models",
             "get_sindy_formula", "sindy_use_derivatives", 
             "dynamic_params_lb", "dynamic_params_ub"
+            "dynamic_params_lb", "dynamic_params_ub", "normalise_data", "normalise_timepoints",
         ]
         # Remove some default values from the run name to avoid excessively long filenames
         if self.final_activation_fn_name == "identity":  # if using identity activation, do not include in run name
