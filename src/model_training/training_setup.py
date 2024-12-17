@@ -20,6 +20,7 @@ def get_io_size(conf, u0):
 
 
 def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple) -> tuple:
+def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple, u0) -> tuple:
     if conf.dynamical_model == 'lotka_volterra':
         # TODO @GiacomoFabrini find better way to express filepath and pass it as argument
         (train_data, t_save_train, t_span_train,
@@ -54,7 +55,8 @@ def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple) -> tup
         )  # bounds are ignored if not using bounded tanh transform from Philipps et al. 2024
     }
     if conf.normalise_data:
-        train_data, validation_data = normalise(train_data, validation_data)
+        # Normalise initial condition u0 as well
+        train_data, validation_data, u0 = normalise(train_data, validation_data, provide_u0=True, u0=u0)
     if conf.normalise_timepoints:
         # SaveAt
         t_save_train, t_save_validation = normalise(t_save_train.subs.ts, t_save_validation.subs.ts)
@@ -62,7 +64,7 @@ def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple) -> tup
         # Span
         t_span_train = [t_save_train.subs.ts[0], t_save_train.subs.ts[-1]]
         t_span_validation = [t_save_train.subs.ts[0], t_save_validation.subs.ts[-1]]
-    train_args = train_data, t_save_train, t_span_train
+    train_args = train_data, t_save_train, t_span_train, u0
     val_args = validation_data, t_save_validation, t_span_validation
     loss_args = loss_fn, loss_grad_fn, loss_optx
     option_args = optx_config, options
