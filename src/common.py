@@ -141,7 +141,8 @@ def flatten(v: PyTree):
 
 basedir: Path = Path(__file__).resolve().parent
 plots_dir = basedir / "plots"
-model_save_dir = basedir / "serialised_models"
+results_dir = basedir / "results"
+model_save_dir = basedir / "models"
 
 
 def rbf(x):
@@ -198,4 +199,9 @@ u0s = {
 state_dims = {
     "lotka_volterra": 2,
     "sir": 4,
+}
+
+default_out_sizes = {
+    "lotka_volterra": 2,
+    "sir": 1,
 }
