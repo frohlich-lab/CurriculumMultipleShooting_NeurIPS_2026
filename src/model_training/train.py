@@ -6,36 +6,38 @@ import src.model_examples.sir.setup_diffrax_model as setup_sir
 
 from dataclasses import replace
 from jax import config
-from src.common import (activation_functions, Conf, EarlyStoppingParams, model_save_dir,
-                        u0s, state_dims, true_dynamic_parameters)
-from src.model_training.model_util import set_weight_bias
+from src.common import (Conf, EarlyStoppingParams, model_save_dir,
+                        state_dims, true_dynamic_parameters)
+from src.model_training.training_setup import (broadcast_bounds, get_data_and_funcs_for_train,
+                                               get_initial_conditions, setup_mlp)
 from src.model_training.training_util import sample_dynamical_params, get_sindy_formula
-from src.ude_problem import UDEProblem, build_mlp
+from src.ude_problem import UDEProblem
 from training import train
 from training_configuration import MECHANISTIC_FIT_EPOCHS, N_EPOCHS, MAX_ITER_OPTX_FINETUNE
 
+
+# ================================================================
+#            GET CONFIG, SETUP PRECISION, GET PRNG KEYS
+# ================================================================
 conf = fire.Fire(Conf)
 
 # Set seed for sampling dynamical parameters
 seed = conf.multistart_job
 
-# Technically Float32 should work, but for consistency between the benchmarks
-# I think we should use Float64
+# Configure JAX to use 64-bit precision
 config.update("jax_enable_x64", True)
 
 # Key
 key = jr.PRNGKey(seed)
 key_mlp, key_init = jr.split(key, 2)
 
-# Copy default initial conditions
-u0 = u0s.copy()
+# ================================================================
+#           INITIAL CONDITIONS AND DYNAMIC PARAMETERS
+# ================================================================
+# Get initial conditions
+u0 = get_initial_conditions(conf)
 
-# Apply NODE-like augmentation
-if conf.node_augmentation > 0:
-    for dynamical_model in u0.keys():
-        u0[dynamical_model] = jnp.concatenate([u0[dynamical_model], jnp.zeros(conf.node_augmentation)])
-
-# Sample dynamic parameters and apply correct estimation scale (linear/log10)
+# Sample dynamic parameters and apply correct estimation scale
 if conf.training_setting != "NODE":
     # Sample dynamic parameters and convert to correct scale (linear/log10)
     dynamic_parameters = {
@@ -45,11 +47,19 @@ if conf.training_setting != "NODE":
             seed=seed,
             scale=conf.dynamic_params_scale,
             method=conf.dynamic_params_perturb_method,
+            **broadcast_bounds(
+                bounds={
+                    "lb": conf.dynamic_params_lb,
+                    "ub": conf.dynamic_params_ub
+                },
+                shape=true_dynamic_parameters[dynamical_model].shape
+            )
         )
         for dynamical_model in true_dynamic_parameters.keys()
     }
 else:
-    # if training NODEs, zero out dynamic parameters (no known terms), freeze them and set their scale to linear
+    # if training NODEs, zero out dynamic parameters (no known terms),
+    # freeze them and set scale to linear
     dynamic_parameters = {
         dynamical_model: jnp.zeros_like(true_dynamic_parameters[dynamical_model])
         for dynamical_model in true_dynamic_parameters.keys()
@@ -64,69 +74,19 @@ else:
 # ================================================================
 #                         SET UP MLP
 # ================================================================
-# Define input and output sizes for MLP
-in_size = {
-    'lotka_volterra': len(u0['lotka_volterra']),  # i.e. 2 (prey, predator) + conf.node_augmentation
-    'sir': len(u0['sir'])-1,  # i.e. 4 (S, I, R) + conf.node_augmentation -- does not include t (quarantined)
-}
-out_size = {
-    'lotka_volterra': 2+conf.node_augmentation,  # prey, predator, augmentation variables
-    'sir': 1+conf.node_augmentation,  # Q (quarantine strength), augmentation variables
-}
-
-# Check activation function is valid
-if conf.activation_fn_name not in activation_functions:
-    raise ValueError(f"Unknown activation function: {conf.activation_fn_name}!")
-
-# Build the MLP, initialise its weights and biases
-mlp = set_weight_bias(
-        build_mlp(
-        in_size=in_size[conf.dynamical_model],
-        out_size=out_size[conf.dynamical_model],
-        width_size=conf.mlp_layer_width,
-        hidden_layers=conf.mlp_depth,
-        key=key_mlp,
-        use_bias=conf.use_bias,
-        use_final_bias=conf.use_final_bias,
-        activation=activation_functions[conf.activation_fn_name],
-        final_activation=activation_functions[conf.final_activation_fn_name],
-        use_dropout=conf.use_dropout,
-        input_dropout_rate=conf.input_dropout_rate,
-        hidden_dropout_rate=conf.hidden_dropout_rate,
-    ),
-    conf.init_scale,
-    key_init
-)
+mlp = setup_mlp(conf, u0, key_mlp, key_init)
 
 # ================================================================
 #                   SET UP UDE PROBLEM TO TRAIN
 # ================================================================
-if conf.dynamical_model == 'lotka_volterra':
-    # TODO @GiacomoFabrini find better way to express filepath and pass it as argument
-    (train_data, t_save_train, t_span_train,
-     validation_data, t_save_validation, t_span_validation) = setup_lv.get_training_validation_data()
-
-    loss_fn = setup_lv.compute_loss
-    loss_grad_fn = setup_lv.compute_loss_grad
-    loss_optx = setup_lv.compute_loss_optx
-    optx_config = {
-        "rtol": 1e-6,  # changed from 1e-3
-        "atol": 1e-6,  # changed from 1e-3
-    }
-elif conf.dynamical_model == 'sir':
-    # TODO @GiacomoFabrini find better way to express filepath and pass it as argument - same as above
-    (train_data, t_save_train, t_span_train,
-     validation_data, t_save_validation, t_span_validation) = setup_sir.get_training_validation_data()
-
-    loss_fn = setup_sir.compute_loss
-    loss_grad_fn = setup_sir.compute_loss_grad
-    loss_optx = setup_sir.compute_loss_optx
-    optx_config = {
-         "rtol": 1e-6,  # changed from 1e-4
-         "atol": 1e-6,  # changed from 1e-4
-    }
-else:
-    raise ValueError(f"Unknown dynamical model: {conf.dynamical_model}!")
+# Get data and functions for training
+train_args, val_args, loss_args, option_args = get_data_and_funcs_for_train(
+        conf, true_dynamic_parameters[conf.dynamical_model].shape
+    )
+train_data, t_save_train, t_span_train = train_args
+validation_data, t_save_validation, t_span_validation = val_args
+loss_fn, loss_grad_fn, loss_optx = loss_args
+optx_config, options = option_args
 
 options = {
     "dynamic_params_scale": conf.dynamic_params_scale,
@@ -157,7 +117,7 @@ early_stopping_params = EarlyStoppingParams(
 # ================================================================
 training_output = train(
     model=ude_problem,
-    u0=u0[conf.dynamical_model],
+    u0=u0,
     training_data=train_data,
     t_save_train=t_save_train,
     t_span_train=t_span_train,
@@ -187,7 +147,7 @@ if conf.serialise_curriculum_models:
         sindy_model = curriculum_models[list(curriculum_models.keys())[-1]]
         get_sindy_formula(
             model=sindy_model,
-            u0=u0[conf.dynamical_model],
+            u0=u0,
             t_save=t_save_train,
             t_span=t_span_train,
             settings=["MLP", "UDE"],
