@@ -2,12 +2,13 @@ import jax.numpy as jnp
 import diffrax
 import equinox as eqx
 import jax
+import numpy as np
 import os
 import pandas as pd
 
 from src.model_training.model_util import regularise_mlp, regularise_mlp_contribution, get_mse, process_mechanistic_params
 from jaxtyping import Array
-from typing import Union
+from typing import Any, Union
 
 
 
@@ -23,7 +24,7 @@ class UDEFunction(eqx.Module):
 
     dynamic_parameters: Array
     mlp: Union[eqx.nn.MLP, eqx.Module]
-    options: dict[str, bool]
+    options: dict[str, Union[bool, dict[str, Any]]]
     state_dimension: int
     regularise_network: bool
 
@@ -63,44 +64,109 @@ class UDEFunction(eqx.Module):
 #  Same for all functions on this page! Need to adapt SIR as well!
 @eqx.filter_jit
 def compute_loss(
-        prob_params, prob_static, u0, t_save, t_span, data, mlp_reg_exp, mlp_reg_strength, output_reg, adjoint=None
+        prob_params, prob_static,
+        u0, t_save, t_span,
+        data,
+        mlp_reg_exp, mlp_reg_strength, output_reg, multiple_shooting_penalty,
+        shooting_mode: str,
+        adjoint=None
 ):
     prob = eqx.combine(prob_params, prob_static)
-    if adjoint is not None:
-        u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span, adjoint=adjoint)
-    else:
-        u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
-    loss = get_mse(
-        pred=u_pred.ys[:, :prob.func.state_dimension],
-        data=data
-    )  # minimal loss: MSE
+    if shooting_mode == "single":
+        if adjoint is not None:
+            u_pred = prob.solve_single_shooting(diffrax.Tsit5(), u0, t_save, t_span, adjoint=adjoint)
+        else:
+            u_pred = prob.solve_single_shooting(diffrax.Tsit5(), u0, t_save, t_span)
+        loss = get_mse(
+            pred=u_pred.ys[:, :prob.func.state_dimension],
+            data=data
+        )  # minimal loss: MSE
+    elif shooting_mode == "multiple":
+        if adjoint is not None:
+            u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span, adjoint=adjoint)
+        else:
+            u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
+        if not isinstance(t_save, diffrax.SaveAt):
+            t_save = diffrax.SaveAt(ts=t_save)
+        num_windows = int(np.ceil(len(t_save.subs.ts) / (prob.shooting_window_length - 1)))
+        losses = jnp.array([
+            get_mse(
+                pred=sol.ys[:, :prob.func.state_dimension],
+                data=data[i*(prob.shooting_window_length-1) : (i+1)*prob.shooting_window_length-i]
+            )
+            for sol, i in zip(u_pred, range(num_windows))
+        ])
+        loss = jnp.mean(losses)
+        # Add discontinuity penalty
+        for i, j in zip(range(num_windows-1), range(1, num_windows)):
+            loss += multiple_shooting_penalty * get_mse(
+                u_pred[i].ys[-1, :prob.func.state_dimension],
+                u_pred[j].ys[0, :prob.func.state_dimension]
+            )
+
+    # # TODO -- remove or include in config -- from Sloppiness paper, this should try to enforce alpha and delta between 0.1 and 10
+    # if prob.func.options["dynamic_params_scale"] == "log10":
+    #     loss += (10**prob.func.dynamic_parameters[0] * 10 /2 + 0.1 /(2*(10**prob.func.dynamic_parameters[0])))
+    #     loss += (10**prob.func.dynamic_parameters[1] * 10 /2 + 0.1 /(2*(10**prob.func.dynamic_parameters[1])))
+    # else:  # linear scale
+    #     loss += (prob.func.dynamic_parameters[0] * 10 /2 + 0.1 /(2*prob.func.dynamic_parameters[0]))
+    #     loss += (prob.func.dynamic_parameters[1] * 10 /2 + 0.1 /(2*prob.func.dynamic_parameters[1]))
+
     if prob.func.regularise_network:
-        mlp_reg = regularise_mlp(
-            mlp=prob.func.mlp,
-            reg_exp=mlp_reg_exp,
-            reg_strength=mlp_reg_strength
-        )
-        mlp_output_reg = regularise_mlp_contribution(
-            l2_norm_nn_contrib=u_pred.ys[:, prob.func.state_dimension],
-            timespan_length=t_span[-1]-t_span[0],
-            reg_strength=output_reg
-        )
+        if mlp_reg_strength > 0:
+            mlp_reg = regularise_mlp(
+                mlp=prob.func.mlp,
+                reg_exp=mlp_reg_exp,
+                reg_strength=mlp_reg_strength
+            )
+        else:
+            mlp_reg = 0
+        if output_reg > 0:
+            if shooting_mode == "single":
+                mlp_output_reg = regularise_mlp_contribution(
+                    l2_norm_nn_contrib=u_pred.ys[:, prob.func.state_dimension],
+                    timespan_length=t_span[-1]-t_span[0],
+                    reg_strength=output_reg
+                )
+            else:
+                # TODO @GiacomoFabrini NEED TO FIX THIS!
+                mlp_output_reg = regularise_mlp_contribution(
+                    l2_norm_nn_contrib=u_pred[0].ys[:, prob.func.state_dimension],
+                    timespan_length=t_span[-1]-t_span[0],
+                    reg_strength=output_reg
+                )
+        else:
+            mlp_output_reg = 0
         loss += (mlp_reg + mlp_output_reg)
         return loss, mlp_output_reg
     return loss, None
 
 
 # LOSS AND GRAD
-def compute_loss_grad(prob_params, prob_static, u0, t_save, t_span, data, mlp_reg_exp, mlp_reg_strength, output_reg):
+def compute_loss_grad(
+        prob_params, prob_static,
+        u0, t_save, t_span,
+        data,
+        mlp_reg_exp, mlp_reg_strength, output_reg, multiple_shooting_penalty, shooting_mode
+):
     return eqx.filter_value_and_grad(compute_loss, has_aux=True)(
-        prob_params, prob_static, u0, t_save, t_span, data, mlp_reg_exp, mlp_reg_strength, output_reg, adjoint=None
+        prob_params, prob_static,
+        u0, t_save, t_span,
+        data,
+        mlp_reg_exp, mlp_reg_strength, output_reg, multiple_shooting_penalty, shooting_mode,
+        adjoint=None
     )
 
 # Optimistix loss needs to return a None aux
 def compute_loss_optx(prob_params, args):
-    prob_static, u0, t_save, t_span, data, mlp_reg_exp, mlp_reg_strength, output_reg = args
+    (prob_static, u0, t_save, t_span, data,
+     mlp_reg_exp, mlp_reg_strength, output_reg, multiple_shooting_penalty, shooting_mode) = args
     loss, _ = compute_loss(
-        prob_params, prob_static, u0, t_save, t_span, data, mlp_reg_exp, mlp_reg_strength, output_reg, None
+        prob_params, prob_static,
+        u0, t_save, t_span,
+        data,
+        mlp_reg_exp, mlp_reg_strength, output_reg, multiple_shooting_penalty,shooting_mode,
+        None
     )
     return loss, None
 
@@ -121,11 +187,15 @@ def compute_hess_array(
         flat_p, unflatten_p,
         prob_static,
         u0, t_save, t_span, data, adjoint,
-        mlp_reg_exp, mlp_reg_strength, output_reg
+        mlp_reg_exp, mlp_reg_strength, output_reg, multiple_shooting_penalty
 ):
     prob_params = unflatten_p(flat_p)
     loss, _ = compute_loss(
-        prob_params, prob_static, u0, t_save, t_span, data, mlp_reg_exp, mlp_reg_strength, output_reg, adjoint=adjoint,
+        prob_params, prob_static,
+        u0, t_save, t_span,
+        data,
+        mlp_reg_exp, mlp_reg_strength, output_reg, multiple_shooting_penalty,
+        adjoint=adjoint,
     )
     return loss
 
@@ -150,7 +220,7 @@ def get_result_plot(prob, u0, t_save, t_span, data):
     easily can be plotted with plotnine
     """
     # Model prediction
-    u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
+    u_pred = prob.solve_single_shooting(diffrax.Tsit5(), u0, t_save, t_span)
     df_pred1 = pd.DataFrame({"time": u_pred.ts,
                              "value": u_pred.ys[:, 0],
                              "id": "prey",
@@ -177,7 +247,7 @@ def get_result_plot(prob, u0, t_save, t_span, data):
 
 def get_fit_dfs(prob, u0, t_save, t_span, data):
     # Model prediction
-    u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
+    u_pred = prob.solve_single_shooting(diffrax.Tsit5(), u0, t_save, t_span)
     df_pred = pd.DataFrame({"time": u_pred.ts,
                             "prey": u_pred.ys[:, 0],
                             "predator": u_pred.ys[:, 1],

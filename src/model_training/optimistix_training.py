@@ -58,10 +58,14 @@ def train_optimistix(
 
     # Define additional arguments to pass optimistix loss function (train and val) for step by step solve
     args = (
-        static, u0, t_save_train, t_span_train, training_data, conf.mlp_reg_exp, conf.mlp_reg_strength, conf.output_reg
+        static, u0, t_save_train, t_span_train, training_data,
+        conf.mlp_reg_exp, conf.mlp_reg_strength, conf.output_reg,
+        conf.multiple_shooting_penalty, conf.shooting_mode
     )
     args_val = (
-        static, u0, t_save_val, t_span_val, validation_data, conf.mlp_reg_exp, conf.mlp_reg_strength, conf.output_reg
+        static, u0, t_save_val, t_span_val, validation_data,
+        conf.mlp_reg_exp, conf.mlp_reg_strength, conf.output_reg,
+        conf.multiple_shooting_penalty, "single"
     )
     # Shape+dtype of the output of `fn`
     f_struct = jax.ShapeDtypeStruct((), jnp.float64)
@@ -93,6 +97,8 @@ def train_optimistix(
         mlp_reg_exp=conf.mlp_reg_exp,
         mlp_reg_strength=conf.mlp_reg_strength,
         output_reg=conf.output_reg,
+        multiple_shooting_penalty=conf.multiple_shooting_penalty,
+        shooting_mode=conf.shooting_mode,
     )
 
     # Compute validation loss
@@ -106,6 +112,8 @@ def train_optimistix(
         mlp_reg_exp=conf.mlp_reg_exp,
         mlp_reg_strength=conf.mlp_reg_strength,
         output_reg=conf.output_reg,
+        multiple_shooting_penalty=conf.multiple_shooting_penalty,
+        shooting_mode="single"
     )
 
     # Get final model

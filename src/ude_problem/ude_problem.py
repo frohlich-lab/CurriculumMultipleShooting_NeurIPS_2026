@@ -7,18 +7,54 @@ import numpy as np
 
 from pathlib import Path
 
+from jaxtyping import Array
 from src.common import activation_functions
 from src.model_examples.lotka_volterra.setup_diffrax_model import UDEFunction as UDEFunction_lv
 from src.model_examples.sir.setup_diffrax_model import UDEFunction as UDEFunction_sir
-from src.ude_problem import CustomDropoutMLP
-from typing import Any, Callable, Union
 from src.ude_problem import CustomDropoutMLP, ResidualMLP
+from typing import Any, Callable, Optional, Union
 
 
 UDE_funcs = {
     'lotka_volterra': UDEFunction_lv,
     'sir': UDEFunction_sir,
 }
+
+
+def initialize_shooting_iv(
+        state_dimension: int,
+        num_windows: int,
+        strategy: str,
+        u0_guess: Optional[Array],
+        network_regularisation: bool
+):
+    """
+    Initialise the learnable initial values for the shooting windows.
+
+    Parameters
+    ----------
+    state_dimension: int
+        The dimensionality of the system state.
+    num_windows: int
+        The number of shooting windows.
+    strategy: str
+        Initialization strategy for initial conditions.
+    u0_guess: array-like
+        Initial guess for the initial conditions.
+    network_regularisation: bool
+        If True, the network contribution to the dynamics will be regularised.
+    """
+    if strategy == 'zeros':
+        # Augment initial conditions to include network regularisation
+        effective_state_dim = state_dimension+1 if network_regularisation else state_dimension
+        return jnp.zeros((num_windows, effective_state_dim))
+    # TODO @GiacomoFabrini add an option to initialise with observed initial conditions
+    elif strategy == 'guess':
+        if network_regularisation:
+            u0_guess = jnp.concatenate([u0_guess, jnp.zeros(1)])
+        return jnp.tile(u0_guess, (num_windows, 1))
+    else:
+        raise ValueError(f"Invalid shooting_iv_init strategy: {strategy}")
 
 
 class UDEProblem(eqx.Module):
@@ -34,37 +70,65 @@ class UDEProblem(eqx.Module):
     """
     dynamical_model: str
     func: Union[UDEFunction_lv, UDEFunction_sir]
+    training_horizon: int
+    shooting_mode: str
+    shooting_window_length: Optional[int]
+    shooting_iv_init: str
+    initial_values: Optional[Array]
+    u0_guess: Optional[Array]
 
     def __init__(
-            self, dynamical_model, dynamic_parameters, mlp, options, state_dimension, regularise_network=None, **kwargs
+            self, dynamical_model, dynamic_parameters, mlp, options, state_dimension, training_horizon,
+            shooting_mode: str = "single", shooting_window_length=10, shooting_iv_init="zeros", u0_guess=None,
+            regularise_network=None, **kwargs
     ):
         """
         Parameters
         ----------
-        solver
-            A valid diffrax ODE-solver (e.g. Tsit5 or Kvaerno5)
         dynamical_model: str
             The name of the dynamical model to use. Currently only 'lotka_volterra' and 'sir'.
         dynamic_parameters : jax.Array
             Starting values for the model dynamic parameters (α, δ in the model
             equations).
-        u0 : jax.Array
-            Initial values for the UDEProblem. Technically we can estimate these,
-            but at least for the Lotka-Volterra model this is not the case.
         mlp : eqx.nn.MLP
             An equinox Standard Multi-Layer Perceptron (MLP) network. If set to
             None path_meta must be provided.
         options: dict
             Options for the UDEFunction.
-        controller : diffrax.PIDController
+        state_dimension: int
+            The number of state variables in the dynamical model.
+        regularise_network: bool
+            If True, the network contribution to the dynamics will be regularised.
         """
         super().__init__(**kwargs)
         self.dynamical_model = dynamical_model
         if self.dynamical_model not in UDE_funcs.keys():
             raise ValueError(f"Unknown dynamical model: {dynamical_model}!")
         self.func = UDE_funcs[dynamical_model](dynamic_parameters, mlp, options, state_dimension, regularise_network)
+        self.training_horizon = training_horizon
+        self.shooting_mode = shooting_mode
+        if self.shooting_mode == "multiple" and shooting_window_length is None:
+            raise ValueError("shooting_window_length cannot be None for shooting_mode='multiple'")
+        # Conditionally define the shooting window length and compute the number of shooting windows
+        self.shooting_window_length = shooting_window_length if self.shooting_mode == "multiple" else self.training_horizon
+        num_windows = int(np.ceil(self.training_horizon / (self.shooting_window_length - 1))) \
+            if self.shooting_mode == "multiple" else 1
+        self.shooting_iv_init = shooting_iv_init
+        # Initialise the learnable initial values for the shooting windows
+        self.u0_guess = u0_guess
+        self.initial_values = initialize_shooting_iv(
+            state_dimension, num_windows, self.shooting_iv_init, self.u0_guess, regularise_network
+        )
 
-    def solve(self, solver, u0, t_save, t_span,
+
+    def solve(self, solver, u0, t_save, t_span, *args):
+        if self.shooting_mode == "single":
+            return self.solve_single_shooting(solver, u0, t_save, t_span, *args)
+        elif self.shooting_mode == "multiple":
+            return self.solve_multiple_shooting(solver, u0, t_save, t_span, *args)
+
+
+    def solve_single_shooting(self, solver, u0, t_save, t_span,
               controller=diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8),
               adjoint=diffrax.RecursiveCheckpointAdjoint()):
         if not isinstance(t_save, diffrax.SaveAt):
@@ -82,6 +146,63 @@ class UDEProblem(eqx.Module):
                                   stepsize_controller=controller,
                                   adjoint=adjoint)
         return sol
+
+    def solve_multiple_shooting(
+            self, solver, u0, t_save, t_span,
+            controller=diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8),
+            adjoint=diffrax.RecursiveCheckpointAdjoint()
+    ):
+        """
+        Solve the UDE using multiple shooting.
+
+        Parameters
+        ----------
+        solver: diffrax.AbstractSolver
+            The ODE solver to use.
+        u0: array-like
+            The initial values for the ODE // not used for MS for now.
+        t_save: array-like
+            The time points at which to save the solution.
+        t_span: tuple
+            Start and end times for the integration // not used for MS for now.
+        controller: diffrax.PIDController, optional
+            Adaptive stepsize controller.
+        adjoint: diffrax.AbstractAdjoint, optional
+            Adjoint method for backpropagation.
+        """
+        if not isinstance(t_save, diffrax.SaveAt):
+            t_save = diffrax.SaveAt(ts=t_save)
+        num_windows = int(np.ceil(len(t_save.subs.ts) / (self.shooting_window_length - 1)))
+        solutions = []
+
+        for i in range(num_windows):
+            # Time range for the current shooting window
+            window_start = i * (self.shooting_window_length - 1)
+            window_end = window_start + self.shooting_window_length
+
+            t_window = t_save.subs.ts[window_start:window_end]
+            u0_window = self.initial_values[i]
+
+            # Solve for the current window
+            t_save_window = diffrax.SaveAt(ts=t_window)
+            sol = diffrax.diffeqsolve(
+                diffrax.ODETerm(self.func),
+                solver,
+                t0=t_window[0],
+                t1=t_window[-1],
+                dt0=None,
+                y0=u0_window,
+                saveat=t_save_window,
+                stepsize_controller=controller,
+                adjoint=adjoint
+            )
+            solutions.append(sol)
+
+        return solutions
+
+    def _solve_error(self):
+        raise ValueError(f"Invalid shooting mode: {self.shooting_mode}")
+
 
     def copy(
             self,
@@ -116,9 +237,17 @@ class UDEProblem(eqx.Module):
             else self.func.options
         state_dimension = self.func.state_dimension
         mlp = new_mlp if new_mlp is not None else self.func.mlp
+        training_horizon = self.training_horizon
+        shooting_mode = self.shooting_mode
+        shooting_window_length = self.shooting_window_length
+        shooting_iv_init = self.shooting_iv_init
+        u0_guess = self.u0_guess
         regularise_network = new_regularise_network if new_regularise_network is not None \
             else self.func.regularise_network
-        return UDEProblem(dynamical_model, dynamic_parameters, mlp, options, state_dimension, regularise_network)
+        return UDEProblem(
+            dynamical_model, dynamic_parameters, mlp, options, state_dimension,
+            training_horizon, shooting_mode, shooting_window_length, shooting_iv_init, u0_guess, regularise_network
+        )
 
 
     def get_hyperparams(self) -> dict[str, Any]:
@@ -139,8 +268,19 @@ class UDEProblem(eqx.Module):
         return {
             'dynamical_model': self.dynamical_model,
             'dynamic_parameters': np.array(self.func.dynamic_parameters).tolist(),
-            'options': self.func.options,
+            'options': {
+                'dynamic_params_scale': self.func.options["dynamic_params_scale"],
+                'bounded_tanh_params': {
+                    key: np.array(item).tolist()  # cannot JSON-serialise JAX arrays
+                    for key, item in self.func.options["bounded_tanh_params"].items()
+                }
+            },
             'state_dimension': self.func.state_dimension,
+            'training_horizon': self.training_horizon,
+            'shooting_mode': self.shooting_mode,
+            'shooting_window_length': self.shooting_window_length,
+            'shooting_iv_init': self.shooting_iv_init,
+            'u0_guess': np.array(self.u0_guess).tolist() if self.u0_guess is not None else None,
             'regularise_network': self.func.regularise_network,
             'in_size': self.func.mlp.in_size,
             'out_size': self.func.mlp.out_size,
@@ -161,7 +301,6 @@ class UDEProblem(eqx.Module):
     def save(self, filename: Path) -> None:
         """
         Save the model to a file.
-
         :param filename: path of file to serialise UDEFunction
         """
         # Serialise UDEFunction (and MLP)
@@ -223,8 +362,19 @@ class UDEProblem(eqx.Module):
                 dynamical_model=hyperparams["dynamical_model"],
                 dynamic_parameters=jnp.array(hyperparams["dynamic_parameters"]),  # from list to JAX Array
                 mlp=mlp,
-                options=hyperparams["options"],
+                options={
+                    "dynamic_params_scale": hyperparams["options"]["dynamic_params_scale"],
+                    "bounded_tanh_params": {
+                        key: jnp.array(item)
+                        for key, item in hyperparams["options"]["bounded_tanh_params"].items()
+                    }
+                },
                 state_dimension=hyperparams["state_dimension"],
+                training_horizon=hyperparams["training_horizon"],
+                shooting_mode=hyperparams["shooting_mode"],
+                shooting_window_length=hyperparams["shooting_window_length"],
+                shooting_iv_init=hyperparams["shooting_iv_init"],
+                u0_gues=jnp.array(hyperparams["u0_guess"], dtype=jnp.float64),
                 regularise_network=hyperparams["regularise_network"],
             )
         return ude_prob
@@ -245,7 +395,6 @@ def build_mlp(
         hidden_dropout_rate: float = 0.0,
         use_skip_connections: bool = False,  # default: regular MLP (no residual connections)
 ) -> Union[eqx.nn.MLP, eqx.Module]:
-    if not use_dropout:
     if not use_dropout and not use_skip_connections:
         mlp = eqx.nn.MLP(
             in_size=in_size,

@@ -1,8 +1,6 @@
 import fire
 import jax.random as jr
 import jax.numpy as jnp
-import src.model_examples.lotka_volterra.setup_diffrax_model as setup_lv
-import src.model_examples.sir.setup_diffrax_model as setup_sir
 
 from dataclasses import replace
 from jax import config
@@ -39,7 +37,6 @@ u0 = get_initial_conditions(conf)
 
 # Sample dynamic parameters and apply correct estimation scale
 if conf.training_setting != "NODE":
-    # Sample dynamic parameters and convert to correct scale (linear/log10)
     dynamic_parameters = {
         dynamical_model: sample_dynamical_params(
             true_params=true_dynamic_parameters[dynamical_model],
@@ -88,15 +85,17 @@ validation_data, t_save_validation, t_span_validation = val_args
 loss_fn, loss_grad_fn, loss_optx = loss_args
 optx_config, options = option_args
 
-options = {
-    "dynamic_params_scale": conf.dynamic_params_scale,
-}
 ude_problem = UDEProblem(
     dynamical_model=conf.dynamical_model,
     dynamic_parameters=dynamic_parameters[conf.dynamical_model],
     mlp=mlp,
     options=options,
     state_dimension=state_dims[conf.dynamical_model],
+    training_horizon=train_data.shape[0],
+    shooting_mode=conf.shooting_mode,
+    shooting_window_length=conf.shooting_window_length,
+    shooting_iv_init=conf.shooting_iv_init,
+    u0_guess=u0,
 )
 
 # # Linear schedule Fabian set up for the DMM -- DISABLED WITH NEW SCHEDULER

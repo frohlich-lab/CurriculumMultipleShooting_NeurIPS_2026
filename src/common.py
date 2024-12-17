@@ -35,6 +35,7 @@ class Conf(dict):
     mlp_reg_exp: float = 1.0  # default: L1
     mlp_reg_strength: float = 0.0  # no regularisation by default
     output_reg: float = 0.0  # no network contribution regularisation by default (UDE paper)
+    multiple_shooting_penalty: float = 0.0
     use_dropout: bool = False
     input_dropout_rate: float = 0.8
     hidden_dropout_rate: float = 0.5
@@ -53,6 +54,10 @@ class Conf(dict):
     save_plots: bool = False
     hessian_precondition: bool = False
     compute_hessian_metrics: bool = False
+    # Multiple Shooting
+    shooting_mode: str = "single"
+    shooting_window_length: int = 10
+    shooting_iv_init: str = "zeros"
     # Curriculum Learning (growing fits)
     curriculum_learning: bool = True
     num_curriculum_steps: int = 5
@@ -98,6 +103,8 @@ class Conf(dict):
             unwanted_fields.extend(["lookahead_sync", "lookahead_step_size", "lookahead_reset_state"])
         if not self.curriculum_learning:  # if not using curriculum learning, do not include number of steps/epochs
             unwanted_fields.extend(["num_curriculum_steps", "max_curriculum_epochs"])
+        if self.shooting_mode != "multiple":
+            unwanted_fields.extend(["multiple_shooting_penalty", "shooting_window_length", "shooting_iv_init"])
         if self.mlp_reg_strength == 0:
             unwanted_fields.extend(["mlp_reg_exp", "mlp_reg_strength"])
 

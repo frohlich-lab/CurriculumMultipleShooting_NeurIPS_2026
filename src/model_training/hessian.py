@@ -35,7 +35,7 @@ def get_hessian(
         flat_p, unflatten_p, static,
         u0, t_save, t_span, input_data,
         adjoint,
-        conf.mlp_reg_exp, conf.mlp_reg_strength, conf.output_reg
+        conf.mlp_reg_exp, conf.mlp_reg_strength, conf.output_reg, conf.multiple_shooting_penalty
     )
     return hessian
 

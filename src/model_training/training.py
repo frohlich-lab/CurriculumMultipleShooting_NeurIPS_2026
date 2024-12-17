@@ -104,6 +104,8 @@ def make_step(
         mlp_reg_exp=conf.mlp_reg_exp,
         mlp_reg_strength=conf.mlp_reg_strength,
         output_reg=conf.output_reg,
+        multiple_shooting_penalty=conf.multiple_shooting_penalty,
+        shooting_mode=conf.shooting_mode,
     )
     grads = make_grads_finite(grads)
     # Initialise hessian metrics with NaNs
@@ -498,6 +500,8 @@ def train(
                 mlp_reg_exp=conf.mlp_reg_exp,
                 mlp_reg_strength=conf.mlp_reg_strength,
                 output_reg=conf.output_reg,
+                multiple_shooting_penalty=conf.multiple_shooting_penalty,
+                shooting_mode="single",  # validation uses free-run simulation (single-shooting)
             )
 
             # Keep track of best performing model on validation dataset (and corresponding loss)

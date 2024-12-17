@@ -28,11 +28,17 @@ def fides_loss_grad(
         data,
         mlp_reg_exp: float,
         mlp_reg_strength: float,
-        output_reg: float
+        output_reg: float,
+        multiple_shooting_penalty: float,
+        shooting_mode: str,
 ) -> tuple[float, np.ndarray]:
     # Unflatten params to compute loss and grads
     prob_params = unflatten_params(flat_params)
-    (loss, _), grads= loss_grad_fn(prob_params, prob_static, u0, t_save, t_span, data, mlp_reg_exp, mlp_reg_strength, output_reg)
+    (loss, _), grads= loss_grad_fn(
+        prob_params, prob_static, u0, t_save, t_span, data,
+        mlp_reg_exp, mlp_reg_strength, output_reg,
+        multiple_shooting_penalty, shooting_mode
+    )
     # Flatten grads and cast to numpy array to avoid JAX immutability
     flat_grads = np.array(jax.flatten_util.ravel_pytree(grads)[0])
     # Return loss, grad -- Hessian will be computed with approximation (BFGS)
@@ -82,6 +88,8 @@ def train_fides(
             mlp_reg_exp=conf.mlp_reg_exp,
             mlp_reg_strength=conf.mlp_reg_strength,
             output_reg=conf.output_reg,
+            multiple_shooting_penalty=conf.multiple_shooting_penalty,
+            shooting_mode=conf.shooting_mode,
         ),
         ub=np.asarray([jnp.inf for _ in flat_params]),
         lb=np.asarray([-jnp.inf for _ in flat_params]),
@@ -119,6 +127,8 @@ def train_fides(
         mlp_reg_exp=conf.mlp_reg_exp,
         mlp_reg_strength=conf.mlp_reg_strength,
         output_reg=conf.output_reg,
+        multiple_shooting_penalty=conf.multiple_shooting_penalty,
+        shooting_mode=conf.shooting_mode,
     )
 
     # Compute validation loss
@@ -132,6 +142,8 @@ def train_fides(
         mlp_reg_exp=conf.mlp_reg_exp,
         mlp_reg_strength=conf.mlp_reg_strength,
         output_reg=conf.output_reg,
+        multiple_shooting_penalty=conf.multiple_shooting_penalty,
+        shooting_mode="single"
     )
 
     # Get final model
