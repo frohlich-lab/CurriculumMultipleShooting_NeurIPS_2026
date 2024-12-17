@@ -8,6 +8,8 @@ class CustomDropoutMLP(eqx.Module):
     layers: List[Union[eqx.nn.Linear, eqx.nn.Dropout]]
     activation: Callable
     final_activation: Callable
+    use_bias: bool
+    final_bias: bool
     dropout_keys: Any
     input_dropout_rate: float
     hidden_dropout_rate: float
@@ -29,6 +31,8 @@ class CustomDropoutMLP(eqx.Module):
     ):
         # Initialise layers and prepare keys for layer initialisation
         self.layers = []
+        self.use_bias = use_bias
+        self.final_bias = use_final_bias
         lyr_key, dropout_key = jr.split(key)
         layer_keys = jr.split(lyr_key, num=depth+1)
         self.dropout_keys = jr.split(dropout_key, num=depth)
@@ -58,7 +62,7 @@ class CustomDropoutMLP(eqx.Module):
                 eqx.nn.Linear(
                     in_features=fan_in,
                     out_features=fan_out,
-                    use_bias=use_bias if layer_num < depth else use_final_bias,
+                    use_bias=self.use_bias if layer_num < depth else self.final_bias,
                     key=key,
                 )
             )
