@@ -234,34 +234,65 @@ def log_model_stats(
         )
         if isinstance(par_layer, eqx.nn.Linear)
     ]
+    # TODO @GiacomoFabrini - would be good to streamline the following code
     if not frozen_nn:
-        layer_stats = {
-            f'layer{ind_layer}.{par_label}_{value_label}': wandb.Histogram(
-                np.log10(np.abs(np.array(par_vals[par_vals != 0])))
-            )
-            if value_label == 'grads'
-            else wandb.Histogram(list(par_vals))
-            for ind_layer, (par_layer, grad_layer) in enumerate(layers)
-            for value_label, layer in zip(
-                ('vals', 'grads'), (par_layer, grad_layer), strict=False
-            )
-            for par_label, par_vals in zip(
-                ('w', 'b'),
-                (layer.weight.ravel(), layer.bias.ravel()),
-                strict=False,
-            )
-        }
+        if conf.use_bias:
+            layer_stats = {
+                f'layer{ind_layer}.{par_label}_{value_label}': wandb.Histogram(
+                    np.log10(np.abs(np.array(par_vals[par_vals != 0])))
+                )
+                if value_label == 'grads'
+                else wandb.Histogram(list(par_vals))
+                for ind_layer, (par_layer, grad_layer) in enumerate(layers)
+                for value_label, layer in zip(
+                    ('vals', 'grads'), (par_layer, grad_layer), strict=False
+                )
+                for par_label, par_vals in zip(
+                    ('w', 'b'),
+                    (layer.weight.ravel(), layer.bias.ravel()),
+                    strict=False,
+                )
+            }
+        else:
+            layer_stats = {
+                f'layer{ind_layer}.{par_label}_{value_label}': wandb.Histogram(
+                    np.log10(np.abs(np.array(par_vals[par_vals != 0])))
+                )
+                if value_label == 'grads'
+                else wandb.Histogram(list(par_vals))
+                for ind_layer, (par_layer, grad_layer) in enumerate(layers)
+                for value_label, layer in zip(
+                    ('vals', 'grads'), (par_layer, grad_layer), strict=False
+                )
+                for par_label, par_vals in zip(
+                    ('w', ),
+                    (layer.weight.ravel(), ),
+                    strict=False,
+                )
+            }
     else:
-        layer_stats = {
-            f'layer{ind_layer}.{par_label}_{value_label}': wandb.Histogram(list(par_vals))
-            for ind_layer, (par_layer, _) in enumerate(layers)
-            for value_label, layer in zip(['vals'], [par_layer])
-            for par_label, par_vals in zip(
-                ('w', 'b'),
-                (layer.weight.ravel(), layer.bias.ravel()),
-                strict=False,
-            )
-        }
+        if conf.use_bias:
+            layer_stats = {
+                f'layer{ind_layer}.{par_label}_{value_label}': wandb.Histogram(list(par_vals))
+                for ind_layer, (par_layer, _) in enumerate(layers)
+                for value_label, layer in zip(['vals'], [par_layer])
+                for par_label, par_vals in zip(
+                    ('w', 'b'),
+                    (layer.weight.ravel(), layer.bias.ravel()),
+                    strict=False,
+                )
+            }
+        else:
+            layer_stats = {
+                f'layer{ind_layer}.{par_label}_{value_label}': wandb.Histogram(list(par_vals))
+                for ind_layer, (par_layer, _) in enumerate(layers)
+                for value_label, layer in zip(['vals'], [par_layer])
+                for par_label, par_vals in zip(
+                    ('w', ),
+                    (layer.weight.ravel(), ),
+                    strict=False,
+                )
+            }
 
     # Define parameter labels
     param_labels = dynamic_param_labels[conf.dynamical_model]
