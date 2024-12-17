@@ -26,7 +26,8 @@ def initialize_shooting_iv(
         num_windows: int,
         strategy: str,
         u0_guess: Optional[Array],
-        network_regularisation: bool
+        network_regularisation: bool,
+        random_seed: int = 0,
 ):
     """
     Initialise the learnable initial values for the shooting windows.
@@ -43,6 +44,8 @@ def initialize_shooting_iv(
         Initial guess for the initial conditions.
     network_regularisation: bool
         If True, the network contribution to the dynamics will be regularised.
+    random_seed: int
+        Random seed for random initialisation.
     """
     if strategy == 'zeros':
         # Augment initial conditions to include network regularisation
@@ -53,6 +56,13 @@ def initialize_shooting_iv(
         if network_regularisation:
             u0_guess = jnp.concatenate([u0_guess, jnp.zeros(1)])
         return jnp.tile(u0_guess, (num_windows, 1))
+    elif strategy == 'random_uniform':
+        # Sample uniformly state_dimension variables
+        u0 = jr.uniform(jr.PRNGKey(random_seed), (num_windows, state_dimension))
+        # Concatenate a 0 across all num_windows if using network regularisation
+        if network_regularisation:
+            u0 = jnp.concatenate([u0, jnp.zeros((num_windows, 1))], axis=1)
+        return u0
     else:
         raise ValueError(f"Invalid shooting_iv_init strategy: {strategy}")
 
@@ -81,6 +91,7 @@ class UDEProblem(eqx.Module):
             self, dynamical_model, dynamic_parameters, mlp, options, state_dimension, training_horizon,
             shooting_mode: str = "single", shooting_window_length=10, shooting_iv_init="zeros", u0_guess=None,
             regularise_network=None, **kwargs
+            init_random_seed=0, regularise_network=None, **kwargs
     ):
         """
         Parameters
@@ -97,6 +108,18 @@ class UDEProblem(eqx.Module):
             Options for the UDEFunction.
         state_dimension: int
             The number of state variables in the dynamical model.
+        training_horizon: int
+            The length of the training horizon.
+        shooting_mode: str
+            The shooting mode to use. Can be 'single' or 'multiple'.
+        shooting_window_length: int
+            The length of the shooting windows.
+        shooting_iv_init: str
+            The initialisation strategy for the shooting windows.
+        u0_guess: array-like
+            Initial guess for the initial conditions.
+        init_random_seed: int
+            Random seed for random initialisation (if shooting_iv_init == "random_uniform").
         regularise_network: bool
             If True, the network contribution to the dynamics will be regularised.
         """
@@ -116,8 +139,9 @@ class UDEProblem(eqx.Module):
         self.shooting_iv_init = shooting_iv_init
         # Initialise the learnable initial values for the shooting windows
         self.u0_guess = u0_guess
+        self.init_random_seed = init_random_seed
         self.initial_values = initialize_shooting_iv(
-            state_dimension, num_windows, self.shooting_iv_init, self.u0_guess, regularise_network
+            state_dimension, num_windows, self.shooting_iv_init, self.u0_guess, regularise_network, self.init_random_seed
         )
 
 
@@ -242,11 +266,13 @@ class UDEProblem(eqx.Module):
         shooting_window_length = self.shooting_window_length
         shooting_iv_init = self.shooting_iv_init
         u0_guess = self.u0_guess
+        init_random_seed = self.init_random_seed
         regularise_network = new_regularise_network if new_regularise_network is not None \
             else self.func.regularise_network
         return UDEProblem(
             dynamical_model, dynamic_parameters, mlp, options, state_dimension,
-            training_horizon, shooting_mode, shooting_window_length, shooting_iv_init, u0_guess, regularise_network
+            training_horizon, shooting_mode, shooting_window_length, shooting_iv_init, u0_guess,
+            init_random_seed, regularise_network
         )
 
 
@@ -281,6 +307,7 @@ class UDEProblem(eqx.Module):
             'shooting_window_length': self.shooting_window_length,
             'shooting_iv_init': self.shooting_iv_init,
             'u0_guess': np.array(self.u0_guess).tolist() if self.u0_guess is not None else None,
+            'init_random_seed': self.init_random_seed,
             'regularise_network': self.func.regularise_network,
             'in_size': self.func.mlp.in_size,
             'out_size': self.func.mlp.out_size,
@@ -374,7 +401,8 @@ class UDEProblem(eqx.Module):
                 shooting_mode=hyperparams["shooting_mode"],
                 shooting_window_length=hyperparams["shooting_window_length"],
                 shooting_iv_init=hyperparams["shooting_iv_init"],
-                u0_gues=jnp.array(hyperparams["u0_guess"], dtype=jnp.float64),
+                u0_guess=jnp.array(hyperparams["u0_guess"], dtype=jnp.float64),
+                init_random_seed=hyperparams["init_random_seed"],
                 regularise_network=hyperparams["regularise_network"],
             )
         return ude_prob
