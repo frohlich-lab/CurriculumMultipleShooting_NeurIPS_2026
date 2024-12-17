@@ -12,6 +12,7 @@ from src.model_examples.lotka_volterra.setup_diffrax_model import UDEFunction as
 from src.model_examples.sir.setup_diffrax_model import UDEFunction as UDEFunction_sir
 from src.ude_problem import CustomDropoutMLP
 from typing import Any, Callable, Union
+from src.ude_problem import CustomDropoutMLP, ResidualMLP
 
 
 UDE_funcs = {
@@ -239,11 +240,13 @@ def build_mlp(
         use_final_bias: bool,
         activation: Callable,
         final_activation: Callable,
-        use_dropout: bool,
-        input_dropout_rate: float,
-        hidden_dropout_rate: float,
+        use_dropout: bool = False,  # default: regular MLP (no dropout)
+        input_dropout_rate: float = 0.0,
+        hidden_dropout_rate: float = 0.0,
+        use_skip_connections: bool = False,  # default: regular MLP (no residual connections)
 ) -> Union[eqx.nn.MLP, eqx.Module]:
     if not use_dropout:
+    if not use_dropout and not use_skip_connections:
         mlp = eqx.nn.MLP(
             in_size=in_size,
             out_size=out_size,
@@ -270,6 +273,18 @@ def build_mlp(
                 "input": input_dropout_rate,
                 "hidden": hidden_dropout_rate,
             },
+        )
+    elif use_skip_connections:
+        mlp = ResidualMLP(
+            in_size=in_size,
+            out_size=out_size,
+            width_size=width_size,
+            depth=hidden_layers,
+            use_bias=use_bias,
+            use_final_bias=use_final_bias,
+            activation=activation,
+            final_activation=final_activation,
+            key=key
         )
     else:
         raise ValueError("For use_dropout to be True, dropout_rate cannot be None.")
