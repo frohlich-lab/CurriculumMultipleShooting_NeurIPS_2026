@@ -1,6 +1,7 @@
 import jax.numpy as jnp
 
-from src.common import activation_functions, Conf, default_out_sizes, u0s
+from diffrax import SaveAt
+from src.common import activation_functions, Conf, default_out_sizes, normalise, u0s
 from src.model_examples.lotka_volterra import setup_diffrax_model as setup_lv
 from src.model_examples.sir import setup_diffrax_model as setup_sir
 from src.model_training.model_util import set_weight_bias
@@ -52,6 +53,15 @@ def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple) -> tup
             shape=dynamic_params_shape
         )  # bounds are ignored if not using bounded tanh transform from Philipps et al. 2024
     }
+    if conf.normalise_data:
+        train_data, validation_data = normalise(train_data, validation_data)
+    if conf.normalise_timepoints:
+        # SaveAt
+        t_save_train, t_save_validation = normalise(t_save_train.subs.ts, t_save_validation.subs.ts)
+        t_save_train, t_save_validation = SaveAt(ts=t_save_train), SaveAt(ts=t_save_validation)
+        # Span
+        t_span_train = [t_save_train.subs.ts[0], t_save_train.subs.ts[-1]]
+        t_span_validation = [t_save_train.subs.ts[0], t_save_validation.subs.ts[-1]]
     train_args = train_data, t_save_train, t_span_train
     val_args = validation_data, t_save_validation, t_span_validation
     loss_args = loss_fn, loss_grad_fn, loss_optx

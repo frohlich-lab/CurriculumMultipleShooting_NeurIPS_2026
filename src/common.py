@@ -2,10 +2,11 @@ import dataclasses
 import jax.numpy as jnp
 import jax.nn as jnn
 import jax
+import numpy as np
 
 from pathlib import Path
-from jaxtyping import PyTree
-from typing import Optional
+from jaxtyping import Array, PyTree
+from typing import Optional, Union
 
 
 @dataclasses.dataclass(frozen=True, repr=True, eq=True, order=True)
@@ -78,6 +79,8 @@ class Conf(dict):
     experiment_name: str = None
     get_sindy_formula: bool = False
     sindy_use_derivatives: bool = False
+    normalise_data: bool = False
+    normalise_timepoints: bool = False
 
     def __str__(self):
         """
@@ -223,3 +226,15 @@ default_out_sizes = {
     "lotka_volterra": 2,
     "sir": 1,
 }
+
+def normalise(
+        train_array: Union[Array, jnp.ndarray, np.array],
+        val_array: Union[Array, jnp.ndarray, np.array]
+) -> tuple:
+    """
+    Normalise data or timepoint arrays by simply dividing by the max value in training set (in case of data, across all state
+    variables and timepoints).
+    """
+    # Cast to jnp.array
+    train_array, val_array = jnp.array(train_array), jnp.array(val_array)
+    return train_array / jnp.max(train_array), val_array / jnp.max(train_array)
