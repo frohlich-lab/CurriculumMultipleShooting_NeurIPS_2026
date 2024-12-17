@@ -91,7 +91,6 @@ class UDEProblem(eqx.Module):
     def __init__(
             self, dynamical_model, dynamic_parameters, mlp, options, state_dimension, training_horizon,
             shooting_mode: str = "single", shooting_window_length=10, shooting_iv_init="zeros", u0_guess=None,
-            regularise_network=None, **kwargs
             init_random_seed=0, regularise_network=None, **kwargs
     ):
         """
