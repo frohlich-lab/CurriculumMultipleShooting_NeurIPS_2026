@@ -19,7 +19,6 @@ def get_io_size(conf, u0):
     return in_size, out_size
 
 
-def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple) -> tuple:
 def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple, u0) -> tuple:
     if conf.dynamical_model == 'lotka_volterra':
         # TODO @GiacomoFabrini find better way to express filepath and pass it as argument
