@@ -96,6 +96,7 @@ ude_problem = UDEProblem(
     shooting_window_length=conf.shooting_window_length,
     shooting_iv_init=conf.shooting_iv_init,
     u0_guess=u0,
+    init_random_seed=conf.multistart_job,
 )
 
 # # Linear schedule Fabian set up for the DMM -- DISABLED WITH NEW SCHEDULER
