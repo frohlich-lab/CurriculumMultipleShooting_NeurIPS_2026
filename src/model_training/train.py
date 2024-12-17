@@ -78,9 +78,9 @@ mlp = setup_mlp(conf, u0, key_mlp, key_init)
 # ================================================================
 # Get data and functions for training
 train_args, val_args, loss_args, option_args = get_data_and_funcs_for_train(
-        conf, true_dynamic_parameters[conf.dynamical_model].shape
+        conf, true_dynamic_parameters[conf.dynamical_model].shape, u0
     )
-train_data, t_save_train, t_span_train = train_args
+train_data, t_save_train, t_span_train, u0 = train_args
 validation_data, t_save_validation, t_span_validation = val_args
 loss_fn, loss_grad_fn, loss_optx = loss_args
 optx_config, options = option_args
