@@ -98,11 +98,18 @@ def compute_loss(
         ])
         loss = jnp.mean(losses)
         # Add discontinuity penalty
-        for i, j in zip(range(num_windows-1), range(1, num_windows)):
-            loss += multiple_shooting_penalty * get_mse(
-                u_pred[i].ys[-1, :prob.func.state_dimension],
-                u_pred[j].ys[0, :prob.func.state_dimension]
+        discontinuity_loss = jnp.mean(
+            jnp.array(
+                [
+                    get_mse(
+                        u_pred[i].ys[-1, :prob.func.state_dimension],
+                        u_pred[j].ys[0, :prob.func.state_dimension]
+                    )
+                    for i, j in zip(range(num_windows-1), range(1, num_windows))
+                ]
             )
+        )
+        loss += multiple_shooting_penalty * discontinuity_loss
 
     # # TODO -- remove or include in config -- from Sloppiness paper, this should try to enforce alpha and delta between 0.1 and 10
     # if prob.func.options["dynamic_params_scale"] == "log10":
