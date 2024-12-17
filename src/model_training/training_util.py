@@ -17,6 +17,7 @@ from flax.training.early_stopping import EarlyStopping
 from jaxtyping import Array, PyTree
 from pathlib import Path
 from src.common import Conf, dynamic_param_labels, EarlyStoppingParams, hessian_metrics_wandb, plots_dir
+from src.model_training.model_util import bounded_tanh_transform_params
 from src.model_training.training_configuration import N_EPOCHS, MAX_ITER_OPTX_FINETUNE
 from src.ude_problem import UDEProblem
 from typing import List, Optional, Union
@@ -502,9 +503,8 @@ def max_grad_norm(grads: PyTree) -> Array:
     return jnp.max(jnp.array(grad_norms))
 
 
-def sample_dynamical_params(true_params, deviation, seed, scale="log10", method="sample_uniform"):
-    if scale not in ["log10", "linear"]:
-        raise ValueError("Scale must be either 'log10' or 'linear'.")
+def sample_dynamical_params(true_params, deviation, seed, scale="log10", method="sample_uniform", **kwargs):
+    # Perturbation/sampling is always performed in log10-space
     if method == "sample_uniform":
         starting_params_log10 = jax.random.uniform(
             key=jr.PRNGKey(seed),
@@ -522,8 +522,17 @@ def sample_dynamical_params(true_params, deviation, seed, scale="log10", method=
         raise ValueError(
             f"Found uknown method {method}. Method must be either 'sample_uniform' or 'add_gaussian_noise'."
         )
-    return starting_params_log10 if scale == "log10" else jnp.power(10, starting_params_log10)
-
+    if scale == "log10":
+        return starting_params_log10
+    elif scale == "linear":
+        return jnp.power(10, starting_params_log10)
+    elif scale == "bounded_tanh":
+        return bounded_tanh_transform_params(
+            params=jnp.power(10, starting_params_log10),
+            **kwargs, # pass additional arguments to the bounded_tanh_transform_params function (lower/upper bounds, loc)
+        )
+    else:
+        raise ValueError(f"Unknown parameter estimation scale: {scale}!")
 
 def enforce_minimum_spacing(arr: np.ndarray, min_dist: int) -> np.ndarray:
     """
