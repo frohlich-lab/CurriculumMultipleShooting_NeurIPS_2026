@@ -207,6 +207,55 @@ def compute_hess_array(
     return loss
 
 
+@eqx.filter_jit
+def compute_batch_loss(
+        prob_params, prob_static,
+        u0, t_save, t_span, data,
+        mlp_reg_exp, mlp_reg_strength, output_reg, adjoint=None, **kwargs
+):
+    losses, mlp_output_regs = jax.vmap(compute_loss, in_axes=(None, None, 0, 0, 0, 0, None, None, None, None, None, None))(
+        prob_params, prob_static,
+        u0, t_save, t_span, data,
+        mlp_reg_exp, mlp_reg_strength, output_reg, 0, "single", adjoint
+    )
+    mean_loss = jnp.mean(losses)
+    if eqx.combine(prob_params, prob_static).func.regularise_network:
+        mean_mlp_output_reg = jnp.mean(mlp_output_regs)
+        return mean_loss, mean_mlp_output_reg
+    return mean_loss, None
+
+
+# LOSS AND GRAD
+def compute_batch_loss_grad(
+        prob_params, prob_static,
+        u0, t_save, t_span, data,
+        mlp_reg_exp, mlp_reg_strength, output_reg, multiple_shooting_penalty, shooting_mode
+):
+    return eqx.filter_value_and_grad(compute_batch_loss, has_aux=True)(
+        prob_params, prob_static,
+        u0, t_save, t_span, data,
+        mlp_reg_exp, mlp_reg_strength, output_reg,
+        multiple_shooting_penalty=multiple_shooting_penalty,
+        shooting_mode=shooting_mode,
+        adjoint=None
+    )
+
+# BATCH LOSS OPTIMISTIX/FIDES
+def compute_batch_loss_optx(prob_params, args):
+    (prob_static, u0, t_save, t_span, data,
+     mlp_reg_exp, mlp_reg_strength, output_reg, multiple_shooting_penalty, shooting_mode) = args
+    loss, _ = compute_batch_loss(
+        prob_params, prob_static,
+        u0, t_save, t_span,
+        data,
+        mlp_reg_exp, mlp_reg_strength, output_reg,
+        multiple_shooting_penalty=multiple_shooting_penalty,
+        shooting_mode=shooting_mode,
+        adjoint=None
+    )
+    return loss, None
+
+
 # UTILS - DATA AND PLOTTING
 def get_training_validation_data():
     # Read training and validation data

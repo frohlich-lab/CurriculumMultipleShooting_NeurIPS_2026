@@ -445,6 +445,7 @@ def plot_model_weights(model: UDEProblem, conf: Conf, filename: str = None):
 def generate_incremental_arrays(
         data: Array,
         t_save: diffrax.SaveAt,
+        t_span: List,
         n_epoch: int,
         curriculum_learning: bool,
         num_curriculum_steps: int,
@@ -493,7 +494,7 @@ def generate_incremental_arrays(
     for _ in range(n_epoch - epochs_filled):
         incremental_data.append(data)
         incremental_t_save.append(t_save)
-        incremental_t_span.append([np.min(t_save.subs.ts), np.max(t_save.subs.ts)])
+        incremental_t_span.append(t_span)
 
     return incremental_data, incremental_t_save, incremental_t_span, incremental_steps
 
@@ -758,3 +759,14 @@ def configure_early_stopping(early_stopping_params):
     else:
         early_stopper = None
     return early_stopper
+
+
+def augment_u0(u0):
+    """
+    Augment the initial condition(s) with additional zero(es) element to compute
+    network contribution regularisation.
+    """
+    # Dynamically compute the shape for the new zeros array
+    zeros_shape = u0.shape[:-1] + (1,)
+    # Concatenate along the last axis
+    return jnp.concatenate([u0, jnp.zeros(zeros_shape)], axis=-1)

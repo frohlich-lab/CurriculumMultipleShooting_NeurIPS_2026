@@ -23,7 +23,8 @@ def train_optimistix(
         loss_optx: Callable,
         epoch: int,
         num_epochs: int,
-        u0: object,
+        u0_train: object,
+        u0_val: object,
         t_save_train: SaveAt, t_span_train: List, training_data: jnp.ndarray,
         t_save_val: SaveAt, t_span_val: List, validation_data: jnp.ndarray,
         loss_fn: Callable,
@@ -58,12 +59,12 @@ def train_optimistix(
 
     # Define additional arguments to pass optimistix loss function (train and val) for step by step solve
     args = (
-        static, u0, t_save_train, t_span_train, training_data,
+        static, u0_train, t_save_train, t_span_train, training_data,
         conf.mlp_reg_exp, conf.mlp_reg_strength, conf.output_reg,
         conf.multiple_shooting_penalty, conf.shooting_mode
     )
     args_val = (
-        static, u0, t_save_val, t_span_val, validation_data,
+        static, u0_val, t_save_val, t_span_val, validation_data,
         conf.mlp_reg_exp, conf.mlp_reg_strength, conf.output_reg,
         conf.multiple_shooting_penalty, "single"
     )
@@ -90,7 +91,7 @@ def train_optimistix(
     loss_train, _ = loss_fn(
         prob_params=sol.value,
         prob_static=static,
-        u0=u0,
+        u0=u0_train,
         t_save=t_save_train,
         t_span=t_span_train,
         data=training_data,
@@ -105,7 +106,7 @@ def train_optimistix(
     loss_val, _ = loss_fn(
         prob_params=sol.value,
         prob_static=static,
-        u0=u0,
+        u0=u0_val,
         t_save=t_save_val,
         t_span=t_span_val,
         data=validation_data,

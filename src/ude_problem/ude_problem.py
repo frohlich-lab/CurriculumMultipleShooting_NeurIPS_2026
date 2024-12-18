@@ -83,9 +83,9 @@ class UDEProblem(eqx.Module):
     training_horizon: int
     shooting_mode: str
     shooting_window_length: Optional[int]
-    shooting_iv_init: str
+    shooting_iv_init: Optional[str]
     initial_values: Optional[Array]
-    u0_guess: Optional[Array]
+    u0_guess: Optional[Union[Array, jnp.ndarray]]
     init_random_seed: Optional[int]
 
     def __init__(
@@ -136,20 +136,28 @@ class UDEProblem(eqx.Module):
         self.shooting_window_length = shooting_window_length if self.shooting_mode == "multiple" else self.training_horizon
         num_windows = int(np.ceil(self.training_horizon / (self.shooting_window_length - 1))) \
             if self.shooting_mode == "multiple" else 1
-        self.shooting_iv_init = shooting_iv_init
-        # Initialise the learnable initial values for the shooting windows
-        self.u0_guess = u0_guess
-        self.init_random_seed = init_random_seed
-        self.initial_values = initialize_shooting_iv(
-            state_dimension, num_windows, self.shooting_iv_init, self.u0_guess, regularise_network, self.init_random_seed
-        )
+        if self.shooting_mode == "multiple":
+            self.shooting_iv_init = shooting_iv_init
+            # Initialise the learnable initial values for the shooting windows
+            self.u0_guess = u0_guess
+            self.init_random_seed = init_random_seed
+            self.initial_values = initialize_shooting_iv(
+                state_dimension, num_windows, self.shooting_iv_init, self.u0_guess, regularise_network, self.init_random_seed
+            )
+        else:
+            self.shooting_iv_init = None
+            self.u0_guess = None
+            self.init_random_seed = None
+            self.initial_values = None
 
 
     def solve(self, solver, u0, t_save, t_span, *args):
-        if self.shooting_mode == "single":
+        if self.shooting_mode == "single" or self.shooting_mode == "window_batch":
             return self.solve_single_shooting(solver, u0, t_save, t_span, *args)
         elif self.shooting_mode == "multiple":
             return self.solve_multiple_shooting(solver, u0, t_save, t_span, *args)
+        else:
+            self._solve_error()
 
 
     def solve_single_shooting(self, solver, u0, t_save, t_span,

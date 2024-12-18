@@ -77,11 +77,11 @@ mlp = setup_mlp(conf, u0, key_mlp, key_init)
 #                   SET UP UDE PROBLEM TO TRAIN
 # ================================================================
 # Get data and functions for training
-train_args, val_args, loss_args, option_args = get_data_and_funcs_for_train(
+train_args, val_args, loss_args, option_args, plot_args = get_data_and_funcs_for_train(
         conf, true_dynamic_parameters[conf.dynamical_model].shape, u0
     )
-train_data, t_save_train, t_span_train, u0 = train_args
-validation_data, t_save_validation, t_span_validation = val_args
+train_data, t_save_train, t_span_train, u0_train = train_args
+validation_data, t_save_validation, t_span_validation, u0_val = val_args
 loss_fn, loss_grad_fn, loss_optx = loss_args
 optx_config, options = option_args
 
@@ -95,7 +95,7 @@ ude_problem = UDEProblem(
     shooting_mode=conf.shooting_mode,
     shooting_window_length=conf.shooting_window_length,
     shooting_iv_init=conf.shooting_iv_init,
-    u0_guess=u0,
+    u0_guess=u0_train,
     init_random_seed=conf.multistart_job,
 )
 
@@ -117,10 +117,11 @@ early_stopping_params = EarlyStoppingParams(
 # ================================================================
 training_output = train(
     model=ude_problem,
-    u0=u0,
+    u0=u0_train,
     training_data=train_data,
     t_save_train=t_save_train,
     t_span_train=t_span_train,
+    u0_val=u0_val,
     validation_data=validation_data,
     t_save_val=t_save_validation,
     t_span_val=t_span_validation,
@@ -134,6 +135,7 @@ training_output = train(
     n_epochs=N_EPOCHS,
     max_iter_optx_finetune=MAX_ITER_OPTX_FINETUNE,
     model_save_dir=model_save_dir,
+    plot_args=plot_args,
 )
 
 # ================================================================
@@ -147,7 +149,7 @@ if conf.serialise_curriculum_models:
         sindy_model = curriculum_models[list(curriculum_models.keys())[-1]]
         get_sindy_formula(
             model=sindy_model,
-            u0=u0,
+            u0=u0_train,
             t_save=t_save_train,
             t_span=t_span_train,
             settings=["MLP", "UDE"],

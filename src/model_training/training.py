@@ -21,7 +21,7 @@ from src.model_training.training_util import (configure_early_stopping, generate
                                               get_opt_opt_state_params, get_scheduler,
                                               initialise_wandb, log_model_stats, log_plots,
                                               make_grads_finite, max_grad_norm, get_hessian_metrics,
-                                              MetricHandler, transform_dynamic_params)
+                                              MetricHandler, transform_dynamic_params, augment_u0)
 from src.model_training.optimistix_training import train_optimistix
 from src.model_training.fides_training import train_fides
 from src.model_training.hessian import get_hessian, apply_hessian_preconditioning_to_grads
@@ -136,6 +136,7 @@ def train(
         training_data: jnp.ndarray,
         t_save_train: SaveAt,
         t_span_train: List,
+        u0_val: jnp.ndarray,
         validation_data: jnp.ndarray,
         t_save_val: SaveAt,
         t_span_val: List,
@@ -149,6 +150,7 @@ def train(
         n_epochs: int,
         max_iter_optx_finetune: int,
         model_save_dir: Path,
+        plot_args: dict,
 ) -> Union[UDEProblem, Tuple[UDEProblem, Dict[int, UDEProblem]]]:
     """
     Trains the UDEmodel (`model`).
@@ -169,6 +171,8 @@ def train(
         time span to solve the UDE for validation.
     :param training_data:
         training data for the model.
+    :param u0_val:
+        starting conditions for validation data.
     :param validation_data:
         validation data for the model.
     :param conf:
@@ -192,6 +196,8 @@ def train(
         Maximum number of iterations for further training via optimistix.
     :param model_save_dir:
         Filepath of directory to save the trained models.
+    :param plot_args:
+        Arguments for plotting train/val data.
     """
 
     # Check training setting in configuration
@@ -234,6 +240,7 @@ def train(
     incremental_training_data, incremental_train_save, incremental_t_span, steps = generate_incremental_arrays(
         data=training_data,
         t_save=t_save_train,
+        t_span=t_span_train,
         n_epoch=n_epochs,
         curriculum_learning=conf.curriculum_learning,
         num_curriculum_steps=conf.num_curriculum_steps,
@@ -273,7 +280,8 @@ def train(
                     loss_optx=loss_optx,
                     epoch=epoch,
                     num_epochs=10000,  # TODO @GiacomoFabrini - do we want to include an extra hyperparam for this?
-                    u0=u0,
+                    u0_train=u0,
+                    u0_val=u0_val,
                     t_save_train=incremental_train_save[steps[curriculum_step]],
                     t_span_train=incremental_t_span[steps[curriculum_step]],
                     training_data=incremental_training_data[steps[curriculum_step]],
@@ -295,7 +303,8 @@ def train(
                     loss_grad_fn=loss_grad_fn,
                     epoch=epoch,
                     max_iter=10000,  # TODO @GiacomoFabrini - do we want to include an extra hyperparam for this?
-                    u0=u0,
+                    u0_train=u0,
+                    u0_val=u0_val,
                     t_save_train=incremental_train_save[steps[curriculum_step]],
                     t_span_train=incremental_t_span[steps[curriculum_step]],
                     training_data=incremental_training_data[steps[curriculum_step]],
@@ -351,7 +360,8 @@ def train(
                 loss_optx=loss_optx,
                 epoch=epoch,
                 num_epochs=max_iter_optx_mechanistic,
-                u0=u0,
+                u0_train=u0,
+                u0_val=u0_val,
                 t_save_train=t_save_train,
                 t_span_train=t_span_train,
                 training_data=training_data,
@@ -373,7 +383,8 @@ def train(
                 loss_grad_fn=loss_grad_fn,
                 epoch=epoch,
                 max_iter=max_iter_optx_mechanistic,
-                u0=u0,
+                u0_train=u0,
+                u0_val=u0_val,
                 t_save_train=t_save_train,
                 t_span_train=t_span_train,
                 training_data=training_data,
@@ -400,12 +411,11 @@ def train(
 
         # Log plots again after further training with optimistix/BFGS
         log_fit_plots(
-            model, u0,
-            t_save_train, t_span_train, training_data,
-            t_save_val, t_span_val, validation_data,
-            conf, get_fit_dfs, labels, colors, epoch,
-            "mechanistic_optx" if not conf.use_fides else "mechanistic_fides",
-            "mechanistic_optx" if not conf.use_fides else "mechanistic_fides"
+            model=model, **plot_args,
+            conf=conf, get_fit_dfs=get_fit_dfs,
+            labels=labels, colors=colors, epoch=epoch,
+            plot_name="mechanistic_optx" if not conf.use_fides else "mechanistic_fides",
+            plot_subdir="mechanistic_optx" if not conf.use_fides else "mechanistic_fides"
         )
 
         # Increment epoch before moving to next stage
@@ -424,7 +434,9 @@ def train(
             new_regularise_network=True,
         )
         # Add initial zero as starting condition for the 2-norm of the neural network contribution
-        u0 = jnp.concatenate([u0, jnp.zeros(1)])
+        u0 = augment_u0(u0)
+        u0_val = augment_u0(u0_val)
+        plot_args["u0"] = augment_u0(plot_args["u0"])
 
         # Depending on conf settings, freeze mechanistic params/neural network or keep everything learnable
         if conf.freeze_mechanistic_params_adam:
@@ -493,7 +505,7 @@ def train(
             loss_val, _ = loss_fn(
                 prob_params=inference_params,
                 prob_static=inference_static,
-                u0=u0,
+                u0=u0_val,
                 t_save=t_save_val,
                 t_span=t_span_val,
                 data=validation_data,
@@ -608,11 +620,10 @@ def train(
 
         # Plot fit (train/val) at end of training -- using best model on validation dataset
         log_fit_plots(
-            best_model, u0,
-            t_save_train, t_span_train, training_data,
-            t_save_val, t_span_val, validation_data,
-            conf, get_fit_dfs, labels, colors, epoch,
-            "optax", "optax"
+            model=best_model, **plot_args,
+            conf=conf, get_fit_dfs=get_fit_dfs,
+            labels=labels, colors=colors, epoch=epoch,
+            plot_name="optax", plot_subdir="optax"
         )
 
         # Log final values of mechanistic parameters + final epoch value (can vary if using early stopping)
@@ -656,7 +667,8 @@ def train(
                 loss_optx=loss_optx,
                 epoch=epoch,
                 num_epochs=max_iter_optx_finetune,
-                u0=u0,
+                u0_train=u0,
+                u0_val=u0_val,
                 t_save_train=t_save_train,
                 t_span_train=t_span_train,
                 training_data=training_data,
@@ -678,7 +690,8 @@ def train(
                 loss_grad_fn=loss_grad_fn,
                 epoch=epoch,
                 max_iter=max_iter_optx_finetune,
-                u0=u0,
+                u0_train=u0,
+                u0_val=u0_val,
                 t_save_train=t_save_train,
                 t_span_train=t_span_train,
                 training_data=training_data,
@@ -705,12 +718,11 @@ def train(
 
         # Log plots again after further training with optimistix/BFGS
         log_fit_plots(
-            model, u0,
-            t_save_train, t_span_train, training_data,
-            t_save_val, t_span_val, validation_data,
-            conf, get_fit_dfs, labels, colors, epoch+sol.stats["num_steps"],
-            "optx" if not conf.use_fides else "fides",
-            "optx" if not conf.use_fides else "fides"
+            model=model, **plot_args,
+            conf=conf, get_fit_dfs=get_fit_dfs,
+            labels=labels, colors=colors, epoch=epoch+sol.stats["num_steps"],
+            plot_name="optx" if not conf.use_fides else "fides",
+            plot_subdir="optx" if not conf.use_fides else "fides"
         )
 
     # Get W&B run directory
