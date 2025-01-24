@@ -1,11 +1,11 @@
 import diffrax
 import equinox as eqx
-import jax
 import jax.numpy as jnp
 import os
 import pandas as pd
 
-from src.model_training.model_util import regularise_mlp, regularise_mlp_contribution, get_mse, process_mechanistic_params
+from src.model_training.model_util import get_mse, process_mechanistic_params
+from jaxtyping import Array
 from typing import Union
 
 
@@ -19,7 +19,7 @@ class UDEFunction(eqx.Module):
         Evaluates the right hand side for input vector u, at time t
     """
 
-    dynamic_parameters: jax.Array
+    dynamic_parameters: Array
     mlp: Union[eqx.nn.MLP, eqx.Module]
     options: dict[str, bool]
     state_dimension: int
@@ -63,7 +63,7 @@ class UDEFunction(eqx.Module):
 
 
 # LOSS AND GRAD FUNCTIONS
-def _compute_loss(sol, data):
+def sir_base_loss(sol, data):
     infected, dead, recovered = data[:, 0], data[:, 1], data[:, 2]
     # loss is sum of MSE on Infected and Recovered+Dead
     loss1 = get_mse(
@@ -77,71 +77,6 @@ def _compute_loss(sol, data):
     # loss1 = jnp.mean((jnp.log(infected) - jnp.log(jnp.absolute(sol.ys[:, 1] + sol.ys[:, 3]))) ** 2)
     # loss2 = jnp.mean((jnp.log(recovered + dead) - jnp.log(jnp.absolute(sol.ys[:, 2]))) ** 2)
     return loss1 + loss2
-
-
-@eqx.filter_jit
-def compute_loss(
-        prob_params, prob_static, u0, t_save, t_span, data, mlp_reg_exp, mlp_reg_strength, output_reg, adjoint=None
-):
-    prob = eqx.combine(prob_params, prob_static)
-    if adjoint is not None:
-        sol = prob.solve(diffrax.Tsit5(), u0, t_save, t_span, adjoint=adjoint)
-    else:
-        sol = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
-    loss = _compute_loss(sol, data)
-    if prob.func.regularise_network:
-        mlp_reg = regularise_mlp(prob.func.mlp, mlp_reg_exp, mlp_reg_strength)
-        mlp_output_reg = regularise_mlp_contribution(
-            l2_norm_nn_contrib=sol.ys[:, 4],
-            timespan_length=t_span[-1]-t_span[0],
-            reg_strength=output_reg
-        ) # TODO @GiacomoFabrini any way to avoid magic numbers?
-        loss += (mlp_reg + mlp_output_reg)
-        return loss, mlp_output_reg
-    return loss, None
-
-
-def compute_loss_grad(prob_params, prob_static, u0, t_save, t_span, data, mlp_reg_exp, mlp_reg_strength, output_reg):
-    return eqx.filter_value_and_grad(compute_loss, has_aux=True)(
-        prob_params, prob_static, u0, t_save, t_span, data, mlp_reg_exp, mlp_reg_strength, output_reg, adjoint=None
-    )
-
-
-@eqx.filter_jit
-def compute_loss_optx(prob_params, args):
-    prob_static, u0, t_save, t_span, data, mlp_reg_exp, mlp_reg_strength, output_reg = args
-    loss, _ = compute_loss(
-        prob_params, prob_static, u0, t_save, t_span, data, mlp_reg_exp, mlp_reg_strength, output_reg, None
-    )
-    return loss, None
-
-
-# HESSIAN
-# MATRIX -- NOT IN USE
-# @eqx.filter_jit
-# @jax.hessian
-# def compute_hess(
-#         prob_params, prob_static,
-#         u0, t_save_train, t_span_train, data, adjoint,
-#         reg_exp, reg_strength
-# ):
-#     prob = eqx.combine(prob_params, prob_static)
-#     sol = prob.solve(diffrax.Tsit5(), u0, t_save_train, t_span_train, adjoint=adjoint)
-#     return _compute_loss(sol, data) + regularise_mlp(prob.func.mlp, reg_exp, reg_strength)
-
-# ARRAY FORM
-@eqx.filter_jit
-@jax.hessian
-def compute_hess_array(
-        flat_p, unflatten_p, prob_static,
-        u0, t_save, t_span, data, adjoint,
-        mlp_reg_exp, mlp_reg_strength, output_reg
-):
-    prob_params = unflatten_p(flat_p)
-    loss, _ = compute_loss(
-        prob_params, prob_static, u0, t_save, t_span, data, mlp_reg_exp, mlp_reg_strength, output_reg, adjoint
-    )
-    return loss
 
 
 # UTILS - DATA AND PLOTTING
