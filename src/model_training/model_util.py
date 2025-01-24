@@ -6,7 +6,8 @@ import jax.tree_util as jtu
 import numpy as np
 
 from jaxtyping import Array
-from typing import Any, Union
+from types import SimpleNamespace
+from typing import Any, List, Union
 
 
 def get_mse(pred: Array, data: Array):
@@ -44,6 +45,20 @@ def regularise_mlp_contribution(
     # the l2_norm_nn_contrib is the integral of the 2-norm of the nn_contribution from t0 to t0, t1, ..., tf
     # we only need the integral up to tf, final timepoint
     return reg_strength * (l2_norm_nn_contrib[-1]/timespan_length)**2
+
+
+def compute_discontinuity_penalty(prob, solutions: List[SimpleNamespace], num_windows: int):
+    return jnp.mean(
+        jnp.array(
+            [
+                get_mse(
+                    solutions[i].ys[-1, :prob.func.state_dimension],
+                    solutions[j].ys[0, :prob.func.state_dimension]
+                )
+                for i, j in zip(range(num_windows - 1), range(1, num_windows))
+            ]
+        )
+    )
 
 
 def _init_glorot(

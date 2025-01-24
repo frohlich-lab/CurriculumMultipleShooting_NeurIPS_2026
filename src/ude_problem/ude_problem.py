@@ -151,18 +151,22 @@ class UDEProblem(eqx.Module):
             self.initial_values = None
 
 
-    def solve(self, solver, u0, t_save, t_span, *args):
+    def solve(self, solver, u0, t_save, t_span, adjoint, *args):
         if self.shooting_mode == "single" or self.shooting_mode == "window_batch":
-            return self.solve_single_shooting(solver, u0, t_save, t_span, *args)
+            return self.solve_single_shooting(solver, u0, t_save, t_span, adjoint, *args)
         elif self.shooting_mode == "multiple":
-            return self.solve_multiple_shooting(solver, u0, t_save, t_span, *args)
+            return self.solve_multiple_shooting(solver, u0, t_save, t_span, adjoint, *args)
         else:
             self._solve_error()
 
 
-    def solve_single_shooting(self, solver, u0, t_save, t_span,
-              controller=diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8),
-              adjoint=diffrax.RecursiveCheckpointAdjoint()):
+    def solve_single_shooting(
+            self, solver, u0, t_save, t_span,
+            adjoint=diffrax.RecursiveCheckpointAdjoint(),
+            controller=diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8),
+    ):
+        if adjoint is None:
+            adjoint = diffrax.RecursiveCheckpointAdjoint()
         if not isinstance(t_save, diffrax.SaveAt):
             t_save = diffrax.SaveAt(ts=t_save)
         t0, t1 = t_span
@@ -179,10 +183,11 @@ class UDEProblem(eqx.Module):
                                   adjoint=adjoint)
         return sol
 
+
     def solve_multiple_shooting(
             self, solver, u0, t_save, t_span,
+            adjoint=diffrax.RecursiveCheckpointAdjoint(),
             controller=diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8),
-            adjoint=diffrax.RecursiveCheckpointAdjoint()
     ):
         """
         Solve the UDE using multiple shooting.
@@ -202,9 +207,12 @@ class UDEProblem(eqx.Module):
         adjoint: diffrax.AbstractAdjoint, optional
             Adjoint method for backpropagation.
         """
+        if adjoint is None:
+            adjoint = diffrax.RecursiveCheckpointAdjoint()
         if not isinstance(t_save, diffrax.SaveAt):
             t_save = diffrax.SaveAt(ts=t_save)
         num_windows = int(np.ceil(len(t_save.subs.ts) / (self.shooting_window_length - 1)))
+
         solutions = []
 
         for i in range(num_windows):
@@ -231,6 +239,7 @@ class UDEProblem(eqx.Module):
             solutions.append(sol)
 
         return solutions
+
 
     def _solve_error(self):
         raise ValueError(f"Invalid shooting mode: {self.shooting_mode}")
