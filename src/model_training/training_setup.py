@@ -6,6 +6,8 @@ from src.common import activation_functions, Conf, default_out_sizes, normalise,
 from src.model_examples.lotka_volterra import setup_diffrax_model as setup_lv
 from src.model_examples.sir import setup_diffrax_model as setup_sir
 from src.model_training.model_util import set_weight_bias
+from src.model_training.losses import (compute_loss, compute_loss_grad, compute_loss_optx,
+                                       compute_batch_loss, compute_batch_loss_grad, compute_batch_loss_optx)
 from src.ude_problem import build_mlp
 
 
@@ -25,14 +27,6 @@ def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple, u0) ->
         # TODO @GiacomoFabrini find better way to express filepath and pass it as argument
         (train_data, t_save_train, t_span_train,
          validation_data, t_save_validation, t_span_validation) = setup_lv.get_training_validation_data()
-        if conf.shooting_mode != "window_batch":
-            loss_fn = setup_lv.compute_loss
-            loss_grad_fn = setup_lv.compute_loss_grad
-            loss_optx = setup_lv.compute_loss_optx
-        else:
-            loss_fn = setup_lv.compute_batch_loss
-            loss_grad_fn = setup_lv.compute_batch_loss_grad
-            loss_optx = setup_lv.compute_batch_loss_optx
 
         optx_config = {
             "rtol": 1e-6,  # changed from 1e-3
@@ -42,16 +36,23 @@ def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple, u0) ->
         # TODO @GiacomoFabrini find better way to express filepath and pass it as argument - same as above
         (train_data, t_save_train, t_span_train,
          validation_data, t_save_validation, t_span_validation) = setup_sir.get_training_validation_data()
-        # TODO adapt loss functions to MS & batch window approaches!
-        loss_fn = setup_sir.compute_loss
-        loss_grad_fn = setup_sir.compute_loss_grad
-        loss_optx = setup_sir.compute_loss_optx
+
         optx_config = {
             "rtol": 1e-6,  # changed from 1e-4
             "atol": 1e-6,  # changed from 1e-4
         }
     else:
         raise ValueError(f"Unknown dynamical model: {conf.dynamical_model}!")
+
+    if conf.shooting_mode != "window_batch":
+        loss_fn = compute_loss
+        loss_grad_fn = compute_loss_grad
+        loss_optx = compute_loss_optx
+    else:
+        loss_fn = compute_batch_loss
+        loss_grad_fn = compute_batch_loss_grad
+        loss_optx = compute_batch_loss_optx
+
     options = {
         "dynamic_params_scale": conf.dynamic_params_scale,
         "bounded_tanh_params": broadcast_bounds(
