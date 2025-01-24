@@ -2,6 +2,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import optimistix as optx
+import pandas as pd
 import wandb
 
 from src.common import Conf, dynamic_param_labels
@@ -11,7 +12,7 @@ from src.model_training.model_util import set_weight_bias
 from src.model_training.training_util import log_model_stats, transform_dynamic_params
 from src.ude_problem import UDEProblem
 from types import SimpleNamespace
-from typing import Callable, List
+from typing import Callable, List, Optional
 
 
 # OPTIMISTIX OPTIMISATION FUNCTIONS
@@ -32,7 +33,7 @@ def train_optimistix(
         zero_out_mlp: bool = False,
         wandb_log: bool = True,
         wandb_log_final: bool = True,
-) -> tuple[UDEProblem, SimpleNamespace, UDEProblem, float, float, int]:
+) -> tuple[UDEProblem, SimpleNamespace, UDEProblem, float, float, int, Optional[pd.DataFrame]]:
 
     # Define options and tags for BFGS solver
     options = {
@@ -73,7 +74,7 @@ def train_optimistix(
     aux_struct = None
 
     # Optimistix solve
-    sol = optx_solve(
+    sol, results_df = optx_solve(
         y=params, solver=solver,
         fn=loss_optx, args=args, args_val=args_val,
         f_struct=f_struct, aux_struct=aux_struct,
@@ -131,7 +132,7 @@ def train_optimistix(
     #     epoch,
     # )
 
-    return model, sol, static, loss_train, loss_val, epoch
+    return model, sol, static, loss_train, loss_val, epoch, results_df  # last can be None
 
 
 def optx_solve(
@@ -161,6 +162,7 @@ def optx_solve(
     done, result = terminate(y=y, state=state)
 
     iteration = 1
+    results_dfs = []
     while not (done or iteration > max_steps):
         # print(f"Evaluating point {y} with value {fn(y, args)}.")
         y, state, aux = step(y=y, state=state)
@@ -174,6 +176,25 @@ def optx_solve(
                     "loss_val": loss_val,
                 },
                 step=starting_epoch+iteration
+            )
+            results_dfs.append(
+                pd.DataFrame(
+                    [{
+                        "optimiser": "optimistix_BFGS",
+                        "epoch": starting_epoch + iteration,
+                        # Losses
+                        "loss_train": loss_train,
+                        "loss_val": loss_val,
+                        # Dynamic parameters
+                        **{
+                            param: transform_dynamic_params(
+                                eqx.combine(y, args[0])  # params + static = model
+                                .func.dynamic_parameters, conf
+                            )[i]
+                            for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
+                        },
+                    }]
+                )
             )
             # Only log model stats if training loss is finite (can compute derivatives)
             if jnp.isfinite(loss_train):
@@ -216,4 +237,7 @@ def optx_solve(
             "termination_reason": result,
         },
     }
-    return SimpleNamespace(**sol)
+    if wandb_log:
+        return SimpleNamespace(**sol), pd.concat(results_dfs)
+    else:
+        return SimpleNamespace(**sol), None

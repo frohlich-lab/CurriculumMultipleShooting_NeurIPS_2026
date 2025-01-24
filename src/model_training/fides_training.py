@@ -3,6 +3,7 @@ import fides
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pandas as pd
 import wandb
 
 from diffrax import SaveAt
@@ -13,7 +14,7 @@ from src.model_training.model_util import set_weight_bias
 from src.model_training.training_util import transform_dynamic_params
 from src.ude_problem import UDEProblem
 from types import SimpleNamespace
-from typing import Callable, List
+from typing import Callable, List, Optional
 
 
 
@@ -59,7 +60,7 @@ def train_fides(
         loss_fn: Callable,
         zero_out_mlp: bool = False,
         wandb_log_final: bool = False
-) -> tuple[UDEProblem, SimpleNamespace, UDEProblem, float, float, int]:
+) -> tuple[UDEProblem, SimpleNamespace, UDEProblem, float, float, int, Optional[pd.DataFrame]]:
 
     # Zero out MLP if needed (mechanistic fit only)
     if zero_out_mlp:
@@ -153,6 +154,7 @@ def train_fides(
     # create optimistix-like sol object
     sol = SimpleNamespace(value=opt_params, stats={"num_steps": fides_opt.iteration})
 
+    fides_results_df = None
     # Log final training and validation loss terms + dynamic parameter values for final BFGS fine-tuning (third stage)
     if wandb_log_final:
         wandb.log(
@@ -168,6 +170,23 @@ def train_fides(
             },
             step=epoch + sol.stats["num_steps"]
         )
+        fides_results_df = pd.DataFrame(
+            [{
+                "optimiser": "fides_BFGS",
+                "epoch": epoch + sol.stats["num_steps"],
+                # Losses
+                "loss_train": loss_train,
+                "loss_val": loss_val,
+                # Dynamic parameters
+                **{
+                    param: transform_dynamic_params(
+                        model.func.dynamic_parameters, conf
+                    )[i]
+                    for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
+                },
+            }]
+        )
+
 
 
     # Update epoch
@@ -181,4 +200,4 @@ def train_fides(
     #     conf,
     #     epoch,
     # )
-    return model, sol, static, loss_train, loss_val, epoch
+    return model, sol, static, loss_train, loss_val, epoch, fides_results_df  # last can be None
