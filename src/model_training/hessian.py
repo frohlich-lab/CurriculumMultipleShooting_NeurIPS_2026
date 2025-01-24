@@ -5,9 +5,8 @@ from src.common import Conf
 from diffrax import DirectAdjoint
 from functools import partial
 from jaxtyping import PyTree
-from src.model_examples.lotka_volterra.setup_diffrax_model import compute_hess_array as compute_hess_array_lv
-from src.model_examples.sir.setup_diffrax_model import compute_hess_array as compute_hess_array_sir
 from src.model_training.training_util import get_hessian_metrics, make_grads_finite
+from src.model_training.losses import compute_hess_array, compute_batch_hess_array
 from src.ude_problem import UDEProblem
 from typing import Union
 
@@ -21,21 +20,19 @@ def get_hessian(
         adjoint = DirectAdjoint(),  # TODO @GiacomoFabrini: add type hint?!
 ):
     # define hessian functions for different dynamical models
-    hessian_fn = {
-        "lotka_volterra": compute_hess_array_lv,
-        "sir": compute_hess_array_sir,
-    }
+    hessian_fn = compute_hess_array if conf.shooting_mode != "window_batch" else compute_batch_hess_array
     # unpack args
     u0, t_save, t_span, input_data = args
     # flatten params PyTree and get unflatten function
     flat_p, unflatten_p = jax.flatten_util.ravel_pytree(params)
     # compute hessian as a 2D array
-    hessian = hessian_fn[conf.dynamical_model](
+    hessian = hessian_fn(
         # equinox.debug.backward_nan(flat_p), unflatten_p, static,
         flat_p, unflatten_p, static,
         u0, t_save, t_span, input_data,
         adjoint,
-        conf.mlp_reg_exp, conf.mlp_reg_strength, conf.output_reg, conf.multiple_shooting_penalty
+        conf.mlp_reg_exp, conf.mlp_reg_strength, conf.output_reg, conf.multiple_shooting_penalty,
+        conf.shooting_mode
     )
     return hessian
 
