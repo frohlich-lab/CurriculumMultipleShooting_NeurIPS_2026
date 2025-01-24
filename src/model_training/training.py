@@ -5,11 +5,12 @@ import jax.numpy as jnp
 import jax.tree_util as jtu
 # import matplotlib.pyplot as plt
 import optax
-import subprocess
+import pandas as pd
+# import subprocess
 import wandb
 import warnings
 
-from src.common import Conf, dynamic_param_labels, EarlyStoppingParams, hessian_metrics_wandb, plots_dir
+from src.common import Conf, dynamic_param_labels, EarlyStoppingParams, hessian_metrics_wandb, plots_dir, results_dir
 from dataclasses import replace
 from diffrax import SaveAt
 from jaxtyping import Array, Float, PyTree
@@ -347,12 +348,13 @@ def train(
             )
         return model
 
-
+    results_dfs = []
     # STAGE 1: fit mechanistic model parameters -- do not use curriculum learning
     if max_iter_optx_mechanistic > 0:
         # Zero-out and freeze neural network
         if not conf.use_fides:
-            model, sol, static, _, loss_val, epoch = train_optimistix(
+            wandb_log = True
+            model, sol, static, _, loss_val, epoch, partial_results_df = train_optimistix(
                 model=model,
                 filter_spec=filter_spec_freeze_nn,
                 conf=conf,
@@ -372,11 +374,15 @@ def train(
                 frozen_mechanistic=False,
                 frozen_nn=True,
                 zero_out_mlp=True,
-                wandb_log=True,
+                wandb_log=wandb_log,
                 wandb_log_final=False,
             )
+            if wandb_log:  # if not, partial_results will be None
+                # Add conf/hyperparameters details
+                results_dfs.append(partial_results_df.assign(**conf.__dict__))
         else:
-            model, sol, static, _, loss_val, epoch = train_fides(
+            wandb_log = True
+            model, sol, static, _, loss_val, epoch, partial_results_df = train_fides(
                 model=model,
                 filter_spec=filter_spec_freeze_nn,
                 conf=conf,
@@ -393,8 +399,11 @@ def train(
                 validation_data=validation_data,
                 loss_fn=loss_fn,
                 zero_out_mlp=True,
-                wandb_log_final=False,
+                wandb_log_final=wandb_log,
             )
+            if wandb_log:  # if not, partial_results will be None
+                # Add conf/hyperparameters details
+                results_dfs.append(partial_results_df.assign(**conf.__dict__))
 
         # Update best_model
         if loss_val < loss_val_min:
@@ -467,7 +476,11 @@ def train(
 
         # Training loop
         metric_handler = MetricHandler(patience=5)
+        if conf.shooting_mode == "multiple":
+            ivs = []
         for nn_epoch in range(n_epochs):
+            if conf.shooting_mode == "multiple":
+                ivs.append(params.initial_values)
             params, opt_state, loss_train, nn_contrib_reg, grads, hessian_metrics = make_step(
                 params=params,
                 static=static,
@@ -528,6 +541,26 @@ def train(
                 elif nn_epoch in model_save_steps_end:
                     models_curriculum_stage_end[nn_epoch] = inference_model
 
+            partial_results_df = pd.DataFrame(
+                [{
+                    "optimiser": conf.optimiser,
+                    "epoch": epoch+nn_epoch,
+                    # Losses
+                    "loss_train": loss_train,
+                    "loss_val": loss_val,
+                    # Training metrics
+                    "learning_rate": schedule(nn_epoch),
+                    "num_train_samples": len(incremental_training_data[nn_epoch]),
+                    "max_grad_norm": max_grad_norm(grads),
+                    # Dynamic parameters
+                    **{
+                        param: transform_dynamic_params(
+                            inference_model.func.dynamic_parameters, conf
+                        )[i]
+                        for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
+                    },
+                }]
+            )
             # log loss_train, loss_val, learning rate, param values and grads on log-spaced epochs
             if nn_epoch in log_epochs:
                 wandb.log(
@@ -558,6 +591,8 @@ def train(
                         },
                         step=epoch+nn_epoch
                     )
+                    # Add Hessian metrics to partial results
+                    partial_results_df = partial_results_df.assign(**hessian_metrics)
 
                 # Log regularisation term if applied
                 if conf.mlp_reg_strength > 0:
@@ -578,6 +613,7 @@ def train(
                         },
                         step=epoch+nn_epoch
                     )
+                    partial_results_df = partial_results_df.assign(nn_contrib_reg=nn_contrib_reg)
 
                 print(
                     f"epoch {nn_epoch} | "
@@ -601,6 +637,8 @@ def train(
                         },
                         step=epoch+nn_epoch,
                     )
+                    partial_results_df = partial_results_df.assign(ES_patience_counter=early_stopper.patience_count)
+
                     # Stop training if we have run out of patience
                     if early_stopper.should_stop:
                         print(f'Met early stopping criteria, breaking at epoch {epoch+nn_epoch}')
@@ -614,6 +652,9 @@ def train(
                     },
                     step=epoch+nn_epoch,
                 )
+
+            # Append epoch results to results list with added conf details
+            results_dfs.append(partial_results_df.assign(**conf.__dict__))
 
         # Update epoch
         epoch += nn_epoch
@@ -659,7 +700,8 @@ def train(
             bfgs_filter_spec = eqx.is_array
 
         if not conf.use_fides:
-            model, sol, static, _, loss_val, epoch = train_optimistix(
+            wandb_log = True
+            model, sol, static, _, loss_val, epoch, partial_results_df = train_optimistix(
                 model=model,
                 filter_spec=bfgs_filter_spec,
                 conf=conf,
@@ -682,8 +724,11 @@ def train(
                 wandb_log=True,
                 wandb_log_final=True,
             )
+            if wandb_log:  # if not, partial_results will be None
+                results_dfs.append(partial_results_df.assign(**conf.__dict__))
         else:
-            model, sol, static, _, loss_val, epoch = train_fides(
+            wandb_log = True
+            model, sol, static, _, loss_val, epoch, partial_results_df = train_fides(
                 model=model,
                 filter_spec=bfgs_filter_spec,
                 conf=conf,
@@ -700,8 +745,10 @@ def train(
                 validation_data=validation_data,
                 loss_fn=loss_fn,
                 zero_out_mlp=False,
-                wandb_log_final=True,
+                wandb_log_final=wandb_log,
             )
+            if wandb_log: # if not, partial_results will be None
+                results_dfs.append(partial_results_df.assign(**conf.__dict__))
 
         # Update best_model
         if loss_val < loss_val_min:
@@ -724,6 +771,14 @@ def train(
             plot_name="optx" if not conf.use_fides else "fides",
             plot_subdir="optx" if not conf.use_fides else "fides"
         )
+
+    # Save results dataframe to CSV
+    results_total = pd.concat(results_dfs)
+    results_total.to_csv(
+        results_dir /
+        conf.dynamical_model /
+        (conf.__str__() + "_results.csv")
+    )
 
     # Get W&B run directory
     # wandb_stripped_dir = wandb.run.dir.rsplit('/files', 1)[0]
