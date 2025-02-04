@@ -66,19 +66,25 @@ def compute_loss(
         else:
             mlp_reg = 0
         if output_reg > 0:
-            if shooting_mode == "single":
+            if shooting_mode == "single":  # "window_batch" calls vmapped single-shooting
                 mlp_output_reg = regularise_mlp_contribution(
                     l2_norm_nn_contrib=sol.ys[:, prob.func.state_dimension],
                     timespan_length=t_span[-1]-t_span[0],
                     reg_strength=output_reg
                 )
+            elif shooting_mode == "multiple":
+                mlp_output_reg = jnp.sum(jnp.array(
+                    [
+                        regularise_mlp_contribution(
+                            l2_norm_nn_contrib=solution.ys[:, prob.func.state_dimension],
+                            timespan_length=solution.ys[:, prob.func.state_dimension].shape[0],
+                            reg_strength=output_reg
+                        )
+                        for solution in sol
+                    ]
+                ))
             else:
-                # TODO @GiacomoFabrini NEED TO FIX THIS! -- discuss with Fabian during Jour Fixe
-                mlp_output_reg = regularise_mlp_contribution(
-                    l2_norm_nn_contrib=sol[0].ys[:, prob.func.state_dimension],  # this is only using the first segment!
-                    timespan_length=t_span[-1]-t_span[0],
-                    reg_strength=output_reg
-                )
+                raise ValueError("This function should only be called with 'single' or 'multiple' shooting_mode!")
         else:
             mlp_output_reg = 0
         loss += (mlp_reg + mlp_output_reg)
