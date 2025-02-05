@@ -11,8 +11,6 @@ from src.model_training.model_util import (compute_discontinuity_penalty, get_ms
                                            regularise_mlp, regularise_mlp_contribution)
 
 
-# TODO @GiacomoFabrini no magic numbers - add conf.node_augmentation and derive number of components for loss.
-#  Same for all functions on this page! Need to adapt SIR as well!
 @eqx.filter_jit
 def compute_loss(
         prob_params, prob_static,
@@ -42,16 +40,30 @@ def compute_loss(
         if not isinstance(t_save, diffrax.SaveAt):
             t_save = diffrax.SaveAt(ts=t_save)
         num_windows = int(np.ceil(len(t_save.subs.ts) / (prob.shooting_window_length - 1)))
-        losses = jnp.array([
-            get_mse(
-                pred=solution.ys[:, :prob.func.state_dimension],
-                data=data[i*(prob.shooting_window_length-1) : (i+1)*prob.shooting_window_length-i]
-            )
-            for solution, i in zip(sol, range(num_windows))
-        ])
+        if type(sol) is list:
+            losses = jnp.array([
+                get_mse(
+                    pred=solution.ys[: len(data[start_idx:end_idx]), :prob.func.state_dimension],
+                    data=data[start_idx:end_idx]
+                )
+                for solution, i in zip(sol, range(num_windows))
+                for start_idx, end_idx in [(i * (prob.shooting_window_length - 1),
+                                            min((i + 1) * prob.shooting_window_length - i, len(data)))]
+            ])
+        else:
+            # using vmap, shape of sol is: (batch/window, timepoint, state var)
+            losses = jnp.array([
+                get_mse(
+                    pred=sol.ys[i, : len(data[start_idx:end_idx]), :prob.func.state_dimension],
+                    data=data[start_idx:end_idx]
+                )
+                for i in range(num_windows)
+                for start_idx, end_idx in [(i * (prob.shooting_window_length - 1),
+                                            min((i + 1) * prob.shooting_window_length - i, len(data)))]
+            ])
         # Average losses and add discontinuity penalty
         loss = (jnp.mean(losses)
-                + multiple_shooting_penalty * compute_discontinuity_penalty(prob, sol, num_windows))
+                + multiple_shooting_penalty * compute_discontinuity_penalty(prob, sol))
     else:
         raise ValueError(f"Unknown shooting mode: {shooting_mode}!")
 
@@ -73,16 +85,36 @@ def compute_loss(
                     reg_strength=output_reg
                 )
             elif shooting_mode == "multiple":
-                mlp_output_reg = jnp.sum(jnp.array(
-                    [
-                        regularise_mlp_contribution(
-                            l2_norm_nn_contrib=solution.ys[:, prob.func.state_dimension],
-                            timespan_length=solution.ys[:, prob.func.state_dimension].shape[0],
-                            reg_strength=output_reg
-                        )
-                        for solution in sol
-                    ]
-                ))
+                if type(sol) is list:
+                    mlp_output_reg = jnp.sum(jnp.array(
+                        [
+                            regularise_mlp_contribution(
+                                l2_norm_nn_contrib=solution.ys[:, prob.func.state_dimension],
+                                timespan_length=t_save.subs.ts[end_idx] - t_save.subs.ts[start_idx],
+                                reg_strength=output_reg
+                            )
+                            for i, solution in enumerate(sol)
+                            for start_idx, end_idx in [(i * (prob.shooting_window_length - 1),
+                                                        min((i + 1) * prob.shooting_window_length - i, len(data)))]
+                        ]
+                    ))
+                else:
+                    # Need to stop gradient flow to prob.ms_t_save_windows once again + ensure simulations and
+                    # timepoint differences/spans are only accessed for non-repeated timepoints (i.e. end_idx-start_idx).
+                    # The second point does not seem essential - it works even without it (e.g. t_save_window[-1] instead
+                    # of t_save_window[end_idx-start_idx]).
+                    mlp_output_reg = jnp.sum(jnp.array(
+                        [
+                            regularise_mlp_contribution(
+                                l2_norm_nn_contrib=sol.ys[i, :len(data[start_idx:end_idx]), prob.func.state_dimension],
+                                timespan_length=(t_save_window[end_idx-start_idx] - t_save_window[0]),
+                                reg_strength=output_reg
+                            )
+                            for i, t_save_window in enumerate(jax.lax.stop_gradient(prob.ms_t_save_windows))
+                            for start_idx, end_idx in [(i * (prob.shooting_window_length - 1),
+                                                        min((i + 1) * prob.shooting_window_length - i, len(data)))]
+                        ]
+                    ))
             else:
                 raise ValueError("This function should only be called with 'single' or 'multiple' shooting_mode!")
         else:

@@ -77,7 +77,8 @@ mlp = setup_mlp(conf, u0, key_mlp, key_init)
 #                   SET UP UDE PROBLEM TO TRAIN
 # ================================================================
 # Get data and functions for training
-train_args, val_args, loss_args, option_args, plot_args = get_data_and_funcs_for_train(
+(train_args, val_args,
+ loss_args, option_args, plot_args) = get_data_and_funcs_for_train(
         conf, true_dynamic_parameters[conf.dynamical_model].shape, u0
     )
 train_data, t_save_train, t_span_train, u0_train = train_args
@@ -97,6 +98,7 @@ ude_problem = UDEProblem(
     shooting_iv_init=conf.shooting_iv_init,
     u0_guess=u0_train,
     init_random_seed=conf.multistart_job,
+    t_save_train=t_save_train if conf.shooting_mode == "multiple" else None,
 )
 
 # # Linear schedule Fabian set up for the DMM -- DISABLED WITH NEW SCHEDULER

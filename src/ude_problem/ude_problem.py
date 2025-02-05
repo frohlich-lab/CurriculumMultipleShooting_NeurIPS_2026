@@ -1,5 +1,6 @@
 import diffrax
 import equinox as eqx
+import jax
 import jax.numpy as jnp
 import jax.random as jr
 import json
@@ -21,48 +22,74 @@ UDE_funcs = {
 }
 
 
-def initialize_shooting_iv(
+def initialize_ms(
         state_dimension: int,
-        num_windows: int,
+        shooting_window_length: int,
+        training_horizon: int,
+        t_save: diffrax.SaveAt,
         strategy: str,
         u0_guess: Optional[Array],
         network_regularisation: bool,
         random_seed: int = 0,
 ):
     """
-    Initialise the learnable initial values for the shooting windows.
+    Initialize auxiliary variables (num_windows, starting and ending points,
+    save timepoints) and learnable initial values for the shooting windows.
 
     Parameters
     ----------
     state_dimension: int
         The dimensionality of the system state.
-    num_windows: int
-        The number of shooting windows.
+    shooting_window_length: int
+        The number of timepoints in each shooting window.
+    training_horizon: int
+        Overall training horizon (time-range of training datapoints).
+    t_save: diffrax.SaveAt
+        Timepoints at which to save the training simulation.
     strategy: str
         Initialization strategy for initial conditions.
-    u0_guess: array-like
+    u0_guess: Array
         Initial guess for the initial conditions.
     network_regularisation: bool
         If True, the network contribution to the dynamics will be regularised.
     random_seed: int
-        Random seed for random initialisation.
+        Random seed for random initialization.
     """
-    if strategy == 'zeros':
+    # Pre-compute number of windows
+    num_windows = int(np.ceil(training_horizon / (shooting_window_length - 1)))
+
+    # Compute auxiliary MS variables
+    t_windows = [
+        t_save.subs.ts[
+            i * (shooting_window_length - 1) : (i + 1) * shooting_window_length - i
+        ] for i in range(num_windows)
+    ]
+
+    # Ensure all windows have the same length by repeating endpoint -- JAX does not accept ragged arrays!
+    if len(t_windows[-1]) < shooting_window_length:
+        diff_len = shooting_window_length - len(t_windows[-1])
+        t_windows[-1] = np.concatenate([t_windows[-1], diff_len*[t_windows[-1][-1]]])
+    t_save_windows = jnp.array(t_windows)  # trying to keep Array format
+
+    if strategy == 'z':
         # Augment initial conditions to include network regularisation
         effective_state_dim = state_dimension+1 if network_regularisation else state_dimension
-        return jnp.zeros((num_windows, effective_state_dim))
+        # return jnp.zeros((num_windows, effective_state_dim))
+        return t_save_windows, jnp.zeros((num_windows, effective_state_dim))
     # TODO @GiacomoFabrini add an option to initialise with observed initial conditions
-    elif strategy == 'guess':
+    elif strategy == 'g':
         if network_regularisation:
             u0_guess = jnp.concatenate([u0_guess, jnp.zeros(1)])
-        return jnp.tile(u0_guess, (num_windows, 1))
-    elif strategy == 'random_uniform':
+        # return jnp.tile(u0_guess, (num_windows, 1))
+        return t_save_windows, jnp.tile(u0_guess, (num_windows, 1))
+    elif strategy == 'ru':
         # Sample uniformly state_dimension variables
         u0 = jr.uniform(jr.PRNGKey(random_seed), (num_windows, state_dimension))
         # Concatenate a 0 across all num_windows if using network regularisation
         if network_regularisation:
             u0 = jnp.concatenate([u0, jnp.zeros((num_windows, 1))], axis=1)
-        return u0
+        # return u0
+        return t_save_windows, u0
     else:
         raise ValueError(f"Invalid shooting_iv_init strategy: {strategy}")
 
@@ -76,7 +103,7 @@ class UDEProblem(eqx.Module):
     solve(self, solver t_save, t_span)
         Solve the UDE for t_span = [t0, tend] and save the solution at the
         points in t_save using the provided solver. Controller is the adaptive
-        ODE-stepping controller (should not need to be changed)
+        ODE-stepping controller (should not need to be changed).
     """
     dynamical_model: str
     func: Union[UDEFunction_lv, UDEFunction_sir]
@@ -84,14 +111,16 @@ class UDEProblem(eqx.Module):
     shooting_mode: str
     shooting_window_length: Optional[int]
     shooting_iv_init: Optional[str]
+    ms_t_save_windows: Optional[Array]
     initial_values: Optional[Array]
-    u0_guess: Optional[Union[Array, jnp.ndarray]]
+    u0_guess: Optional[Any]
     init_random_seed: Optional[int]
 
     def __init__(
             self, dynamical_model, dynamic_parameters, mlp, options, state_dimension, training_horizon,
             shooting_mode: str = "single", shooting_window_length=10, shooting_iv_init="zeros", u0_guess=None,
-            init_random_seed=0, regularise_network=None, **kwargs
+            init_random_seed=0, regularise_network=None,
+            t_save_train=None, initial_values=None, ms_t_save_windows=None,  **kwargs,
     ):
         """
         Parameters
@@ -134,28 +163,53 @@ class UDEProblem(eqx.Module):
             raise ValueError("shooting_window_length cannot be None for shooting_mode='multiple'")
         # Conditionally define the shooting window length and compute the number of shooting windows
         self.shooting_window_length = shooting_window_length if self.shooting_mode == "multiple" else self.training_horizon
-        num_windows = int(np.ceil(self.training_horizon / (self.shooting_window_length - 1))) \
-            if self.shooting_mode == "multiple" else 1
         if self.shooting_mode == "multiple":
             self.shooting_iv_init = shooting_iv_init
             # Initialise the learnable initial values for the shooting windows
             self.u0_guess = u0_guess
             self.init_random_seed = init_random_seed
-            self.initial_values = initialize_shooting_iv(
-                state_dimension, num_windows, self.shooting_iv_init, self.u0_guess, regularise_network, self.init_random_seed
-            )
+            if (ms_t_save_windows is not None) and (initial_values is not None):
+                # TODO @Giacomo - check whether there are other scenarios to be considered
+                self.ms_t_save_windows, self.initial_values = ms_t_save_windows, initial_values
+                # Augment initial values to include network regularisation (each u0 should have mlp.layers[0].in_features+1 elements)
+                if self.func.regularise_network and (self.initial_values.shape[1] == self.func.mlp.layers[0].in_features):
+                    self.initial_values = jnp.concatenate(
+                        [self.initial_values, jnp.zeros((self.initial_values.shape[0], 1))], axis=1
+                    )
+            elif t_save_train is not None:
+                self.ms_t_save_windows, self.initial_values = initialize_ms(
+                    state_dimension=state_dimension,
+                    shooting_window_length=self.shooting_window_length,
+                    training_horizon=self.training_horizon,
+                    t_save=t_save_train,
+                    strategy=self.shooting_iv_init,
+                    u0_guess=self.u0_guess,
+                    network_regularisation=regularise_network,
+                    random_seed=self.init_random_seed
+                )
+            else:
+                raise ValueError("Either initial_values and ms_t_save_windows OR t_save_train must be provided for MS!")
         else:
-            self.shooting_iv_init = None
-            self.u0_guess = None
-            self.init_random_seed = None
-            self.initial_values = None
+            self.shooting_iv_init, self.u0_guess, self.init_random_seed = None, None, None
+            self.initial_values, self.ms_t_save_windows = None, None
 
 
     def solve(self, solver, u0, t_save, t_span, adjoint, *args):
         if self.shooting_mode == "single" or self.shooting_mode == "window_batch":
             return self.solve_single_shooting(solver, u0, t_save, t_span, adjoint, *args)
         elif self.shooting_mode == "multiple":
-            return self.solve_multiple_shooting(solver, u0, t_save, t_span, adjoint, *args)
+            return self.solve_multiple_shooting(
+                solver,
+                self.initial_values,
+                jax.lax.stop_gradient(self.ms_t_save_windows),  # stop update of shooting window timepoints
+                adjoint, *args
+            )
+            # return self.solve_multiple_shooting_loop(
+            #     solver,
+            #     self.initial_values,
+            #     t_save,  # stop update of shooting window timepoints
+            #     adjoint, *args
+            # )
         else:
             self._solve_error()
 
@@ -183,9 +237,16 @@ class UDEProblem(eqx.Module):
                                   adjoint=adjoint)
         return sol
 
-
+    @eqx.filter_vmap(
+        in_axes={
+            "self": None,
+            "solver": None,
+        }
+    )
     def solve_multiple_shooting(
-            self, solver, u0, t_save, t_span,
+            self, solver,
+            u0, t_save,
+            # t_span,
             adjoint=diffrax.RecursiveCheckpointAdjoint(),
             controller=diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8),
     ):
@@ -200,8 +261,6 @@ class UDEProblem(eqx.Module):
             The initial values for the ODE // not used for MS for now.
         t_save: array-like
             The time points at which to save the solution.
-        t_span: tuple
-            Start and end times for the integration // not used for MS for now.
         controller: diffrax.PIDController, optional
             Adaptive stepsize controller.
         adjoint: diffrax.AbstractAdjoint, optional
@@ -209,37 +268,80 @@ class UDEProblem(eqx.Module):
         """
         if adjoint is None:
             adjoint = diffrax.RecursiveCheckpointAdjoint()
-        if not isinstance(t_save, diffrax.SaveAt):
-            t_save = diffrax.SaveAt(ts=t_save)
-        num_windows = int(np.ceil(len(t_save.subs.ts) / (self.shooting_window_length - 1)))
 
-        solutions = []
+        solution = diffrax.diffeqsolve(
+            terms=diffrax.ODETerm(self.func),
+            solver=solver,
+            t0=t_save[0],
+            t1=t_save[-1],
+            dt0=None,
+            y0=u0,
+            saveat=diffrax.SaveAt(ts=t_save),  # ensure unique points
+            stepsize_controller=controller,
+            adjoint=adjoint
+        )
 
-        for i in range(num_windows):
-            # Time range for the current shooting window
-            window_start = i * (self.shooting_window_length - 1)
-            window_end = window_start + self.shooting_window_length
+        return solution
 
-            t_window = t_save.subs.ts[window_start:window_end]
-            u0_window = self.initial_values[i]
 
-            # Solve for the current window
-            t_save_window = diffrax.SaveAt(ts=t_window)
-            sol = diffrax.diffeqsolve(
-                diffrax.ODETerm(self.func),
-                solver,
-                t0=t_window[0],
-                t1=t_window[-1],
-                dt0=None,
-                y0=u0_window,
-                saveat=t_save_window,
-                stepsize_controller=controller,
-                adjoint=adjoint
-            )
-            solutions.append(sol)
-
-        return solutions
-
+    # def solve_multiple_shooting_loop(
+    #         self, solver,
+    #         u0, t_save,
+    #         # t_span,
+    #         adjoint=diffrax.RecursiveCheckpointAdjoint(),
+    #         controller=diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8),
+    # ):
+    #     """
+    #     Solve the UDE using multiple shooting.
+    #
+    #     Parameters
+    #     ----------
+    #     solver: diffrax.AbstractSolver
+    #         The ODE solver to use.
+    #     u0: array-like
+    #         The initial values for the ODE // not used for MS for now.
+    #     t_save: array-like
+    #         The time points at which to save the solution.
+    #     t_span: tuple
+    #         Start and end times for the integration // not used for MS for now.
+    #     controller: diffrax.PIDController, optional
+    #         Adaptive stepsize controller.
+    #     adjoint: diffrax.AbstractAdjoint, optional
+    #         Adjoint method for backpropagation.
+    #     """
+    #     if adjoint is None:
+    #         adjoint = diffrax.RecursiveCheckpointAdjoint()
+    #
+    #     if not isinstance(t_save, diffrax.SaveAt):
+    #         t_save = diffrax.SaveAt(ts=t_save)
+    #     num_windows = int(np.ceil(len(t_save.subs.ts) / (self.shooting_window_length - 1)))
+    #
+    #     solutions = []
+    #
+    #     for i in range(num_windows):
+    #         # Time range for the current shooting window
+    #         window_start = i * (self.shooting_window_length - 1)
+    #         window_end = window_start + self.shooting_window_length
+    #
+    #         t_window = t_save.subs.ts[window_start:window_end]
+    #         u0_window = self.initial_values[i]
+    #
+    #         # Solve for the current window
+    #         t_save_window = diffrax.SaveAt(ts=t_window)
+    #         sol = diffrax.diffeqsolve(
+    #             diffrax.ODETerm(self.func),
+    #             solver,
+    #             t0=t_window[0],
+    #             t1=t_window[-1],
+    #             dt0=None,
+    #             y0=u0_window,
+    #             saveat=t_save_window,
+    #             stepsize_controller=controller,
+    #             adjoint=adjoint
+    #         )
+    #         solutions.append(sol)
+    #
+    #     return solutions
 
     def _solve_error(self):
         raise ValueError(f"Invalid shooting mode: {self.shooting_mode}")
@@ -282,6 +384,10 @@ class UDEProblem(eqx.Module):
         shooting_mode = self.shooting_mode
         shooting_window_length = self.shooting_window_length
         shooting_iv_init = self.shooting_iv_init
+        # ms_starts = self.ms_starts
+        # ms_ends = self.ms_ends
+        ms_t_save_windows = self.ms_t_save_windows
+        initial_values = self.initial_values
         u0_guess = self.u0_guess
         init_random_seed = self.init_random_seed
         regularise_network = new_regularise_network if new_regularise_network is not None \
@@ -289,7 +395,9 @@ class UDEProblem(eqx.Module):
         return UDEProblem(
             dynamical_model, dynamic_parameters, mlp, options, state_dimension,
             training_horizon, shooting_mode, shooting_window_length, shooting_iv_init, u0_guess,
-            init_random_seed, regularise_network
+            init_random_seed, regularise_network,
+            t_save_train=None,
+            initial_values=initial_values, ms_t_save_windows=ms_t_save_windows,
         )
 
 
@@ -299,7 +407,7 @@ class UDEProblem(eqx.Module):
 
         Note: used in model serialisation
         """
-        # Cannot seri
+        # Cannot serialise activation functions directly - use string name
         activation_fn_name = None
         final_activation_fn_name = None
         for key in activation_functions.keys():
@@ -324,6 +432,12 @@ class UDEProblem(eqx.Module):
             'shooting_window_length': self.shooting_window_length,
             'shooting_iv_init': self.shooting_iv_init,
             'u0_guess': np.array(self.u0_guess).tolist() if self.u0_guess is not None else None,
+            'initial_values': np.array(
+                self.initial_values
+            ).tolist() if self.initial_values is not None else None,
+            'ms_t_save_windows': np.array(
+                self.ms_t_save_windows
+            ).tolist() if self.ms_t_save_windows is not None else None,
             'init_random_seed': self.init_random_seed,
             'regularise_network': self.func.regularise_network,
             'in_size': self.func.mlp.in_size,
@@ -421,6 +535,9 @@ class UDEProblem(eqx.Module):
                 u0_guess=jnp.array(hyperparams["u0_guess"], dtype=jnp.float64),
                 init_random_seed=hyperparams["init_random_seed"],
                 regularise_network=hyperparams["regularise_network"],
+                # Multiple-shooting attributes
+                initial_values=jnp.array(hyperparams["initial_values"], dtype=jnp.float64),
+                ms_t_save_windows=jnp.array(hyperparams["ms_t_save_windows"], dtype=jnp.float64)
             )
         return ude_prob
 
