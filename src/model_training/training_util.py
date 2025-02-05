@@ -336,9 +336,10 @@ def log_model_stats(
 
 
 def log_plots(
-        df_predict: pd.DataFrame,
+        df_predict_list: List[pd.DataFrame],
         df_obs: pd.DataFrame,
-        labels: List[str],
+        dataset: str,
+        shooting_mode: str,
         colors: List[str],
         epoch: int,
         plot_name: str,
@@ -346,8 +347,11 @@ def log_plots(
         save_plot: bool = False,
         plot_fmt: str = "png"
 ):
+    df_predict, df_predict_shooting_train = df_predict_list
     plt.subplots(1, 2, figsize=(6, 4), sharey=True, sharex=True)
-    for ind, (label, color) in enumerate(zip(labels, colors)):
+    for ind, (label, color) in enumerate(
+            zip([col for col in df_obs.columns if col != "time"], colors)
+    ):
         plt.subplot(1, 2, ind + 1)
         plt.plot(
             df_predict['time'].values,
@@ -364,17 +368,47 @@ def log_plots(
             marker='o',
             label=f'obs_{label}',
         )
+        if (shooting_mode != "single") and (dataset == "train"):
+            for batch in sorted(df_predict_shooting_train.batch.unique()):
+                # Only draw line between points corresponding to the same batch/window
+                plt.plot(
+                    df_predict_shooting_train[
+                        df_predict_shooting_train.batch == batch
+                    ]["time"].values,
+                    df_predict_shooting_train[
+                        df_predict_shooting_train.batch == batch
+                    ][label].values,
+                    color=color,
+                    ls='--',
+                    alpha=0.5,
+                )
+            if shooting_mode == "multiple":
+                for window in sorted(df_predict_shooting_train.batch.unique()):
+                    # mark start of each shooting window just for reference
+                    plt.axvline(
+                        x=df_predict_shooting_train[
+                            df_predict_shooting_train.batch == window
+                        ]["time"].values[0],
+                        color='black',
+                        alpha=0.6,
+                        ls='dotted'
+                    )
+
         plt.legend(frameon=False)
         plt.xlabel('Time')
         plt.gca().tick_params(direction='in', length=5)
         if ind == 0:
             plt.ylabel('Measurement')
+
     if save_plot and (plot_dir is not None):
         plt.savefig(plot_dir / f"fit_plot_{plot_name}.{plot_fmt}")
+        plt.close()
     elif save_plot and (plot_dir is None):
+        plt.show()
         raise ValueError("Must specify plot directory in order to save plots!")
     else:
         wandb.log({f"fit_plot_{plot_name}": plt}, step=epoch)
+        plt.close()
 
 
 def make_grads_finite(grads):
