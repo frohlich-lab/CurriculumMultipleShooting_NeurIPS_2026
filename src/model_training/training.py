@@ -15,8 +15,6 @@ from dataclasses import replace
 from diffrax import SaveAt
 from jaxtyping import Array, Float, PyTree
 from pathlib import Path
-from src.model_examples.lotka_volterra.setup_diffrax_model import get_fit_dfs as get_fit_dfs_lv
-from src.model_examples.sir.setup_diffrax_model import get_fit_dfs as get_fit_dfs_sir
 from src.model_training.model_util import regularise_mlp
 from src.model_training.training_util import (configure_early_stopping, generate_incremental_arrays, generate_log_epochs,
                                               get_opt_opt_state_params, get_scheduler,
@@ -33,6 +31,73 @@ from typing import Callable, Dict, List, Tuple, Union
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 
+def get_fit_dfs(
+        prob: UDEProblem,
+        u0,
+        t_save,
+        t_span,
+        data: jnp.ndarray,
+        dataset: str,
+        u0_batch: Optional[jnp.ndarray] = None,
+        t_save_batch: Optional[jnp.ndarray] = None,
+        t_span_batch: Optional[List] = None,
+) -> Tuple[pd.DataFrame, Optional[pd.DataFrame], pd.DataFrame]:
+    # Model prediction
+    sol = prob.solve_single_shooting(diffrax.Tsit5(), u0, t_save, t_span)
+    if prob.dynamical_model == "lotka_volterra":
+        df_pred = pd.DataFrame({"time": sol.ts,
+                                "prey": sol.ys[:, 0],
+                                "predator": sol.ys[:, 1],
+                                })
+        df_obs = pd.DataFrame({"time": sol.ts,
+                               "prey": data[:, 0],
+                               "predator": data[:, 1],
+                               })
+    elif prob.dynamical_model == "sir":
+        df_pred = pd.DataFrame({"time": sol.ts,
+                                "Infected": jnp.log(jnp.absolute(sol.ys[:, 1] + sol.ys[:, 3])),
+                                "Recovered + dead": jnp.log(jnp.absolute(sol.ys[:, 2])),
+                                })
+        # Observed data
+        infected, dead, recovered = data[:, 0], data[:, 1], data[:, 2]
+        df_obs = pd.DataFrame({"time": sol.ts,
+                               "Infected": jnp.log(infected),
+                               "Recovered + dead": jnp.log(jnp.absolute(recovered + dead)),
+                               })
+    else:
+        raise ValueError(f"Undefined dynamical model {prob.dynamical_model}.")
+    if (prob.shooting_mode == "single") or (dataset != "train"):
+        return df_pred, None, df_obs
+    else:
+        if prob.shooting_mode == "multiple":
+            sol = prob.solve(diffrax.Tsit5(), u0, t_save, t_span, adjoint=None)  # TODO @Giacomo need to fix adjoint option
+        elif prob.shooting_mode == "window_batch":
+            sol = jax.vmap(
+                prob.solve_single_shooting, in_axes=(None, 0, 0, 0)
+            )(diffrax.Tsit5(), u0_batch, t_save_batch, t_span_batch)
+        else:
+            raise ValueError(f"Undefined shooting mode {prob.shooting_mode}.")
+        if prob.dynamical_model == "lotka_volterra":
+            df_pred_train = pd.concat([
+                pd.DataFrame({"time": sol.ts[i],
+                              "prey": sol.ys[i, :, 0],
+                              "predator": sol.ys[i, :, 1],
+                              }).assign(batch=i + 1)
+                for i in range(sol.ys.shape[0])  # batch/shooting-window dimension
+            ])
+        elif prob.dynamical_model == "sir":
+            df_pred_train = pd.concat([
+                pd.DataFrame({"time": sol.ts[i],
+                              "Infected": jnp.log(jnp.absolute(sol.ys[i, :, 1] + sol.ys[i, :, 3])),
+                              "Recovered + dead": jnp.log(jnp.absolute(sol.ys[i, :, 2])),
+                              }).assign(batch=i + 1)
+                for i in range(sol.ys.shape[0])  # batch/shooting-window dimension
+            ])
+        else:
+            raise ValueError(f"Undefined dynamical model {prob.dynamical_model}.")
+        return df_pred, df_pred_train, df_obs
+
+
 # PLOTTING HELPER FUNCTION
 def log_fit_plots(
         model: UDEProblem,
@@ -40,12 +105,13 @@ def log_fit_plots(
         t_save_train: SaveAt, t_span_train: List, training_data: jnp.ndarray,
         t_save_val: SaveAt, t_span_val: List, validation_data: jnp.ndarray,
         conf: Conf,
-        get_fit_dfs: Callable,
-        labels: List[str],
         colors: List[str],
         epoch: int,
         plot_name: str,
         plot_subdir: str,
+        u0_batch: Optional[Array] = None,
+        t_save_train_batch: Optional[Array] = None,
+        t_span_train_batch: Optional[Array] = None,
 ):
     # Log plots again after further training with optimistix/BFGS
     for dataset, t_save, t_span, data in zip(
@@ -58,14 +124,17 @@ def log_fit_plots(
         if (len(u0) > model.func.state_dimension) and (conf.node_augmentation == 0):
             assert model.func.regularise_network == True, ("Regularisation of the network is required, u0 has more "
                                                            "elements than state dimension.")
-
-        df_predict, df_obs = get_fit_dfs(model, u0, t_save, t_span, data)
+        df_predict, df_predict_train, df_obs = get_fit_dfs(
+            model, u0, t_save, t_span, data, dataset,
+            u0_batch, t_save_train_batch, t_span_train_batch
+        )
         plot_dir = plots_dir / conf.dynamical_model / plot_subdir
         plot_dir.mkdir(exist_ok=True, parents=True)
         log_plots(
-            df_predict,
+            [df_predict, df_predict_train],
             df_obs,
-            labels,
+            dataset,
+            model.shooting_mode,
             colors,
             epoch,
             f"{dataset}_{plot_name}",
@@ -248,14 +317,10 @@ def train(
         max_curriculum_epochs=conf.max_curriculum_epochs,
     )
 
-    # Define plotting functions, labels and colours
+    # Define colours for plots
     if conf.dynamical_model == "lotka_volterra":
-        get_fit_dfs = get_fit_dfs_lv
-        labels = ['prey', 'predator']
         colors = ['red', 'black']
     elif conf.dynamical_model == 'sir':
-        get_fit_dfs = get_fit_dfs_sir
-        labels = ['Infected', 'Recovered + dead']
         colors = ['red', 'black']
     else:
         raise ValueError(f"Undefined dynamical model {conf.dynamical_model}.")
@@ -342,9 +407,9 @@ def train(
                 cl_model, u0,
                 t_save_train, t_span_train, training_data,  # plot for full training set just for reference
                 t_save_val, t_span_val, validation_data,
-                conf, get_fit_dfs, labels, colors, curriculum_step,
+                conf, colors, curriculum_step,
                 f"BFGS_local_minima_{curriculum_step+1}",
-                "BFGS_local_minima"
+                "BFGS_local_minima",
             )
         return model
 
@@ -421,10 +486,13 @@ def train(
         # Log plots again after further training with optimistix/BFGS
         log_fit_plots(
             model=model, **plot_args,
-            conf=conf, get_fit_dfs=get_fit_dfs,
-            labels=labels, colors=colors, epoch=epoch,
-            plot_name="mechanistic_optx" if not conf.use_fides else "mechanistic_fides",
-            plot_subdir="mechanistic_optx" if not conf.use_fides else "mechanistic_fides"
+            conf=conf,
+            colors=colors, epoch=epoch,
+            plot_name=f"mechanistic_{conf.second_opt}",
+            plot_subdir=f"mechanistic_{conf.second_opt}",
+            u0_batch=u0 if conf.shooting_mode == "window_batch" else None,
+            t_save_train_batch=t_save_train if conf.shooting_mode == "window_batch" else None,
+            t_span_train_batch=t_span_train if conf.shooting_mode == "window_batch" else None
         )
 
         # Increment epoch before moving to next stage
@@ -662,9 +730,12 @@ def train(
         # Plot fit (train/val) at end of training -- using best model on validation dataset
         log_fit_plots(
             model=best_model, **plot_args,
-            conf=conf, get_fit_dfs=get_fit_dfs,
-            labels=labels, colors=colors, epoch=epoch,
-            plot_name="optax", plot_subdir="optax"
+            conf=conf,
+            colors=colors, epoch=epoch,
+            plot_name="optax", plot_subdir="optax",
+            u0_batch=u0 if conf.shooting_mode == "window_batch" else None,
+            t_save_train_batch=t_save_train if conf.shooting_mode == "window_batch" else None,
+            t_span_train_batch=t_span_train if conf.shooting_mode == "window_batch" else None
         )
 
         # Log final values of mechanistic parameters + final epoch value (can vary if using early stopping)
@@ -766,10 +837,13 @@ def train(
         # Log plots again after further training with optimistix/BFGS
         log_fit_plots(
             model=model, **plot_args,
-            conf=conf, get_fit_dfs=get_fit_dfs,
-            labels=labels, colors=colors, epoch=epoch+sol.stats["num_steps"],
-            plot_name="optx" if not conf.use_fides else "fides",
-            plot_subdir="optx" if not conf.use_fides else "fides"
+            conf=conf,
+            colors=colors, epoch=epoch+sol.stats["num_steps"],
+            plot_name=conf.second_opt,
+            plot_subdir=conf.second_opt,
+            u0_batch=u0 if conf.shooting_mode == "window_batch" else None,
+            t_save_train_batch=t_save_train if conf.shooting_mode == "window_batch" else None,
+            t_span_train_batch=t_span_train if conf.shooting_mode == "window_batch" else None
         )
 
     # Save results dataframe to CSV

@@ -38,7 +38,7 @@ class UDEFunction(eqx.Module):
         # Get dynamic parameters on correct scale for ODE
         beta, gamma, delta = process_mechanistic_params(self.dynamic_parameters, self.options)
         s, i, r, t_ = u[:self.state_dimension]
-        if len(u) > self.state_dimension + 1:
+        if len(u) > self.state_dimension + 1: # TODO @GiacomoFabrini need to check how this works with node_augmentation - is the order correct?
             augmented_vars = u[self.state_dimension+1:]  # exclude evolution of 2-norm of network contribution
             nn_q = self.mlp(jnp.array([s, i, r, *augmented_vars]))
         else:
@@ -62,6 +62,7 @@ class UDEFunction(eqx.Module):
         return derivatives
 
 
+# TODO @GiacomoFabrini no magic numbers - add conf.node_augmentation and derive number of components for loss.
 # LOSS AND GRAD FUNCTIONS
 def sir_base_loss(sol, data):
     infected, dead, recovered = data[:, 0], data[:, 1], data[:, 2]
@@ -110,22 +111,6 @@ def get_result_plot(prob, u0, t_save, t_span, data):
     df_obs = pd.concat([df_obs1, df_obs2], names=False)
 
     return df_predict, df_obs
-
-
-def get_fit_dfs(prob, u0, t_save, t_span, data):
-    # Model prediction
-    sol = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
-    df_pred = pd.DataFrame({"time": sol.ts,
-                            "Infected": jnp.log(jnp.absolute(sol.ys[:, 1] + sol.ys[:, 3])),
-                            "Recovered + dead": jnp.log(jnp.absolute(sol.ys[:, 2])),
-                            })
-    # Observed data
-    infected, dead, recovered = data[:, 0], data[:, 1], data[:, 2]
-    df_obs = pd.DataFrame({"time": sol.ts,
-                           "Infected": jnp.log(infected),
-                           "Recovered + dead": jnp.log(jnp.absolute(recovered + dead)),
-                           })
-    return df_pred, df_obs
 
 
 def get_training_validation_data():

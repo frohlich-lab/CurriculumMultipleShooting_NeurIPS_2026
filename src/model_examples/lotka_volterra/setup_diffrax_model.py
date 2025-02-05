@@ -39,7 +39,7 @@ class UDEFunction(eqx.Module):
         alpha, delta = process_mechanistic_params(self.dynamic_parameters, self.options)
         # Unpack state variables
         prey, predator = u[:self.state_dimension]
-        if len(u) > self.state_dimension + 1:
+        if len(u) > self.mlp.layers[0].in_features:  # TODO @GiacomoFabrini need to check how this works with node_augmentation - is the order correct?
             nn_input = jnp.concatenate([u[:self.state_dimension], u[self.state_dimension+1:]])
         else:
             nn_input = u[:self.state_dimension]
@@ -105,17 +105,3 @@ def get_result_plot(prob, u0, t_save, t_span, data):
     df_obs = pd.concat([df_obs1, df_obs2], names=False)
 
     return df_predict, df_obs
-
-
-def get_fit_dfs(prob, u0, t_save, t_span, data):
-    # Model prediction
-    u_pred = prob.solve_single_shooting(diffrax.Tsit5(), u0, t_save, t_span)
-    df_pred = pd.DataFrame({"time": u_pred.ts,
-                            "prey": u_pred.ys[:, 0],
-                            "predator": u_pred.ys[:, 1],
-                            })
-    df_obs = pd.DataFrame({"time": u_pred.ts,
-                           "prey": data[:, 0],
-                           "predator": data[:, 1],
-                           })
-    return df_pred, df_obs
