@@ -571,14 +571,14 @@ def max_grad_norm(grads: PyTree) -> Array:
 
 def sample_dynamical_params(true_params, deviation, seed, scale="log10", method="sample_uniform", **kwargs):
     # Perturbation/sampling is always performed in log10-space
-    if method == "sample_uniform":
+    if method == "su": # su=sample_uniform
         starting_params_log10 = jax.random.uniform(
             key=jr.PRNGKey(seed),
             shape=true_params.shape,
             minval=jnp.log10(true_params)-deviation,
             maxval=jnp.log10(true_params)+deviation,
         )
-    elif method == "add_gaussian_noise":  # add option to perturb parameters with gaussian noise rather than sample from uniform
+    elif method == "agn":  # agn=add_gaussian_noise, perturbs original values
         log_true_params = jnp.log10(true_params)
         starting_params_log10 = log_true_params + deviation*jax.random.normal(
             key=jr.PRNGKey(seed),
