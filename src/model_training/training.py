@@ -1,3 +1,4 @@
+import diffrax
 import equinox as eqx
 # import equinox.debug
 import jax
@@ -25,7 +26,7 @@ from src.model_training.optimistix_training import train_optimistix
 from src.model_training.fides_training import train_fides
 from src.model_training.hessian import get_hessian, apply_hessian_preconditioning_to_grads
 from src.ude_problem import UDEProblem
-from typing import Callable, Dict, List, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 # Some FutureWarning with unhashable DynamicJaxprTracer object in the diffeq solve/call
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -544,8 +545,7 @@ def train(
 
         # Training loop
         metric_handler = MetricHandler(patience=5)
-        if conf.shooting_mode == "multiple":
-            ivs = []
+        ivs = []
         for nn_epoch in range(n_epochs):
             if conf.shooting_mode == "multiple":
                 ivs.append(params.initial_values)
