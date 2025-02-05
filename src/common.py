@@ -59,6 +59,7 @@ class Conf(dict):
     shooting_mode: str = "single"
     shooting_window_length: int = 10
     shooting_iv_init: str = "zeros"
+    batch_size: int = 64  # batch size for window-batching
     # Curriculum Learning (growing fits)
     curriculum_learning: bool = True
     num_curriculum_steps: int = 5

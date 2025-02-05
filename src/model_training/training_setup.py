@@ -86,10 +86,11 @@ def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple, u0) ->
     if conf.shooting_mode == "window_batch":
         # Training data
         train_data, t_save_train, t_span_train = window_batch_dataloader(
-            train_data, t_save_train, t_span_train,
+            input_data=train_data,
+            t_save=t_save_train,
             window_length=conf.shooting_window_length,
-            batch_size=64,  # TODO @GiacomoFabrini add to config?
-            random_seed=conf.multistart_job,  # used as usual as random seed
+            batch_size=conf.batch_size,  # default: 64
+            random_seed=conf.multistart_job,
         )
         # Get initial condition batches
         u0_train = jnp.array([data_batch[0] for data_batch in train_data])
