@@ -72,6 +72,7 @@ def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple, u0) ->
         t_span_validation = [t_save_train.subs.ts[0], t_save_validation.subs.ts[-1]]
 
     u0_train, u0_val = u0, u0
+
     # Store original format (possibly normalised) data and initial conditions for plotting
     plot_args = {
         "u0": u0,
@@ -158,7 +159,7 @@ def setup_mlp(conf: Conf, u0: jnp.ndarray, key_mlp, key_init):
     return mlp
 
 
-def window_batch_dataloader(input_data, t_save, t_span, window_length: int, batch_size: int, random_seed: int):
+def window_batch_dataloader(input_data, t_save, window_length: int, batch_size: int, random_seed: int):
     """
     Returns random batches of sequences from input_data along with t_save and t_span batches.
 
