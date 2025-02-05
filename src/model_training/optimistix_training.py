@@ -8,8 +8,7 @@ import wandb
 from src.common import Conf, dynamic_param_labels
 from diffrax import SaveAt
 from jaxtyping import PyTree
-from src.model_training.model_util import set_weight_bias
-from src.model_training.training_util import log_model_stats, transform_dynamic_params
+from src.model_training.training_util import log_model_stats, transform_dynamic_params, prep_bfgs_training
 from src.ude_problem import UDEProblem
 from types import SimpleNamespace
 from typing import Callable, List, Optional
@@ -44,16 +43,7 @@ def train_optimistix(
     # Additional training with BFGS via optimistix
     solver = optx.BFGS(**options)
 
-    # Zero out MLP if needed (mechanistic fit only)
-    if zero_out_mlp:
-        mlp_replacement = set_weight_bias(model.func.mlp, 0.0, jax.random.PRNGKey(0))
-    else:
-        mlp_replacement = model.func.mlp
-
-    # Set dropout behaviour to be deterministic
-    model_optx = model.copy(
-        new_mlp=eqx.nn.inference_mode(mlp_replacement, value=True)
-    )
+    model_optx = prep_bfgs_training(model, zero_out_mlp)
 
     # Split model_optx in learnable params and static component
     params, static = eqx.partition(model_optx, filter_spec)

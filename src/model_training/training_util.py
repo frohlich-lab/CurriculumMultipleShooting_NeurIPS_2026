@@ -17,7 +17,7 @@ from flax.training.early_stopping import EarlyStopping
 from jaxtyping import Array, PyTree
 from pathlib import Path
 from src.common import Conf, dynamic_param_labels, EarlyStoppingParams, hessian_metrics_wandb, plots_dir
-from src.model_training.model_util import bounded_tanh_transform_params
+from src.model_training.model_util import bounded_tanh_transform_params, set_weight_bias
 from src.model_training.training_configuration import N_EPOCHS, MAX_ITER_OPTX_FINETUNE
 from src.ude_problem import UDEProblem
 from typing import List, Optional, Union
@@ -770,3 +770,17 @@ def augment_u0(u0):
     zeros_shape = u0.shape[:-1] + (1,)
     # Concatenate along the last axis
     return jnp.concatenate([u0, jnp.zeros(zeros_shape)], axis=-1)
+
+
+def prep_bfgs_training(model, zero_out_mlp):
+    # Zero out MLP if needed (mechanistic fit only)
+    if zero_out_mlp:
+        mlp_replacement = set_weight_bias(model.func.mlp, 0.0, jax.random.PRNGKey(0))
+    else:
+        mlp_replacement = model.func.mlp
+
+    # Set dropout behaviour to be deterministic
+    model_bfgs = model.copy(
+        new_mlp=eqx.nn.inference_mode(mlp_replacement, value=True)
+    )
+    return model_bfgs
