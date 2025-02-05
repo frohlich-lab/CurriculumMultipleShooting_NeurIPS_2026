@@ -271,8 +271,8 @@ def train(
             # Reset starting epoch
             epoch = 0
             # NN learnable, mechanistic parameters can be learnable or frozen depending on conf.freeze_mechanistic_params_landscape_BFGS
-            if not conf.use_fides:
-                cl_model, sol, static, loss_train, loss_val, epoch = train_optimistix(
+            if conf.second_opt == "optx":
+                cl_model, sol, static, loss_train, loss_val, epoch, _ = train_optimistix(
                     model=model,
                     filter_spec=filter_spec_freeze_mechanistic if conf.freeze_mechanistic_params_landscape_BFGS
                         else eqx.is_array,
@@ -296,7 +296,7 @@ def train(
                     wandb_log=False,
                 )
             else:
-                cl_model, sol, static, loss_train, loss_val, epoch = train_fides(
+                cl_model, sol, static, loss_train, loss_val, epoch, _ = train_fides(
                     model=model,
                     filter_spec=filter_spec_freeze_mechanistic if conf.freeze_mechanistic_params_landscape_BFGS
                     else eqx.is_array,
@@ -352,7 +352,7 @@ def train(
     # STAGE 1: fit mechanistic model parameters -- do not use curriculum learning
     if max_iter_optx_mechanistic > 0:
         # Zero-out and freeze neural network
-        if not conf.use_fides:
+        if conf.second_opt == "optx":
             wandb_log = True
             model, sol, static, _, loss_val, epoch, partial_results_df = train_optimistix(
                 model=model,
@@ -699,7 +699,7 @@ def train(
         else:
             bfgs_filter_spec = eqx.is_array
 
-        if not conf.use_fides:
+        if conf.second_opt == "optx":
             wandb_log = True
             model, sol, static, _, loss_val, epoch, partial_results_df = train_optimistix(
                 model=model,

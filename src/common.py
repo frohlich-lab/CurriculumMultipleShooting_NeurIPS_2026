@@ -11,6 +11,7 @@ from typing import Optional, Union
 
 @dataclasses.dataclass(frozen=True, repr=True, eq=True, order=True)
 class Conf(dict):
+    # Dynamical model to simulate
     dynamical_model: str = ''
     # Neural Network architecture, initialisation, settings and activations
     mlp_layer_width: int = 5  # change back to 5
@@ -21,104 +22,139 @@ class Conf(dict):
     activation_fn_name: str = "relu"
     final_activation_fn_name: str = "identity"
     use_skip_connections: bool = False
+    # Dropout
+    use_dropout: bool = False
+    input_dropout_rate: float = 0.8
+    hidden_dropout_rate: float = 0.5
     # Optimiser and learning rate schedule
     optimiser: str = "adam"
-    # default max_lrate is 0.01 as in UDE paper
-    max_lrate: float = 0.01  # absolute maximum learning rate
+    max_lrate: float = 0.01  # absolute maximum learning rate (default max in UDE paper)
     lrate_span: float = 1e0  # ratio between max and min learning rates in a given schedule (default=1, min=max)
     lrate_decay: float = 0.99  # if < 1, the learning rate decays between schedules (default: no decay)
     warmup_fct: float = 0.1  # fraction of schedule epochs to be used for warmup (default: 10% warmup)
     opt_steps: int = 10  # Number of steps in the first schedule (they multiply each time in length by opt_mult)
     opt_mult: int = 2  # Multiplier for the number of steps in each schedule
-    # Early Stopping
-    use_early_stop: bool = False  # default: False, not in use
-    # MLP regularisation (L1/L2/network contribution regularisation)
-    mlp_reg_exp: float = 1.0  # default: L1
-    mlp_reg_strength: float = 0.0  # no regularisation by default
-    output_reg: float = 0.0  # no network contribution regularisation by default (UDE paper)
-    multiple_shooting_penalty: float = 0.0
-    use_dropout: bool = False
-    input_dropout_rate: float = 0.8
-    hidden_dropout_rate: float = 0.5
+    # Niche optimiser choice - LookAhead, currently unused
     use_lookahead: bool = False
     lookahead_sync: int = 10
     lookahead_step_size: float = 0.5
     lookahead_reset_state: bool = False
-    # Freeze parts of the UDE model - TODO @GiacomoFabrini -- consider reducing to two params
-    freeze_mechanistic_params_adam: bool = False
-    freeze_mechanistic_params_optx: bool = False
-    freeze_nn_adam: bool = False
-    freeze_nn_optx: bool = False
-    # Extra options for UDEFunction
-    node_augmentation: int = 0
-    dynamic_params_scale: str = "log10"  # can be linear, log10 or bounded tanh
-    save_plots: bool = False
-    hessian_precondition: bool = False
-    compute_hessian_metrics: bool = False
-    # Multiple Shooting
+    # Early-Stopping
+    use_early_stop: bool = False  # default: False, not in use
+    # Regularisation
+    # MLP regularisation (L1/L2/network contribution regularisation)
+    mlp_reg_exp: float = 1.0  # default: L1
+    mlp_reg_strength: float = 0.0  # no regularisation by default
+    # Output regularisation
+    output_reg: float = 0.0  # no network contribution regularisation by default (UDE paper)
+    # Simulation strategies: single/multiple-shooting, window-batching, curriculum learning
     shooting_mode: str = "single"
     shooting_window_length: int = 10
-    shooting_iv_init: str = "zeros"
+    shooting_iv_init: Optional[str] = "zeros"  # z: zeros, g: guess, ru: random uniform
+    multiple_shooting_penalty: float = 0.0
     batch_size: int = 64  # batch size for window-batching
     # Curriculum Learning (growing fits)
     curriculum_learning: bool = True
     num_curriculum_steps: int = 5
     max_curriculum_epochs: Optional[int] = 2000
     serialise_curriculum_models: bool = False
-    # Dynamic parameter sampling
+    # Dynamic parameters: estimation scale, sampling, bounds
+    dynamic_params_scale: str = "log10"  # can be linear, log10 or bounded tanh
     multistart_deviation: float = 0.0  # default: ground truth parameters
     multistart_job: int = 0
-    dynamic_params_perturb_method: str = "sample_uniform"
+    dynamic_params_perturb_method: str = "su" # su=sample_uniform, agn=add_gaussian_noise
     dynamic_params_lb: float = 1e-3  # default lower bound
     dynamic_params_ub: float = 1e3  # default upper bound
-    # mechanistic_fit_epochs: int = 0
-    training_setting: str = None  # options: "UDE", "MLP"
-    mlpexp_target: str = "RHS"  # options: "RHS", "interaction"
-    curriculum_loss_landscape_BFGS: bool = False
-    freeze_mechanistic_params_landscape_BFGS: bool = False
-    use_fides: bool = False
-    experiment_name: str = None
+    # UDE Augmentation
+    node_augmentation: int = 0
+    # Additional computations: Hessian, SINDy
+    hessian_precondition: bool = False
+    compute_hessian_metrics: bool = False
     get_sindy_formula: bool = False
     sindy_use_derivatives: bool = False
+    # Mechanistic fitting settings (1st, 3rd stage)
+    # mechanistic_fit_epochs: int = 0
+    second_opt: str = "optx"  # alternative: "fides"
+    # Freeze parts of the UDE model - TODO @GiacomoFabrini -- consider reducing to two params
+    freeze_mechanistic_params_adam: bool = False
+    freeze_mechanistic_params_optx: bool = False
+    freeze_nn_adam: bool = False
+    freeze_nn_optx: bool = False
+    # Overall run details & behaviour
+    experiment_name: str = None
+    training_setting: str = None  # options: "UDE", "MLP"
+    mlpexp_target: str = "RHS"  # options: "RHS", "interaction"
+    # Niche scenario settings: BFGS landscape, 2 curriculum learning stages (fit MLP, fit dynamic params)
+    curriculum_loss_landscape_BFGS: bool = False
+    freeze_mechanistic_params_landscape_BFGS: bool = False
+    second_curriculum_learning: bool = False
+    # Data pre-processing
     normalise_data: bool = False
     normalise_timepoints: bool = False
+    # Plotting behaviour
+    save_plots: bool = False
 
     def __str__(self):
         """
-        Return string representation of the configuration.
+        Return string representation of the configuration. Removes unwanted fields.
 
         Note: enables printing of Conf objects in fire
         """
         unwanted_fields = [
-            "experiment_name", "serialise_curriculum_models",
-            "get_sindy_formula", "sindy_use_derivatives", 
-            "dynamic_params_lb", "dynamic_params_ub"
-            "dynamic_params_lb", "dynamic_params_ub", "normalise_data", "normalise_timepoints",
+            "serialise_curriculum_models",
+            "dynamic_params_lb", "dynamic_params_ub",
+            "compute_hessian_metrics",
+            "get_sindy_formula", "sindy_use_derivatives",
+            "second_curriculum_learning",
+            "experiment_name", "save_plot",
         ]
         # Remove some default values from the run name to avoid excessively long filenames
-        if self.final_activation_fn_name == "identity":  # if using identity activation, do not include in run name
+        if self.final_activation_fn_name == "identity":
             unwanted_fields.append("final_activation_fn_name")
-        if self.dynamic_params_perturb_method == "sample_uniform":  # if using uniform sampling, do not include in run name
-            unwanted_fields.append("dynamic_params_perturb_method")
-        if not self.use_dropout:  # if not using dropout, do not include dropout rates in run name
-            unwanted_fields.extend(["input_dropout_rate", "hidden_dropout_rate"])
+        if self.init_scale == 0.1:
+            unwanted_fields.append("init_scale")
         if not self.use_skip_connections:
             unwanted_fields.append("use_skip_connections")
+        if not self.use_dropout:
+            unwanted_fields.extend(["use_dropout", "input_dropout_rate", "hidden_dropout_rate"])
+
         if not self.use_lookahead:  # if not using LookAhead, do not include related params
-            unwanted_fields.extend(["lookahead_sync", "lookahead_step_size", "lookahead_reset_state"])
+            unwanted_fields.extend(["use_lookahead", "lookahead_sync", "lookahead_step_size", "lookahead_reset_state"])
         if not self.curriculum_learning:  # if not using curriculum learning, do not include number of steps/epochs
             unwanted_fields.extend(["num_curriculum_steps", "max_curriculum_epochs"])
-        if self.shooting_mode != "multiple":
-            unwanted_fields.extend(["multiple_shooting_penalty", "shooting_window_length", "shooting_iv_init"])
+
+        if self.shooting_mode == "single":
+            unwanted_fields.extend(["multiple_shooting_penalty", "shooting_window_length", "shooting_iv_init", "batch_size"])
+        elif self.shooting_mode == "multiple":
+            unwanted_fields.extend(["batch_size"])
+        elif self.shooting_mode == "window_batch":
+            unwanted_fields.extend(["multiple_shooting_penalty"])
+
         if self.mlp_reg_strength == 0:
             unwanted_fields.extend(["mlp_reg_exp", "mlp_reg_strength"])
 
-        if self.training_setting != "MLP_experiment":  # only include the kind of target for MLP experiments
+        # Remove default node augmentation -- not currently investigated
+        if self.node_augmentation == 0:
+            unwanted_fields.append("node_augmentation")
+
+        # Remove UDE-specific params in the case of MLP experiments and vice versa
+        if self.training_setting != "MLP_experiment":
             unwanted_fields.extend(["mlpexp_target"])
-        else:  # remove UDE-specific params in the case of MLP experiments
+        else:
             unwanted_fields.extend(
-                ["node_augmentation", "freeze_mechanistic_params_adam", "freeze_mechanistic_params_optx"]
+                [
+                    "node_augmentation",
+                    "freeze_mechanistic_params_adam", "freeze_mechanistic_params_optx",
+                    "freeze_nn_adam", "freeze_nn_optx",
+                ]
             )
+
+        if all(not getattr(self, field) for field in
+               ["freeze_mechanistic_params_adam", "freeze_mechanistic_params_optx", "freeze_nn_adam", "freeze_nn_optx"]
+               ):
+            unwanted_fields.extend(["freeze_mechanistic_params_adam", "freeze_mechanistic_params_optx",
+                                    "freeze_nn_adam", "freeze_nn_optx"])
+
         # Handle BFGS loss landscape-specific parameters
         if not self.curriculum_loss_landscape_BFGS:
             unwanted_fields.extend(["freeze_mechanistic_params_landscape_BFGS"])
