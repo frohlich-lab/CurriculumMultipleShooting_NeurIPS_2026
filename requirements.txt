@@ -1,6 +1,6 @@
 absl-py==2.1.0
 appdirs==1.4.4
-certifi==2024.2.2
+certifi==2024.7.4
 charset-normalizer==3.3.2
 chex==0.1.86
 click==8.1.7
