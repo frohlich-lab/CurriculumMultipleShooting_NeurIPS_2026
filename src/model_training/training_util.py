@@ -109,8 +109,7 @@ def initialise_wandb(
 ):
     # Link to repo
     repo = git.Repo(search_parent_directories=True)
-    # Require legacy back-end (for now, until we understand if the new core works with NEMO) TODO @GiacomoFabrini revisit this!
-    wandb.require("legacy-service")
+    # wandb.require("legacy-service")  # new wandb core
     # Initialise run
     wandb.init(
         project=f"TestUDE.nf.{conf.dynamical_model}.{conf.experiment_name}",  # nf = nextflow pipeline
@@ -133,6 +132,7 @@ def initialise_wandb(
             # "frozen_mechanistic_params_optx"
             # if conf.freeze_mechanistic_params_optx else "learnable_mechanistic_params_optx",  # DISABLED TO MERGE WITH MLP
         ],
+        # mode="offline",
     )
 
     # Define shared metrics
@@ -586,7 +586,7 @@ def sample_dynamical_params(true_params, deviation, seed, scale="log10", method=
         )
     else:
         raise ValueError(
-            f"Found uknown method {method}. Method must be either 'sample_uniform' or 'add_gaussian_noise'."
+            f"Found unknown method {method}. Method must be either 'sample_uniform' or 'add_gaussian_noise'."
         )
     if scale == "log10":
         return starting_params_log10
@@ -701,7 +701,8 @@ def get_ude_trajectory(
         solver,
         u0,
         t_save,
-        t_span
+        t_span,
+        adjoint=None  # TODO check?!
     )
 
     return solution if return_full_solution else solution.ys[:, :model.func.state_dimension]
