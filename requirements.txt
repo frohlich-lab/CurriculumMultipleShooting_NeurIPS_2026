@@ -16,3 +16,6 @@ plotnine==0.13.4
 setuptools~=69.5.1
 seaborn~=0.13.2
 wandb==0.18.1
+pysindy~=1.7.5
+fides~=0.7.8
+tqdm~=4.66.5
