@@ -275,7 +275,12 @@ class UDEProblem(eqx.Module):
             t0=t_save[0],
             t1=t_save[-1],
             dt0=None,
-            y0=u0,
+            y0=jnp.concatenate(
+                [
+                    u0[:self.func.mlp.layers[0].in_features],
+                    jax.lax.stop_gradient(u0[-1:jnp.newaxis])  # stop auxiliary ODE IV from being updated
+                ]
+            ),
             saveat=diffrax.SaveAt(ts=t_save),  # ensure unique points
             stepsize_controller=controller,
             adjoint=adjoint
