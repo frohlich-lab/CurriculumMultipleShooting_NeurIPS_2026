@@ -47,7 +47,7 @@ def regularise_mlp_contribution(
     return reg_strength * (l2_norm_nn_contrib[-1]/timespan_length)**2
 
 
-def compute_discontinuity_penalty(prob, sol: Union[List[SimpleNamespace], SimpleNamespace]):
+def compute_discontinuity_penalty(sol: Union[List[SimpleNamespace], SimpleNamespace], state_dimension: int):
     """
     Compute the discontinuity penalty by measuring the mean squared error
     between the last state of each shooting window and the first state of the next.
@@ -58,8 +58,8 @@ def compute_discontinuity_penalty(prob, sol: Union[List[SimpleNamespace], Simple
             jnp.array(
                 [
                     get_mse(
-                        sol[i].ys[-1, :prob.func.state_dimension],
-                        sol[j].ys[0, :prob.func.state_dimension]
+                        sol[i].ys[-1, :state_dimension],
+                        sol[j].ys[0, :state_dimension]
                     )
                     for i, j in zip(range(num_windows - 1), range(1, num_windows))
                 ]
@@ -68,8 +68,8 @@ def compute_discontinuity_penalty(prob, sol: Union[List[SimpleNamespace], Simple
     else:
         return jnp.mean(
             get_mse(
-                sol.ys[:-1, -1, :prob.func.state_dimension],  # up to second to last window, endpoint
-                sol.ys[1:, 0, :prob.func.state_dimension]  # from second to last window, startpoint
+                sol.ys[:-1, -1, :state_dimension],  # up to second to last window, endpoint
+                sol.ys[1:, 0, :state_dimension]  # from second to last window, startpoint
             )
         )
 

@@ -24,12 +24,12 @@ def compute_loss(
     prob = eqx.combine(prob_params, prob_static)
 
     # Get model-specific loss function
-    if prob.dynamical_model == "lotka_volterra":
-        loss_fn = partial(compute_loss_lv, state_dimension=prob.func.state_dimension)
-    elif prob.dynamical_model == "sir":
+    if prob_static.dynamical_model == "lotka_volterra":
+        loss_fn = partial(compute_loss_lv, state_dimension=prob_static.func.state_dimension)
+    elif prob_static.dynamical_model == "sir":
         loss_fn = compute_loss_sir
     else:
-        raise ValueError(f"Unknown dynamical model: {prob.dynamical_model}!")
+        raise ValueError(f"Unknown dynamical model: {prob_static.dynamical_model}!")
 
     # Handle single-/multiple-shooting
     if shooting_mode == "single":
@@ -39,31 +39,33 @@ def compute_loss(
         sol = prob.solve(diffrax.Tsit5(), u0, t_save, t_span, adjoint=adjoint)
         if not isinstance(t_save, diffrax.SaveAt):
             t_save = diffrax.SaveAt(ts=t_save)
-        num_windows = int(np.ceil(len(t_save.subs.ts) / (prob.shooting_window_length - 1)))
+        num_windows = int(np.ceil(len(t_save.subs.ts) / (prob_static.shooting_window_length - 1)))
         if type(sol) is list:
             losses = jnp.array([
                 get_mse(
-                    pred=solution.ys[: len(data[start_idx:end_idx]), :prob.func.state_dimension],
+                    pred=solution.ys[: len(data[start_idx:end_idx]), :prob_static.func.state_dimension],
                     data=data[start_idx:end_idx]
                 )
                 for solution, i in zip(sol, range(num_windows))
-                for start_idx, end_idx in [(i * (prob.shooting_window_length - 1),
-                                            min((i + 1) * prob.shooting_window_length - i, len(data)))]
+                for start_idx, end_idx in [(i * (prob_static.shooting_window_length - 1),
+                                            min((i + 1) * prob_static.shooting_window_length - i, len(data)))]
             ])
         else:
             # using vmap, shape of sol is: (batch/window, timepoint, state var)
             losses = jnp.array([
                 get_mse(
-                    pred=sol.ys[i, : len(data[start_idx:end_idx]), :prob.func.state_dimension],
+                    pred=sol.ys[i, : len(data[start_idx:end_idx]), :prob_static.func.state_dimension],
                     data=data[start_idx:end_idx]
                 )
                 for i in range(num_windows)
-                for start_idx, end_idx in [(i * (prob.shooting_window_length - 1),
-                                            min((i + 1) * prob.shooting_window_length - i, len(data)))]
+                for start_idx, end_idx in [(i * (prob_static.shooting_window_length - 1),
+                                            min((i + 1) * prob_static.shooting_window_length - i, len(data)))]
             ])
         # Average losses and add discontinuity penalty
-        loss = (jnp.mean(losses)
-                + multiple_shooting_penalty * compute_discontinuity_penalty(prob, sol))
+        loss = (
+            jnp.mean(losses)
+            + multiple_shooting_penalty * compute_discontinuity_penalty(sol, prob_static.func.state_dimension)
+        )
     else:
         raise ValueError(f"Unknown shooting mode: {shooting_mode}!")
 
