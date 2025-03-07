@@ -57,6 +57,7 @@ def train_fides(
         t_save_train: SaveAt, t_span_train: List, training_data: jnp.ndarray,
         t_save_val: SaveAt, t_span_val: List, validation_data: jnp.ndarray,
         loss_fn: Callable,
+        val_loss_fn: Callable,
         zero_out_mlp: bool = False,
         wandb_log_final: bool = False
 ) -> tuple[UDEProblem, SimpleNamespace, UDEProblem, float, float, int, Optional[pd.DataFrame]]:
@@ -125,24 +126,19 @@ def train_fides(
     )
 
     # Compute validation loss
-    loss_val, _ = loss_fn(
+    loss_val, _ = val_loss_fn(
         prob_params=opt_params,
         prob_static=static,
         u0=u0_val,
         t_save=t_save_val,
         t_span=t_span_val,
         data=validation_data,
-        mlp_reg_exp=conf.mlp_reg_exp,
-        mlp_reg_strength=conf.mlp_reg_strength,
-        output_reg=conf.output_reg,
-        multiple_shooting_penalty=conf.multiple_shooting_penalty,
-        shooting_mode="single"
     )
 
     # Get final model
     model = eqx.combine(opt_params, static)
 
-    # create optimistix-like sol object
+    # create optimistix-like sol object, where value contains the optimised prob_params (dynamic part of the model)
     sol = SimpleNamespace(value=opt_params, stats={"num_steps": fides_opt.iteration})
 
     fides_results_df = None

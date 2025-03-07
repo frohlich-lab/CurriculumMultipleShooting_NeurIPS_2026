@@ -6,7 +6,7 @@ import numpy as np
 
 from pathlib import Path
 from jaxtyping import Array, PyTree
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 
 @dataclasses.dataclass(frozen=True, repr=True, eq=True, order=True)
@@ -181,6 +181,14 @@ class EarlyStoppingParams(dict):
     use_early_stopping: bool = True
     patience: int = 9
     min_improvement: float = 0
+
+
+@dataclasses.dataclass
+class TrainValArgs(dict):
+    data: Array
+    u0: Array
+    t_save: Array
+    t_span: List
 
 
 # Flatten a tree to an array to allow gradient and Hessian functions to

@@ -1,3 +1,4 @@
+import diffrax
 import fire
 import jax.random as jr
 import jax.numpy as jnp
@@ -8,7 +9,7 @@ from src.common import (Conf, EarlyStoppingParams, model_save_dir,
                         state_dims, true_dynamic_parameters)
 from src.model_training.training_setup import (broadcast_bounds, get_data_and_funcs_for_train,
                                                get_initial_conditions, setup_mlp)
-from src.model_training.training_util import sample_dynamical_params, get_sindy_formula
+from src.model_training.training_util import setup_curriculum_learning, sample_dynamical_params, get_sindy_formula
 from src.ude_problem import UDEProblem
 from training import train
 from training_configuration import MECHANISTIC_FIT_EPOCHS, N_EPOCHS, MAX_ITER_OPTX_FINETUNE
@@ -78,13 +79,23 @@ mlp = setup_mlp(conf, u0, key_mlp, key_init)
 # ================================================================
 # Get data and functions for training
 (train_args, val_args,
- loss_args, option_args, plot_args) = get_data_and_funcs_for_train(
+ loss_dict, option_args, plot_args) = get_data_and_funcs_for_train(
         conf, true_dynamic_parameters[conf.dynamical_model].shape, u0
     )
-train_data, t_save_train, t_span_train, u0_train = train_args
-validation_data, t_save_validation, t_span_validation, u0_val = val_args
-loss_fn, loss_grad_fn, loss_optx = loss_args
 optx_config, options = option_args
+
+# Setup curriculum learning (if enabled)
+# TODO @GiacomoFabrini - this fails if N_EPOCHS = 0
+curriculum_stage_dict = setup_curriculum_learning(
+        data=train_args.data,
+        t_save=train_args.t_save,
+        n_epoch=N_EPOCHS,
+        shooting_mode=conf.shooting_mode,
+        shooting_window_length=conf.shooting_window_length,
+        curriculum_learning=conf.curriculum_learning,
+        num_curriculum_steps=conf.num_curriculum_steps,
+        max_curriculum_epochs=conf.max_curriculum_epochs,
+    )
 
 ude_problem = UDEProblem(
     dynamical_model=conf.dynamical_model,
@@ -92,13 +103,16 @@ ude_problem = UDEProblem(
     mlp=mlp,
     options=options,
     state_dimension=state_dims[conf.dynamical_model],
-    training_horizon=train_data.shape[0],
+    training_horizon=train_args.data.shape[0],
     shooting_mode=conf.shooting_mode,
     shooting_window_length=conf.shooting_window_length,
     shooting_iv_init=conf.shooting_iv_init,
-    u0_guess=u0_train,
+    t_save_train=train_args.t_save if type(train_args.t_save) == diffrax.SaveAt \
+        else diffrax.SaveAt(ts=train_args.t_save),
+    u0_guess=train_args.u0,
     init_random_seed=conf.multistart_job,
-    t_save_train=t_save_train if conf.shooting_mode == "multiple" else None,
+    curriculum_learning=conf.curriculum_learning,
+    curriculum_params=curriculum_stage_dict[1] if conf.curriculum_learning else None,
 )
 
 # # Linear schedule Fabian set up for the DMM -- DISABLED WITH NEW SCHEDULER
@@ -119,19 +133,12 @@ early_stopping_params = EarlyStoppingParams(
 # ================================================================
 training_output = train(
     model=ude_problem,
-    u0=u0_train,
-    training_data=train_data,
-    t_save_train=t_save_train,
-    t_span_train=t_span_train,
-    u0_val=u0_val,
-    validation_data=validation_data,
-    t_save_val=t_save_validation,
-    t_span_val=t_span_validation,
+    train_args=train_args,
+    val_args=val_args,
+    curriculum_params=curriculum_stage_dict if conf.curriculum_learning else None,
     conf=conf,
     early_stopping_params=early_stopping_params,
-    loss_fn=loss_fn,
-    loss_grad_fn=loss_grad_fn,
-    loss_optx=loss_optx,
+    loss_dict=loss_dict,
     optx_config=optx_config,
     max_iter_optx_mechanistic=MECHANISTIC_FIT_EPOCHS,
     n_epochs=N_EPOCHS,
@@ -147,13 +154,14 @@ training_output = train(
 if conf.serialise_curriculum_models:
     best_model, curriculum_models = training_output
     if conf.get_sindy_formula:
-        # Final CL step (complete training dataset fit)
+        # Final CL step (complete dataset fit) -> evaluate on validation dataset
+        # TODO @GiacomoFabrini - do we want train or val?
         sindy_model = curriculum_models[list(curriculum_models.keys())[-1]]
         get_sindy_formula(
             model=sindy_model,
-            u0=u0_train,
-            t_save=t_save_train,
-            t_span=t_span_train,
+            u0=u0_val,
+            t_save=t_save_validation,
+            t_span=t_span_validation,
             settings=["MLP", "UDE"],
             use_derivatives=conf.sindy_use_derivatives,
         )

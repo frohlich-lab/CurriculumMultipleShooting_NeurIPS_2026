@@ -11,13 +11,14 @@ import pandas as pd
 import wandb
 import warnings
 
-from src.common import Conf, dynamic_param_labels, EarlyStoppingParams, hessian_metrics_wandb, plots_dir, results_dir
+from src.common import (Conf, dynamic_param_labels, EarlyStoppingParams, hessian_metrics_wandb,
+                        plots_dir, results_dir, TrainValArgs)
 from dataclasses import replace
 from diffrax import SaveAt
 from jaxtyping import Array, Float, PyTree
 from pathlib import Path
-from src.model_training.model_util import regularise_mlp
-from src.model_training.training_util import (configure_early_stopping, generate_incremental_arrays, generate_log_epochs,
+from src.model_training.training_util import (check_and_progress_curriculum, configure_early_stopping,
+                                              generate_incremental_arrays, generate_log_epochs,
                                               get_opt_opt_state_params, get_scheduler,
                                               initialise_wandb, log_model_stats, log_plots,
                                               make_grads_finite, max_grad_norm, get_hessian_metrics,
@@ -26,7 +27,7 @@ from src.model_training.optimistix_training import train_optimistix
 from src.model_training.fides_training import train_fides
 from src.model_training.hessian import get_hessian, apply_hessian_preconditioning_to_grads
 from src.ude_problem import UDEProblem
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 # Some FutureWarning with unhashable DynamicJaxprTracer object in the diffeq solve/call
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -39,12 +40,15 @@ def get_fit_dfs(
         t_span,
         data: jnp.ndarray,
         dataset: str,
-        u0_batch: Optional[jnp.ndarray] = None,
-        t_save_batch: Optional[jnp.ndarray] = None,
-        t_span_batch: Optional[List] = None,
 ) -> Tuple[pd.DataFrame, Optional[pd.DataFrame], pd.DataFrame]:
     # Model prediction
-    sol = prob.solve_single_shooting(diffrax.Tsit5(), u0, t_save, t_span)
+    if dataset == "train":
+        if isinstance(t_save, SaveAt):
+            t_save = t_save.subs.ts
+        sol = prob.solve_single_shooting(diffrax.Tsit5(), u0, t_save)
+    else:
+        sol = prob.solve_single_shooting_validation(diffrax.Tsit5(), u0, t_save, t_span)
+
     if prob.dynamical_model == "lotka_volterra":
         df_pred = pd.DataFrame({"time": sol.ts,
                                 "prey": sol.ys[:, 0],
@@ -71,11 +75,12 @@ def get_fit_dfs(
         return df_pred, None, df_obs
     else:
         if prob.shooting_mode == "multiple":
-            sol = prob.solve(diffrax.Tsit5(), u0, t_save, t_span, adjoint=None)  # TODO @Giacomo need to fix adjoint option
-        elif prob.shooting_mode == "window_batch":
-            sol = jax.vmap(
-                prob.solve_single_shooting, in_axes=(None, 0, 0, 0)
-            )(diffrax.Tsit5(), u0_batch, t_save_batch, t_span_batch)
+            # TODO @GiacomoFabrini -- need to fix u0/t_save - provided vs internal?
+            sol = prob.solve_multiple_shooting(
+                diffrax.Tsit5(),
+                prob.initial_values,
+                prob.t_save_windows,
+            )
         else:
             raise ValueError(f"Undefined shooting mode {prob.shooting_mode}.")
         if prob.dynamical_model == "lotka_volterra":
@@ -110,9 +115,6 @@ def log_fit_plots(
         epoch: int,
         plot_name: str,
         plot_subdir: str,
-        u0_batch: Optional[Array] = None,
-        t_save_train_batch: Optional[Array] = None,
-        t_span_train_batch: Optional[Array] = None,
 ):
     # Log plots again after further training with optimistix/BFGS
     for dataset, t_save, t_span, data in zip(
@@ -127,7 +129,6 @@ def log_fit_plots(
                                                            "elements than state dimension.")
         df_predict, df_predict_train, df_obs = get_fit_dfs(
             model, u0, t_save, t_span, data, dataset,
-            u0_batch, t_save_train_batch, t_span_train_batch
         )
         plot_dir = plots_dir / conf.dynamical_model / plot_subdir
         plot_dir.mkdir(exist_ok=True, parents=True)
@@ -146,7 +147,7 @@ def log_fit_plots(
 
 
 # NN OPTIMISATION STEP
-@eqx.filter_jit
+# @eqx.filter_jit
 def make_step(
         params: Union[PyTree, UDEProblem],
         static: Union[PyTree, UDEProblem],
@@ -154,7 +155,7 @@ def make_step(
         opt_state: PyTree,
         input_data: Float[Array, '...'],  # TODO @GiacomoFabrini fix input data shape
         u0: jnp.ndarray,
-        t_save: List,
+        t_save: SaveAt,
         t_span: List,
         conf: Conf,
         loss_grad_fn: Callable,
@@ -165,7 +166,7 @@ def make_step(
         opt_params = params.fast
     else:
         opt_params = params
-    (loss_value, mlp_output_reg), grads = loss_grad_fn(
+    (loss_value, reg_loss_dict), grads = loss_grad_fn(
         prob_params=opt_params,
         prob_static=static,
         u0=u0,
@@ -197,25 +198,18 @@ def make_step(
         )
     updates, opt_state = opt.update(grads, opt_state, params)
     params = eqx.apply_updates(params, updates)
-    return params, opt_state, loss_value, mlp_output_reg, grads, hessian_metrics
+    return params, opt_state, loss_value, reg_loss_dict, grads, hessian_metrics
 
 
 # MAIN TRAINING FUNCTION
 def train(
         model: UDEProblem,
-        u0: jnp.ndarray,
-        training_data: jnp.ndarray,
-        t_save_train: SaveAt,
-        t_span_train: List,
-        u0_val: jnp.ndarray,
-        validation_data: jnp.ndarray,
-        t_save_val: SaveAt,
-        t_span_val: List,
+        train_args: TrainValArgs,
+        val_args: TrainValArgs,
+        curriculum_params: Optional[dict[int, Any]],
         conf: Conf,
         early_stopping_params: EarlyStoppingParams,
-        loss_fn: Callable,
-        loss_grad_fn: Callable,
-        loss_optx: Callable,
+        loss_dict: Dict[str, Callable],
         optx_config: Dict,
         max_iter_optx_mechanistic: int,
         n_epochs: int,
@@ -230,33 +224,18 @@ def train(
     ----------
     :param model:
         UDEProblem to train.
-    :param u0:
-        starting conditions (prey, predator) for the model.
-    :param t_save_train:
-        time points to save the solution at for training.
-    :param t_save_val:
-        time points to save the solution at for validation.
-    :param t_span_train:
-        time span to solve the UDE for training.
-    :param t_span_val:
-        time span to solve the UDE for validation.
-    :param training_data:
-        training data for the model.
-    :param u0_val:
-        starting conditions for validation data.
-    :param validation_data:
-        validation data for the model.
+    :param train_args:
+        Training arguments (u0, t_save, t_span, data) in TrainValArgs class.
+    :param val_args:
+        Validation arguments (u0, t_save, t_span, data) in TrainValArgs class.
+    :param curriculum_params: Optional[dict]
+        Dictionary of curriculum learning parameters.
     :param conf:
         configuration (hyperparameters).
     :param early_stopping_params:
         Dictionary of parameters for Early-Stopping.
-    :param loss_fn:
-        Loss function to use for training.
-    :param loss_grad_fn:
-        Loss function to use for training which also enables gradient computation.
-    :param loss_optx:
-        Loss function to be used with optimistix for further training (only takes learnable params,
-        i.e. dynamic portion of the model).
+    :param loss_dict:
+        Dictionary of loss functions.
     :param optx_config:
         Configuration for optimistix solver (rtol, atol).
     :param max_iter_optx_mechanistic:
@@ -291,6 +270,10 @@ def train(
     epoch, nn_epoch = 0, 0
     best_model, loss_val_min = model, jnp.inf
 
+    # Unpack training and validation args
+    u0, training_data, t_save_train, t_span_train = train_args.u0, train_args.data, train_args.t_save, train_args.t_span
+    u0_val, validation_data, t_save_val, t_span_val = val_args.u0, val_args.data, val_args.t_save, val_args.t_span
+
     # Create filter_spec allowing for training of mechanistic params only or neural network only
     filter_spec_freeze_mechanistic = jtu.tree_map(lambda x: eqx.is_array(x), model)
     # filter_spec which freezes dynamic (mechanistic) parameters
@@ -307,17 +290,6 @@ def train(
         replace=jax.tree_map(lambda _: True, filter_spec_freeze_nn.func.dynamic_parameters)
     )
 
-    # Generate incremental training data for NN training - curriculum learning or not (if not, full data at each epoch)
-    incremental_training_data, incremental_train_save, incremental_t_span, steps = generate_incremental_arrays(
-        data=training_data,
-        t_save=t_save_train,
-        t_span=t_span_train,
-        n_epoch=n_epochs,
-        curriculum_learning=conf.curriculum_learning,
-        num_curriculum_steps=conf.num_curriculum_steps,
-        max_curriculum_epochs=conf.max_curriculum_epochs,
-    )
-
     # Define colours for plots
     if conf.dynamical_model == "lotka_volterra":
         colors = ['red', 'black']
@@ -329,7 +301,17 @@ def train(
     # Save the initialised MLP from model
     initialised_mlp = model.func.mlp
 
+    # TODO @GiacomoFabrini - DISABLED THIS - DO WE NEED IT?!
     if conf.curriculum_loss_landscape_BFGS and conf.curriculum_learning:
+        # Generate incremental training data for NN training - curriculum learning or not (if not, full data at each epoch)
+        incremental_training_data, incremental_train_save, incremental_t_span, steps = generate_incremental_arrays(
+            data=training_data,
+            t_save=t_save_train,
+            t_span=t_span_train,
+            n_epoch=n_epochs,
+            max_curriculum_epochs=conf.max_curriculum_epochs,
+            curriculum_params=curriculum_params,
+        )
         # For each number of training datapoints, i.e. at each step in the curriculum learning ladder,
         # train the model with optimistix (BFGS)
         for curriculum_step in range(conf.num_curriculum_steps):
@@ -344,7 +326,10 @@ def train(
                         else eqx.is_array,
                     conf=conf,
                     optx_config=optx_config,
-                    loss_optx=loss_optx,
+                    base_loss=loss_dict["base_loss_fn"],
+                    loss_optx=loss_dict["loss_optx"],
+                    val_base_loss=loss_dict["val_base_loss_fn"],
+                    val_loss_optx=loss_dict["val_loss_optx"],
                     epoch=epoch,
                     num_epochs=10000,  # TODO @GiacomoFabrini - do we want to include an extra hyperparam for this?
                     u0_train=u0,
@@ -355,7 +340,6 @@ def train(
                     t_save_val=t_save_val,
                     t_span_val=t_span_val,
                     validation_data=validation_data,
-                    loss_fn=loss_fn,
                     frozen_mechanistic=conf.freeze_mechanistic_params_landscape_BFGS,
                     frozen_nn=False,
                     zero_out_mlp=False,
@@ -367,7 +351,7 @@ def train(
                     filter_spec=filter_spec_freeze_mechanistic if conf.freeze_mechanistic_params_landscape_BFGS
                     else eqx.is_array,
                     conf=conf,
-                    loss_grad_fn=loss_grad_fn,
+                    loss_grad_fn=loss_dict["loss_grad_fn"],
                     epoch=epoch,
                     max_iter=10000,  # TODO @GiacomoFabrini - do we want to include an extra hyperparam for this?
                     u0_train=u0,
@@ -378,11 +362,12 @@ def train(
                     t_save_val=t_save_val,
                     t_span_val=t_span_val,
                     validation_data=validation_data,
-                    loss_fn=loss_fn,
+                    loss_fn=loss_dict["loss_fn"],
+                    val_loss_fn=loss_dict["val_loss_fn"],
                     zero_out_mlp=False,
                 )
             # Compute training loss on the full training set
-            whole_train_loss,  _ = loss_fn(
+            whole_train_loss,  _ = loss_dict["loss_fn"](
                 prob_params=sol.value,
                 prob_static=static,
                 u0=u0,
@@ -415,17 +400,19 @@ def train(
         return model
 
     results_dfs = []
-    # STAGE 1: fit mechanistic model parameters -- do not use curriculum learning
+    # STAGE 1: fit mechanistic model parameters -- zero-out and freeze neural network
     if max_iter_optx_mechanistic > 0:
-        # Zero-out and freeze neural network
+        wandb_log = True
         if conf.second_opt == "optx":
-            wandb_log = True
             model, sol, static, _, loss_val, epoch, partial_results_df = train_optimistix(
                 model=model,
                 filter_spec=filter_spec_freeze_nn,
                 conf=conf,
                 optx_config=optx_config,
-                loss_optx=loss_optx,
+                base_loss=loss_dict["base_loss_fn"],
+                loss_optx=loss_dict["loss_optx"],
+                val_base_loss=loss_dict["val_base_loss_fn"],
+                val_loss_optx=loss_dict["val_loss_optx"],
                 epoch=epoch,
                 num_epochs=max_iter_optx_mechanistic,
                 u0_train=u0,
@@ -436,23 +423,18 @@ def train(
                 t_save_val=t_save_val,
                 t_span_val=t_span_val,
                 validation_data=validation_data,
-                loss_fn=loss_fn,
                 frozen_mechanistic=False,
                 frozen_nn=True,
                 zero_out_mlp=True,
                 wandb_log=wandb_log,
                 wandb_log_final=False,
             )
-            if wandb_log:  # if not, partial_results will be None
-                # Add conf/hyperparameters details
-                results_dfs.append(partial_results_df.assign(**conf.__dict__))
         else:
-            wandb_log = True
             model, sol, static, _, loss_val, epoch, partial_results_df = train_fides(
                 model=model,
                 filter_spec=filter_spec_freeze_nn,
                 conf=conf,
-                loss_grad_fn=loss_grad_fn,
+                loss_grad_fn=loss_dict["loss_grad_fn"],
                 epoch=epoch,
                 max_iter=max_iter_optx_mechanistic,
                 u0_train=u0,
@@ -463,13 +445,14 @@ def train(
                 t_save_val=t_save_val,
                 t_span_val=t_span_val,
                 validation_data=validation_data,
-                loss_fn=loss_fn,
+                loss_fn=loss_dict["loss_fn"],
+                val_loss_fn=loss_dict["val_loss_fn"],
                 zero_out_mlp=True,
                 wandb_log_final=wandb_log,
             )
-            if wandb_log:  # if not, partial_results will be None
-                # Add conf/hyperparameters details
-                results_dfs.append(partial_results_df.assign(**conf.__dict__))
+        if wandb_log:  # if not, partial_results will be None
+            # Add conf/hyperparameters details
+            results_dfs.append(partial_results_df.assign(**conf.__dict__))
 
         # Update best_model
         if loss_val < loss_val_min:
@@ -491,9 +474,6 @@ def train(
             colors=colors, epoch=epoch,
             plot_name=f"mechanistic_{conf.second_opt}",
             plot_subdir=f"mechanistic_{conf.second_opt}",
-            u0_batch=u0 if conf.shooting_mode == "window_batch" else None,
-            t_save_train_batch=t_save_train if conf.shooting_mode == "window_batch" else None,
-            t_span_train_batch=t_span_train if conf.shooting_mode == "window_batch" else None
         )
 
         # Increment epoch before moving to next stage
@@ -503,18 +483,21 @@ def train(
     # STAGE 2: Train with ADAM/ADAM-W -- freeze mechanistic model parameters
     if n_epochs > 0:
         # Restore the previously initialised MLP + enable network contribution regularisation
-        model = model.copy(
+        model = model.replace_mlp(
             new_mlp=initialised_mlp,
-            new_regularise_network=True,
+            regularise_network=True,
         )
-        best_model = best_model.copy(
+        best_model = best_model.replace_mlp(
             new_mlp=initialised_mlp,
-            new_regularise_network=True,
+            regularise_network=True,
         )
         # Add initial zero as starting condition for the 2-norm of the neural network contribution
         u0 = augment_u0(u0)
         u0_val = augment_u0(u0_val)
         plot_args["u0"] = augment_u0(plot_args["u0"])
+
+        # Initialise CL stage variable
+        cl_stage = 1  # initialise CL stage
 
         # Depending on conf settings, freeze mechanistic params/neural network or keep everything learnable
         if conf.freeze_mechanistic_params_adam:
@@ -525,11 +508,6 @@ def train(
             adam_filter_spec = eqx.is_array
         params, static = eqx.partition(model, adam_filter_spec)
 
-        # Get schedule
-        schedule = get_scheduler(conf=conf, n_epochs=n_epochs)
-        # Initialise optimiser, optimiser state + update params if using lookahead
-        opt, opt_state, params = get_opt_opt_state_params(conf, params, schedule)
-
         # Check Early-stopping parameters have been set correctly and instantiate early stopper
         early_stopper = configure_early_stopping(early_stopping_params)
 
@@ -537,29 +515,76 @@ def train(
         log_epochs = generate_log_epochs(n_epochs=n_epochs, num_samples=100, min_dist=5)
 
         # Define epochs at which to save curriculum-step models: just before increasing number of datapoints or last epoch
-        if conf.curriculum_learning and conf.serialise_curriculum_models:
-            model_save_steps_start = steps  # start of CL stages
+        if conf.curriculum_learning:
+            model_save_steps_start = [
+                curriculum_params[stage]["start"]
+                for stage in curriculum_params.keys()
+            ]  # start of CL stages
+            model_save_steps_end = [
+                curriculum_params[stage]["end"]
+                for stage in curriculum_params.keys()
+            ]  # end of CL stages
             models_curriculum_stage_start = {}
-            model_save_steps_end = [step-1 for step in steps[1:]] + [n_epochs-1]  # end of CL stages
             models_curriculum_stage_end = {}
+
+        # Get schedule
+        schedule = get_scheduler(conf=conf, n_epochs=n_epochs)
+        # Initialise optimiser, optimiser state + update params if using lookahead
+        opt, opt_state, params = get_opt_opt_state_params(conf, params, schedule)
+
 
         # Training loop
         metric_handler = MetricHandler(patience=5)
         ivs = []
         for nn_epoch in range(n_epochs):
+            # Compute validation loss prior to epoch update
+            if conf.use_dropout:
+                # Get a copy of the model for inference
+                inference_model = model.replace_mlp(
+                    new_mlp=model.func.mlp,
+                    switch_to_inference=True,
+                )
+            else:
+                # no need for difference in training/inference behaviour
+                inference_model = model
+            inference_params, inference_static = eqx.partition(inference_model, adam_filter_spec)
+            # compute validation loss
+            loss_val, _ = loss_dict["val_loss_fn"](
+                prob_params=inference_params,
+                prob_static=inference_static,
+                u0=u0_val,
+                t_save=t_save_val,
+                t_span=t_span_val,
+                data=validation_data,
+            )
+
+            # Keep track of best performing model on validation dataset (and corresponding loss)
+            if loss_val < loss_val_min:
+                best_model = inference_model
+                loss_val_min = loss_val
+
+
             if conf.shooting_mode == "multiple":
                 ivs.append(params.initial_values)
-            params, opt_state, loss_train, nn_contrib_reg, grads, hessian_metrics = make_step(
+
+            if conf.curriculum_learning:
+                params, static = check_and_progress_curriculum(
+                    params, static, adam_filter_spec,
+                    nn_epoch, model_save_steps_start, conf.shooting_mode,
+                    curriculum_params
+                )
+
+            params, opt_state, loss_train, reg_loss_dict, grads, hessian_metrics = make_step(
                 params=params,
                 static=static,
                 opt=opt,
                 opt_state=opt_state,
-                input_data=incremental_training_data[nn_epoch],
+                input_data=training_data,
                 u0=u0,
-                t_save=incremental_train_save[nn_epoch],
-                t_span=incremental_t_span[nn_epoch],
+                t_save=t_save_train,
+                t_span=t_span_train,
                 conf=conf,
-                loss_grad_fn=loss_grad_fn,
+                loss_grad_fn=loss_dict["loss_grad_fn"],
                 compute_hessian_metrics=(conf.compute_hessian_metrics and (nn_epoch in log_epochs)),
             )
 
@@ -571,36 +596,6 @@ def train(
                 params.fast if conf.use_lookahead else params,
                 static,
             )
-
-            if conf.use_dropout:
-                # Get a copy of the model for inference
-                inference_model = model.copy(
-                    new_mlp=eqx.nn.inference_mode(model.func.mlp, value=True)
-                )
-            else:
-                # no need for difference in training/inference behaviour
-                inference_model = model
-
-            inference_params, inference_static = eqx.partition(inference_model, adam_filter_spec)
-            # compute validation loss
-            loss_val, _ = loss_fn(
-                prob_params=inference_params,
-                prob_static=inference_static,
-                u0=u0_val,
-                t_save=t_save_val,
-                t_span=t_span_val,
-                data=validation_data,
-                mlp_reg_exp=conf.mlp_reg_exp,
-                mlp_reg_strength=conf.mlp_reg_strength,
-                output_reg=conf.output_reg,
-                multiple_shooting_penalty=conf.multiple_shooting_penalty,
-                shooting_mode="single",  # validation uses free-run simulation (single-shooting)
-            )
-
-            # Keep track of best performing model on validation dataset (and corresponding loss)
-            if loss_val < loss_val_min:
-                best_model = inference_model
-                loss_val_min = loss_val
 
             # Save model at the start/end of each curriculum learning stage
             if conf.serialise_curriculum_models:
@@ -618,7 +613,8 @@ def train(
                     "loss_val": loss_val,
                     # Training metrics
                     "learning_rate": schedule(nn_epoch),
-                    "num_train_samples": len(incremental_training_data[nn_epoch]),
+                    "num_train_samples": curriculum_params[cl_stage]["length"] if conf.curriculum_learning \
+                        else len(training_data),
                     "max_grad_norm": max_grad_norm(grads),
                     # Dynamic parameters
                     **{
@@ -630,13 +626,14 @@ def train(
                 }]
             )
             # log loss_train, loss_val, learning rate, param values and grads on log-spaced epochs
-            if nn_epoch in log_epochs:
+            if (nn_epoch in log_epochs) or (nn_epoch == 0):
                 wandb.log(
                     {
                         "loss_train": loss_train,
                         "loss_val": loss_val,
                         "learning_rate": schedule(nn_epoch),
-                        "num_train_samples": len(incremental_training_data[nn_epoch]),
+                        "num_train_samples": curriculum_params[cl_stage]["length"] if conf.curriculum_learning \
+                            else len(training_data),
                         "max_grad_norm": max_grad_norm(grads),
                     },
                     step=epoch+nn_epoch
@@ -662,30 +659,45 @@ def train(
                     # Add Hessian metrics to partial results
                     partial_results_df = partial_results_df.assign(**hessian_metrics)
 
+                # Log discontinuity penalty if applied
+                if (conf.multiple_shooting_penalty > 0) and (conf.shooting_mode == "multiple"):
+                    wandb.log(
+                        {
+                            "discontinuity_penalty": reg_loss_dict["discontinuity_penalty"]
+                        },
+                        step=epoch+nn_epoch
+                    )
+                    partial_results_df = partial_results_df.assign(
+                        discontinuity_penalty=reg_loss_dict["discontinuity_penalty"],
+                    )
                 # Log regularisation term if applied
                 if conf.mlp_reg_strength > 0:
                     wandb.log(
                         {
-                            "regularisation_loss": regularise_mlp(
-                                model.func.mlp,
-                                conf.mlp_reg_exp,
-                                conf.mlp_reg_strength
-                            ),
+                            "regularisation_loss": reg_loss_dict["mlp_reg"]
                         },
                         step=epoch+nn_epoch
+                    )
+                    partial_results_df = partial_results_df.assign(
+                        mlp_reg=reg_loss_dict["mlp_reg"]
                     )
                 if conf.output_reg > 0:
                     wandb.log(
                         {
-                            "output_regularisation_loss": nn_contrib_reg,
+                            "output_regularisation_loss": reg_loss_dict["nn_contrib_reg"],
                         },
                         step=epoch+nn_epoch
                     )
-                    partial_results_df = partial_results_df.assign(nn_contrib_reg=nn_contrib_reg)
+                    partial_results_df = partial_results_df.assign(
+                        nn_contrib_reg=reg_loss_dict["nn_contrib_reg"]
+                    )
 
                 print(
                     f"epoch {nn_epoch} | "
                     f"loss_train {loss_train} | "
+                    f"discontinuity {reg_loss_dict['discontinuity_penalty'] if reg_loss_dict is not None else 'n/a'} | "
+                    f"mlp_reg {reg_loss_dict['mlp_reg'] if reg_loss_dict is not None else 'n/a'} | "
+                    f"nn_contrib_reg {reg_loss_dict['nn_contrib_reg'] if reg_loss_dict is not None else 'n/a'} | "
                     f"loss_val {loss_val} | "
                 )
 
@@ -733,9 +745,6 @@ def train(
             conf=conf,
             colors=colors, epoch=epoch,
             plot_name="optax", plot_subdir="optax",
-            u0_batch=u0 if conf.shooting_mode == "window_batch" else None,
-            t_save_train_batch=t_save_train if conf.shooting_mode == "window_batch" else None,
-            t_span_train_batch=t_span_train if conf.shooting_mode == "window_batch" else None
         )
 
         # Log final values of mechanistic parameters + final epoch value (can vary if using early stopping)
@@ -770,14 +779,17 @@ def train(
         else:
             bfgs_filter_spec = eqx.is_array
 
+        wandb_log = True
         if conf.second_opt == "optx":
-            wandb_log = True
             model, sol, static, _, loss_val, epoch, partial_results_df = train_optimistix(
                 model=model,
                 filter_spec=bfgs_filter_spec,
                 conf=conf,
                 optx_config=optx_config,
-                loss_optx=loss_optx,
+                base_loss=loss_dict["base_loss_fn"],
+                loss_optx=loss_dict["loss_optx"],
+                val_base_loss=loss_dict["val_base_loss_fn"],
+                val_loss_optx=loss_dict["val_loss_optx"],
                 epoch=epoch,
                 num_epochs=max_iter_optx_finetune,
                 u0_train=u0,
@@ -788,22 +800,18 @@ def train(
                 t_save_val=t_save_val,
                 t_span_val=t_span_val,
                 validation_data=validation_data,
-                loss_fn=loss_fn,
                 frozen_mechanistic=conf.freeze_mechanistic_params_optx,
                 frozen_nn=conf.freeze_nn_optx,
                 zero_out_mlp=False,
                 wandb_log=True,
                 wandb_log_final=True,
             )
-            if wandb_log:  # if not, partial_results will be None
-                results_dfs.append(partial_results_df.assign(**conf.__dict__))
         else:
-            wandb_log = True
             model, sol, static, _, loss_val, epoch, partial_results_df = train_fides(
                 model=model,
                 filter_spec=bfgs_filter_spec,
                 conf=conf,
-                loss_grad_fn=loss_grad_fn,
+                loss_grad_fn=loss_dict["loss_grad_fn"],
                 epoch=epoch,
                 max_iter=max_iter_optx_finetune,
                 u0_train=u0,
@@ -814,12 +822,14 @@ def train(
                 t_save_val=t_save_val,
                 t_span_val=t_span_val,
                 validation_data=validation_data,
-                loss_fn=loss_fn,
+                loss_fn=loss_dict["loss_fn"],
+                val_loss_fn=loss_dict["val_loss_fn"],
                 zero_out_mlp=False,
                 wandb_log_final=wandb_log,
             )
-            if wandb_log: # if not, partial_results will be None
-                results_dfs.append(partial_results_df.assign(**conf.__dict__))
+
+        if wandb_log: # if not, partial_results will be None
+            results_dfs.append(partial_results_df.assign(**conf.__dict__))
 
         # Update best_model
         if loss_val < loss_val_min:
@@ -841,9 +851,6 @@ def train(
             colors=colors, epoch=epoch+sol.stats["num_steps"],
             plot_name=conf.second_opt,
             plot_subdir=conf.second_opt,
-            u0_batch=u0 if conf.shooting_mode == "window_batch" else None,
-            t_save_train_batch=t_save_train if conf.shooting_mode == "window_batch" else None,
-            t_span_train_batch=t_span_train if conf.shooting_mode == "window_batch" else None
         )
 
     # Save results dataframe to CSV

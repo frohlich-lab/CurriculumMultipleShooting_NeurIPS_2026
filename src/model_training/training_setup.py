@@ -2,11 +2,13 @@ import jax.numpy as jnp
 import numpy as np
 
 from diffrax import SaveAt
-from src.common import activation_functions, Conf, default_out_sizes, normalise, u0s
+from functools import partial
+from src.common import activation_functions, Conf, default_out_sizes, normalise, state_dims, TrainValArgs, u0s
 from src.model_examples.lotka_volterra import setup_diffrax_model as setup_lv
 from src.model_examples.sir import setup_diffrax_model as setup_sir
 from src.model_training.model_util import set_weight_bias
-from src.model_training.losses import (compute_loss, compute_loss_grad, compute_loss_optx,
+from src.model_training.losses import (compute_validation_loss, compute_loss, compute_loss_grad,
+                                       compute_val_loss_optx, compute_loss_optx,
                                        compute_batch_loss, compute_batch_loss_grad, compute_batch_loss_optx)
 from src.ude_problem import build_mlp
 
@@ -32,6 +34,8 @@ def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple, u0) ->
             "rtol": 1e-6,  # changed from 1e-3
             "atol": 1e-6,  # changed from 1e-3
         }
+        base_loss_fn = partial(setup_lv.lv_base_loss, state_dimension=state_dims[conf.dynamical_model])
+        base_loss_fn_masked = partial(setup_lv.lv_base_loss_masked, state_dimension=state_dims[conf.dynamical_model])
     elif conf.dynamical_model == 'sir':
         # TODO @GiacomoFabrini find better way to express filepath and pass it as argument - same as above
         (train_data, t_save_train, t_span_train,
@@ -41,17 +45,22 @@ def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple, u0) ->
             "rtol": 1e-6,  # changed from 1e-4
             "atol": 1e-6,  # changed from 1e-4
         }
+        base_loss_fn = setup_sir.sir_base_loss
+        base_loss_fn_masked = setup_sir.sir_base_loss_masked
     else:
         raise ValueError(f"Unknown dynamical model: {conf.dynamical_model}!")
 
+    val_loss_fn = partial(compute_validation_loss, loss_fn=base_loss_fn)
     if conf.shooting_mode != "window_batch":
-        loss_fn = compute_loss
-        loss_grad_fn = compute_loss_grad
+        loss_fn = partial(compute_loss, loss_fn=base_loss_fn_masked)
+        loss_grad_fn = partial(compute_loss_grad, loss_fn=base_loss_fn_masked)
         loss_optx = compute_loss_optx
+        val_loss_optx = compute_val_loss_optx
     else:
-        loss_fn = compute_batch_loss
-        loss_grad_fn = compute_batch_loss_grad
+        loss_fn = partial(compute_batch_loss, loss_fn=base_loss_fn_masked)
+        loss_grad_fn = partial(compute_batch_loss_grad, loss_fn=base_loss_fn_masked)
         loss_optx = compute_batch_loss_optx
+        val_loss_optx = None  # TODO @GiacomoFabrini - fix this!
 
     options = {
         "dynamic_params_scale": conf.dynamic_params_scale,
@@ -104,11 +113,19 @@ def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple, u0) ->
         t_span_validation = jnp.expand_dims(jnp.array(t_span_validation), axis=0)
 
     # Pack arguments to return
-    train_args = train_data, t_save_train, t_span_train, u0_train
-    val_args = validation_data, t_save_validation, t_span_validation, u0_val
-    loss_args = loss_fn, loss_grad_fn, loss_optx
+    train_args = TrainValArgs(data=train_data, t_save=t_save_train, t_span=t_span_train, u0=u0_train)
+    val_args = TrainValArgs(data=validation_data, t_save=t_save_validation, t_span=t_span_validation, u0=u0_val)
+    loss_dict = {
+        "base_loss_fn": base_loss_fn_masked,
+        "loss_fn": loss_fn,
+        "loss_grad_fn": loss_grad_fn,
+        "loss_optx": loss_optx,
+        "val_base_loss_fn": base_loss_fn,
+        "val_loss_fn": val_loss_fn,
+        "val_loss_optx": val_loss_optx,
+    }
     option_args = optx_config, options
-    return train_args, val_args, loss_args, option_args, plot_args
+    return train_args, val_args, loss_dict, option_args, plot_args
 
 
 def broadcast_bounds(bounds, shape):

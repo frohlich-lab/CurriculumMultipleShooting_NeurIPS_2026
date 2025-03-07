@@ -1,291 +1,333 @@
 import fire
 import jax.random as jr
 import jax.numpy as jnp
-import src.model_examples.lotka_volterra.setup_diffrax_model as setup_lv
-import src.model_examples.sir.setup_diffrax_model as setup_sir
+import os
+import pickle
 
-from dataclasses import replace
+from dataclasses import fields, replace
 from jax import config
-from src.common import (activation_functions, Conf, EarlyStoppingParams, model_save_dir,
-                        u0s, state_dims, true_dynamic_parameters)
-from src.model_training.model_util import set_weight_bias
+from pathlib import Path
+from src.common import (Conf, EarlyStoppingParams, model_save_dir, results_dir,
+                        state_dims, true_dynamic_parameters)
+from src.model_training.training_setup import get_data_and_funcs_for_train, get_initial_conditions, setup_mlp
 from src.model_training.training_util import sample_dynamical_params, get_sindy_formula, generate_epochs_dict
-from src.model_training.landscape_plotting_util import analyse_lv_loss_landscape
-from src.ude_problem import UDEProblem, build_mlp
+from src.model_training.landscape_plotting_util import analyse_lv_loss_landscape_dynparams, get_ude_param_landscape
+from src.ude_problem import UDEProblem
 from training import train
 from training_configuration import MECHANISTIC_FIT_EPOCHS, N_EPOCHS, MAX_ITER_OPTX_FINETUNE
+from tqdm.contrib.itertools import product  # directly using itertools.product progress bar wrapper
 
 conf = fire.Fire(Conf)
-
-# Set seed for sampling dynamical parameters
-seed = conf.multistart_job
 
 # Technically Float32 should work, but for consistency between the benchmarks
 # I think we should use Float64
 config.update("jax_enable_x64", True)
 
-# Key
-key = jr.PRNGKey(seed)
-key_mlp, key_init = jr.split(key, 2)
+# Define results path
+results_path = Path(
+    results_dir /
+    conf.dynamical_model /
+    "two_stage_training"
+)
+results_path.mkdir(parents=True, exist_ok=True)
 
-# Copy default initial conditions
-u0 = u0s.copy()
+# Define model save path
+model_save_path = (
+    model_save_dir /
+    conf.dynamical_model /
+    "two_stage_training"
+)
+model_save_path.mkdir(parents=True, exist_ok=True)
 
-# Apply NODE-like augmentation
-if conf.node_augmentation > 0:
-    for dynamical_model in u0.keys():
-        u0[dynamical_model] = jnp.concatenate([u0[dynamical_model], jnp.zeros(conf.node_augmentation)])
 
-# Sample dynamic parameters and apply correct estimation scale (linear/log10)
-if conf.training_setting != "NODE":
-    # Sample dynamic parameters and convert to correct scale (linear/log10)
+for job, second_curriculum_learning in product(range(10), [True, False], position=0, leave=True): # brutally horrible way to do this, but need to get some of these done
+    conf = replace(conf, multistart_job=job, second_curriculum_learning=second_curriculum_learning)
+    print("Now running job", job, "with second curriculum learning set to", second_curriculum_learning)
+    # Set seed for sampling dynamical parameters
+    seed = conf.multistart_job
+
+    # Key
+    key = jr.PRNGKey(seed)
+    key_mlp, key_init = jr.split(key, 2)
+
+    # Get initial conditions
+    u0 = get_initial_conditions(conf)
+
+    # ================================================================
+    #                         SET UP MLP
+    # ================================================================
+    mlp = setup_mlp(conf, u0, key_mlp, key_init)
+
+    # ================================================================
+    #                   SET UP UDE PROBLEM TO TRAIN
+    # ================================================================
+    # Use true dynamic params for first stage
+    dynamic_parameters = {
+        dynamical_model: true_dynamic_parameters[dynamical_model]
+        if conf.dynamic_params_scale == 'linear'
+        else jnp.log10(true_dynamic_parameters[dynamical_model])
+        for dynamical_model in true_dynamic_parameters.keys()
+    }
+
+    # Get data and functions for training
+    train_args, val_args, loss_args, option_args = get_data_and_funcs_for_train(
+        conf, true_dynamic_parameters[conf.dynamical_model].shape
+    )
+    train_data, t_save_train, t_span_train = train_args
+    validation_data, t_save_validation, t_span_validation = val_args
+    loss_fn, loss_grad_fn, loss_optx = loss_args
+    optx_config, options = option_args
+
+    ude_problem = UDEProblem(
+        dynamical_model=conf.dynamical_model,
+        dynamic_parameters=dynamic_parameters[conf.dynamical_model],
+        mlp=mlp,
+        options=options,
+        state_dimension=state_dims[conf.dynamical_model],
+        training_horizon=train_data.shape[0],
+        shooting_mode=conf.shooting_mode,
+        shooting_window_length=conf.shooting_window_length,
+        shooting_iv_init=conf.shooting_iv_init,
+        u0_guess=u0,
+    )
+
+    # # Linear schedule Fabian set up for the DMM -- DISABLED WITH NEW SCHEDULER
+    # schedule_config = dict(
+    #     init_value=conf.optimiser_learning_rate,
+    #     transition_steps=100,
+    #     end_value=conf.optimiser_learning_rate/10
+    # )
+
+    early_stopping_params = EarlyStoppingParams(
+        use_early_stopping=conf.use_early_stop,  # enables flax.training.early_stopping
+        patience=50,  # number of consecutive epochs where we tolerate loss_val not improving by at least min_improvement
+        min_improvement=0,  # absolute improvement in loss_val to consider as improvement
+    )
+
+    # ================================================================
+    #                         TRAIN - MLP
+    # ================================================================
+    # Freeze mechanistic params -- set to ground truth values
+    print("Freezing mechanistic params...")
+    conf = replace(
+        conf,
+        curriculum_learning=True,
+        freeze_mechanistic_params_adam=True,
+        freeze_mechanistic_params_optx=True,
+        freeze_nn_adam=False,
+        freeze_nn_optx=False,
+        serialise_curriculum_models=False,
+    )
+    # Define model save path
+    subconf_fields = [
+        "mlp_layer_width", "mlp_depth", "init_scale", "use_bias", "use_final_bias",
+        "activation_fn_name", "final_activation_fn_name",
+        "optimiser", "max_lrate", "lrate_span", "lrate_decay", "warmup_fct", "opt_steps", "opt_mult",
+        "multistart_deviation", "multistart_job",
+    ]
+    subconf_string = "__".join([str(getattr(conf, field.name)) for field in fields(conf) if field.name in subconf_fields])
+    model_file = model_save_path / (subconf_string + f"__step1MLP.eqx")
+    if os.path.exists(model_file):
+        print(f"Model file already exists, loading and skipping training.")
+        trained_model = UDEProblem.load(model_file)
+    else:
+        print("Training MLP...")
+        trained_model = train(
+            model=ude_problem,
+            u0=u0,
+            training_data=train_data,
+            t_save_train=t_save_train,
+            t_span_train=t_span_train,
+            validation_data=validation_data,
+            t_save_val=t_save_validation,
+            t_span_val=t_span_validation,
+            conf=conf,
+            early_stopping_params=early_stopping_params,
+            loss_fn=loss_fn,
+            loss_grad_fn=loss_grad_fn,
+            loss_optx=loss_optx,
+            optx_config=optx_config,
+            max_iter_optx_mechanistic=0,
+            n_epochs=N_EPOCHS,  # only train using ADAM
+            max_iter_optx_finetune=0,
+            model_save_dir=model_save_dir,
+        )
+        # Serialise model
+        trained_model.save(model_file)
+
+    # Get SINDy formulas for whole UDE and trained MLP
+    get_sindy_formula(
+        model=trained_model,
+        u0=u0,
+        t_save=t_save_train,
+        t_span=t_span_train,
+        settings=["MLP", "UDE"],
+        use_derivatives=True,
+    )
+
+    # ================================================================
+    #                         TRAIN - dynamic params
+    # ================================================================
+    # Freeze mechanistic params -- set to ground truth values
+    print("Freezing MLP...")
+    # Decide whether to train dynamical params with curriculum learning or not
+    conf = replace(
+        conf,
+        curriculum_learning=conf.second_curriculum_learning,
+        freeze_mechanistic_params_adam=False,
+        freeze_mechanistic_params_optx=False,
+        freeze_nn_adam=True,
+        freeze_nn_optx=True,
+        serialise_curriculum_models=True,
+    )
+
+    # Sample with appropriate range
     dynamic_parameters = {
         dynamical_model: sample_dynamical_params(
             true_params=true_dynamic_parameters[dynamical_model],
-            deviation=0.0, # true params first time
+            deviation=conf.multistart_deviation,  # now sample the parameters
             seed=seed,
             scale=conf.dynamic_params_scale,
             method=conf.dynamic_params_perturb_method,
         )
         for dynamical_model in true_dynamic_parameters.keys()
     }
-else:
-    # if training NODEs, zero out dynamic parameters (no known terms), freeze them and set their scale to linear
-    dynamic_parameters = {
-        dynamical_model: jnp.zeros_like(true_dynamic_parameters[dynamical_model])
-        for dynamical_model in true_dynamic_parameters.keys()
-    }
-    conf = replace(
-        conf,
-       dynamic_params_scale="linear",
-       freeze_mechanistic_params_adam=True,
-       freeze_mechanistic_params_optx=True
+
+    # and replace within the trained UDE model -> random dynamic parameters, trained MLP
+    reinit_model = trained_model.copy(
+        new_dynamic_parameters=dynamic_parameters[conf.dynamical_model],
     )
 
-# ================================================================
-#                         SET UP MLP
-# ================================================================
-# Define input and output sizes for MLP
-in_size = {
-    'lotka_volterra': len(u0['lotka_volterra']),  # i.e. 2 (prey, predator) + conf.node_augmentation
-    'sir': len(u0['sir'])-1,  # i.e. 4 (S, I, R) + conf.node_augmentation -- does not include t (quarantined)
-}
-out_size = {
-    'lotka_volterra': 2+conf.node_augmentation,  # prey, predator, augmentation variables
-    'sir': 1+conf.node_augmentation,  # Q (quarantine strength), augmentation variables
-}
+    initial_dynamic_params = reinit_model.func.dynamic_parameters  # on log10 scale
+    print(f"Initial dynamic parameters: {jnp.power(10, initial_dynamic_params) if conf.dynamic_params_scale == 'log10' else initial_dynamic_params}")
 
-# Check activation function is valid
-if conf.activation_fn_name not in activation_functions:
-    raise ValueError(f"Unknown activation function: {conf.activation_fn_name}!")
-
-# Build the MLP, initialise its weights and biases
-mlp = set_weight_bias(
-        build_mlp(
-        in_size=in_size[conf.dynamical_model],
-        out_size=out_size[conf.dynamical_model],
-        width_size=conf.mlp_layer_width,
-        hidden_layers=conf.mlp_depth,
-        key=key_mlp,
-        use_bias=conf.use_bias,
-        use_final_bias=conf.use_final_bias,
-        activation=activation_functions[conf.activation_fn_name],
-        final_activation=activation_functions[conf.final_activation_fn_name],
-        use_dropout=conf.use_dropout,
-        input_dropout_rate=conf.input_dropout_rate,
-        hidden_dropout_rate=conf.hidden_dropout_rate,
-    ),
-    conf.init_scale,
-    key_init
-)
-
-# ================================================================
-#                   SET UP UDE PROBLEM TO TRAIN
-# ================================================================
-if conf.dynamical_model == 'lotka_volterra':
-    # TODO @GiacomoFabrini find better way to express filepath and pass it as argument
-    (train_data, t_save_train, t_span_train,
-     validation_data, t_save_validation, t_span_validation) = setup_lv.get_training_validation_data()
-
-    loss_fn = setup_lv.compute_loss
-    loss_grad_fn = setup_lv.compute_loss_grad
-    loss_optx = setup_lv.compute_loss_optx
-    optx_config = {
-        "rtol": 1e-6,  # changed from 1e-3
-        "atol": 1e-6,  # changed from 1e-3
-    }
-elif conf.dynamical_model == 'sir':
-    # TODO @GiacomoFabrini find better way to express filepath and pass it as argument - same as above
-    (train_data, t_save_train, t_span_train,
-     validation_data, t_save_validation, t_span_validation) = setup_sir.get_training_validation_data()
-
-    loss_fn = setup_sir.compute_loss
-    loss_grad_fn = setup_sir.compute_loss_grad
-    loss_optx = setup_sir.compute_loss_optx
-    optx_config = {
-         "rtol": 1e-6,  # changed from 1e-4
-         "atol": 1e-6,  # changed from 1e-4
-    }
-else:
-    raise ValueError(f"Unknown dynamical model: {conf.dynamical_model}!")
-
-options = {
-    "dynamic_params_scale": conf.dynamic_params_scale,
-}
-ude_problem = UDEProblem(
-    dynamical_model=conf.dynamical_model,
-    dynamic_parameters=dynamic_parameters[conf.dynamical_model],
-    mlp=mlp,
-    options=options,
-    state_dimension=state_dims[conf.dynamical_model],
-)
-
-# # Linear schedule Fabian set up for the DMM -- DISABLED WITH NEW SCHEDULER
-# schedule_config = dict(
-#     init_value=conf.optimiser_learning_rate,
-#     transition_steps=100,
-#     end_value=conf.optimiser_learning_rate/10
-# )
-
-early_stopping_params = EarlyStoppingParams(
-    use_early_stopping=conf.use_early_stop,  # enables flax.training.early_stopping
-    patience=50,  # number of consecutive epochs where we tolerate loss_val not improving by at least min_improvement
-    min_improvement=0,  # absolute improvement in loss_val to consider as improvement
-)
-
-# ================================================================
-#                         TRAIN - MLP
-# ================================================================
-# Freeze mechanistic params -- set to ground truth values
-print("Freezing mechanistic params...")
-conf = replace(
-    conf,
-    curriculum_learning=True,
-    freeze_mechanistic_params_adam=True,
-    freeze_mechanistic_params_optx=True,
-    freeze_nn_adam=False,
-    freeze_nn_optx=False,
-    serialise_curriculum_models=False
-)
-print("Training MLP...")
-trained_model = train(
-    model=ude_problem,
-    u0=u0[conf.dynamical_model],
-    training_data=train_data,
-    t_save_train=t_save_train,
-    t_span_train=t_span_train,
-    validation_data=validation_data,
-    t_save_val=t_save_validation,
-    t_span_val=t_span_validation,
-    conf=conf,
-    early_stopping_params=early_stopping_params,
-    loss_fn=loss_fn,
-    loss_grad_fn=loss_grad_fn,
-    loss_optx=loss_optx,
-    optx_config=optx_config,
-    max_iter_optx_mechanistic=0,
-    n_epochs=N_EPOCHS,  # only train using ADAM
-    max_iter_optx_finetune=0,
-    model_save_dir=model_save_dir,
-)
-
-# Get SINDy formulas for whole UDE and trained MLP
-get_sindy_formula(
-    model=trained_model,
-    u0=u0[conf.dynamical_model],
-    t_save=t_save_train,
-    t_span=t_span_train,
-    settings=["MLP", "UDE"],
-    use_derivatives=True,
-)
-
-# ================================================================
-#                         TRAIN - dynamic params
-# ================================================================
-# Freeze mechanistic params -- set to ground truth values
-print("Freezing MLP...")
-conf = replace(
-    conf,
-    curriculum_learning=True,
-    freeze_mechanistic_params_adam=False,
-    freeze_mechanistic_params_optx=False,
-    freeze_nn_adam=True,
-    freeze_nn_optx=True,
-    serialise_curriculum_models=True
-)
-
-# Sample with appropriate range
-dynamic_parameters = {
-    dynamical_model: sample_dynamical_params(
-        true_params=true_dynamic_parameters[dynamical_model],
-        deviation=conf.multistart_deviation,  # now sample the parameters
-        seed=seed,
-        scale=conf.dynamic_params_scale,
-        method=conf.dynamic_params_perturb_method,
+    # Define model save path
+    subconf_string = "__".join(
+        [str(getattr(conf, field.name)) for field in fields(conf) if field.name in subconf_fields])
+    landscape_model_file = model_save_path / (
+                subconf_string + f"__step2dynpar__CL2{conf.second_curriculum_learning}.eqx"
     )
-    for dynamical_model in true_dynamic_parameters.keys()
-}
+    opt_dyn_params_file = model_save_path / (
+        subconf_string + f"__step2dynpar__CL2{conf.second_curriculum_learning}_pars.pkl"
+    )
+    if not os.path.exists(landscape_model_file) or not os.path.exists(opt_dyn_params_file):
+        # Re-train
+        print("Training dynamic parameters...")
+        training_output = train(
+            model=reinit_model,  # initialise with trained model with new dynamic params
+            u0=u0,
+            training_data=train_data,
+            t_save_train=t_save_train,
+            t_span_train=t_span_train,
+            validation_data=validation_data,
+            t_save_val=t_save_validation,
+            t_span_val=t_span_validation,
+            conf=conf,
+            early_stopping_params=early_stopping_params,
+            loss_fn=loss_fn,
+            loss_grad_fn=loss_grad_fn,
+            loss_optx=loss_optx,
+            optx_config=optx_config,
+            max_iter_optx_mechanistic=MECHANISTIC_FIT_EPOCHS,
+            n_epochs=N_EPOCHS,
+            max_iter_optx_finetune=MAX_ITER_OPTX_FINETUNE,
+            model_save_dir=model_save_dir,
+        )
 
-# and replace within the trained UDE model -> random dynamic parameters, trained MLP
-reinit_model = trained_model.copy(
-    new_dynamic_parameters=dynamic_parameters[conf.dynamical_model],
-)
+        if conf.second_curriculum_learning:
+            # Unpack output
+            final_model, curriculum_models = training_output
+            # Get dynamic parameters at the beginning and end of each curriculum step
+            cl_epochs = generate_epochs_dict(sorted(list(curriculum_models.keys())))
+            opt_dynamic_params = {
+                cl_step: {
+                    timepoint: curriculum_models[cl_epochs[cl_step][timepoint]].func.dynamic_parameters
+                    for timepoint in ["start", "end"]
+                }
+                for cl_step in range(conf.num_curriculum_steps)
+            }
 
-initial_dynamic_params = reinit_model.func.dynamic_parameters
-if conf.dynamic_params_scale == "log10":
-    initial_dynamic_params = jnp.power(10, initial_dynamic_params)
-print(f"Initial dynamic parameters: {initial_dynamic_params}")
+            # Get optimised parameters from last ADAM model and, if needed, log10-transform them
+            landscape_model = curriculum_models[sorted(list(curriculum_models.keys()))[-1]]
+        else:
+            # Unpack output
+            landscape_model = training_output
+            # Get dynamic parameters at the beginning and end of the whole training
+            opt_dynamic_params = {0: {"start": initial_dynamic_params, "end": landscape_model.func.dynamic_parameters}}
 
-# Re-train
-print("Training dynamic parameters...")
-final_model, curriculum_models = train(
-    model=reinit_model,  # initialise with trained model with new dynamic params
-    u0=u0[conf.dynamical_model],
-    training_data=train_data,
-    t_save_train=t_save_train,
-    t_span_train=t_span_train,
-    validation_data=validation_data,
-    t_save_val=t_save_validation,
-    t_span_val=t_span_validation,
-    conf=conf,
-    early_stopping_params=early_stopping_params,
-    loss_fn=loss_fn,
-    loss_grad_fn=loss_grad_fn,
-    loss_optx=loss_optx,
-    optx_config=optx_config,
-    max_iter_optx_mechanistic=MECHANISTIC_FIT_EPOCHS,
-    n_epochs=N_EPOCHS,
-    max_iter_optx_finetune=MAX_ITER_OPTX_FINETUNE,
-    model_save_dir=model_save_dir,
-)
+        # Serialise landscape model and dynamic parameters history
+        print("Serialising final model and dynamic parameters history...")
+        landscape_model.save(landscape_model_file)
+        with open(opt_dyn_params_file, "wb") as f:
+            pickle.dump(opt_dynamic_params, f)
 
-# Get dynamic parameters at the beginning and end of each curriculum step
-cl_epochs = generate_epochs_dict(sorted(list(curriculum_models.keys())))
-opt_dynamic_params = {
-    cl_step: {
-        timepoint: curriculum_models[cl_epochs[cl_step][timepoint]].func.dynamic_parameters
-        for timepoint in ["start", "end"]
-    }
-    for cl_step in range(conf.num_curriculum_steps)
-}
+    else:
+        print(f"Both landscape model and dynamic parameters history file exist, loading and skipping retraining..")
+        with open(opt_dyn_params_file, "rb") as f:
+            opt_dynamic_params = pickle.load(f)
+        landscape_model = UDEProblem.load(landscape_model_file)
 
-final_dynamic_params = final_model.func.dynamic_parameters
-if conf.dynamic_params_scale == "log10":
-    final_dynamic_params = jnp.power(10, final_dynamic_params)
-print(f"Final dynamic parameters: {final_dynamic_params}")
-print(f"Ground truth parameters: {true_dynamic_parameters[conf.dynamical_model]}")
+    # Print out final dynamic parameters and ground truth
+    final_dynamic_params = landscape_model.func.dynamic_parameters
+    print(f"Final dynamic parameters: {jnp.power(10, final_dynamic_params) if conf.dynamic_params_scale == 'log10' else final_dynamic_params}")
+    print(f"Ground truth parameters: {true_dynamic_parameters[conf.dynamical_model]}")  # these are always on linear scale
 
-landscape_df = analyse_lv_loss_landscape(
-    udeprob=curriculum_models[sorted(list(curriculum_models.keys()))[-1]],
-    u0=jnp.concatenate([u0[conf.dynamical_model], jnp.zeros(1)]),  # augment initial condition for network regularisation
-    train_data=train_data,
-    t_save_train=t_save_train,
-    t_span_train=t_span_train,
-    validation_data=validation_data,
-    t_save_validation=t_save_validation,
-    t_span_validation=t_span_validation,
-    conf=conf,
-    N_EPOCHS=N_EPOCHS,
-    opt_dynamic_params=opt_dynamic_params,
-    num_points=200,
-)
+    landscape_results_file = results_path / (subconf_string + f"_CL{conf.second_curriculum_learning}_job{conf.multistart_job}_step2dynpar.csv")
+    if not os.path.exists(landscape_results_file):
+        print("Performing loss landscape analysis vs dynamic parameters...")
+        # Perform loss landscape analysis
+        landscape_dynparams_df = analyse_lv_loss_landscape_dynparams(
+            udeprob=landscape_model,
+            u0=u0,  # augment initial condition for network regularisation
+            train_data=train_data,
+            t_save_train=t_save_train,
+            t_span_train=t_span_train,
+            validation_data=validation_data,
+            t_save_validation=t_save_validation,
+            t_span_validation=t_span_validation,
+            conf=conf,
+            N_EPOCHS=N_EPOCHS,
+            opt_dynamic_params=opt_dynamic_params,
+            do_plots=True,
+            fig_name=f"two_stage_loss_train_CL{conf.second_curriculum_learning}_job{conf.multistart_job}",
+            fig_fmts=["pdf", "svg"],
+            num_points=200,
+        )
+        # Save landscape dataframe to file (CSV
+        landscape_dynparams_df.assign(multistart_job=conf.multistart_job)
+        landscape_dynparams_df.to_csv(
+            landscape_results_file,
+            index=False
+        )
+    else:
+        print("Loss landscape analysis file already exists, skipping...")
+
+
+    if conf.second_curriculum_learning:
+        nn_params_file = results_path / (subconf_string + f"__step2__CL2{conf.second_curriculum_learning}.csv")
+        if not os.path.exists(nn_params_file):
+            print("Performing loss landscape analysis vs MLP parameters...")
+            nn_param_landscape_df = get_ude_param_landscape(
+                udeprob=landscape_model,
+                u0=u0,
+                train_data=train_data,
+                t_save_train=t_save_train,
+                t_span_train=t_span_train,
+                validation_data=validation_data,
+                t_save_validation=t_save_validation,
+                t_span_validation=t_span_validation,
+                conf=conf,
+                key_list=[jr.PRNGKey(conf.multistart_job)],  # single pair of random directions
+                num_dirs=2,
+                start_stop=[-1, 1],
+                num_points=100,
+                which_params=["MLP"],
+                do_plots=True,
+                fig_name=f"two_stage_step2nnparams_job{conf.multistart_job}",
+            )
+            nn_param_landscape_df.to_csv(
+                nn_params_file,
+                index=False
+            )
+        else:
+            print("Loss landscape analysis file already exists, skipping...")

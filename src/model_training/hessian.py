@@ -2,7 +2,6 @@ import jax
 import jax.numpy as jnp
 
 from src.common import Conf
-from diffrax import DirectAdjoint
 from functools import partial
 from jaxtyping import PyTree
 from src.model_training.training_util import get_hessian_metrics, make_grads_finite
@@ -17,7 +16,6 @@ def get_hessian(
         static: Union[PyTree, UDEProblem],
         args: tuple,
         conf: Conf,
-        adjoint = DirectAdjoint(),  # TODO @GiacomoFabrini: add type hint?!
 ):
     # define hessian functions for different dynamical models
     hessian_fn = compute_hess_array if conf.shooting_mode != "window_batch" else compute_batch_hess_array
@@ -30,7 +28,6 @@ def get_hessian(
         # equinox.debug.backward_nan(flat_p), unflatten_p, static,
         flat_p, unflatten_p, static,
         u0, t_save, t_span, input_data,
-        adjoint,
         conf.mlp_reg_exp, conf.mlp_reg_strength, conf.output_reg, conf.multiple_shooting_penalty,
         conf.shooting_mode
     )

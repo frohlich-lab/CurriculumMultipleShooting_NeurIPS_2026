@@ -4,9 +4,9 @@ import jax.numpy as jnp
 import os
 import pandas as pd
 
-from src.model_training.model_util import get_mse, process_mechanistic_params
+from src.model_training.model_util import get_mse, get_masked_mse, process_mechanistic_params
 from jaxtyping import Array
-from typing import Union
+from typing import Optional, Union
 
 
 class UDEFunction(eqx.Module):
@@ -38,42 +38,63 @@ class UDEFunction(eqx.Module):
         # Get dynamic parameters on correct scale for ODE
         beta, gamma, delta = process_mechanistic_params(self.dynamic_parameters, self.options)
         s, i, r, t_ = u[:self.state_dimension]
-        if len(u) > self.state_dimension + 1: # TODO @GiacomoFabrini need to check how this works with node_augmentation - is the order correct?
-            augmented_vars = u[self.state_dimension+1:]  # exclude evolution of 2-norm of network contribution
+
+        if self.mlp.layers[0].in_features > self.state_dimension:
+            augmented_vars = u[self.state_dimension : self.mlp.layers[0].in_features]
             nn_q = self.mlp(jnp.array([s, i, r, *augmented_vars]))
         else:
             nn_q = self.mlp(jnp.array([s, i, r]))
 
+        # QSIR model
         # TODO @Giacomo: discuss with Sebastian
         ds = - beta * s * i / u0[0]
         di = beta * s * i / u0[0] - gamma * i  - nn_q[0] * i / u0[0]
         dr = gamma * i + delta * t_
         dt_ = nn_q[0] * i / u0[0]  - delta * t_
+        derivatives = jnp.array([ds, di, dr, dt_])
 
-
+        if self.mlp.layers[0].in_features > self.state_dimension:
+            # Add augmented variables
+            derivatives = jnp.concatenate([derivatives, nn_q[1:]])  # default single output - Q: quarantine strength
         if self.regularise_network:
             # Add additional equation for regularisation term on network contribution
-            d_nn_reg = jnp.linalg.norm(nn_q[0] * i / u0[0])  # contribution is always the same in both di and dt
-            derivatives = jnp.array([ds, di, dr, dt_, d_nn_reg])
-        else:
-            derivatives = jnp.array([ds, di, dr, dt_])
-        if len(u) > self.state_dimension:
-            derivatives = jnp.concatenate([derivatives, nn_q[1:]])
+            d_nn_reg = jnp.array([
+                jnp.linalg.norm(nn_q[0] * i / u0[0])
+            ]) # contribution is always the same in both di and dt
+            derivatives = jnp.concatenate([derivatives, d_nn_reg])
         return derivatives
 
 
 # TODO @GiacomoFabrini no magic numbers - add conf.node_augmentation and derive number of components for loss.
 # LOSS AND GRAD FUNCTIONS
-def sir_base_loss(sol, data):
+def sir_base_loss(solution: jnp.ndarray, data, mask: Optional[jnp.ndarray]):
     infected, dead, recovered = data[:, 0], data[:, 1], data[:, 2]
     # loss is sum of MSE on Infected and Recovered+Dead
     loss1 = get_mse(
         data=jnp.log(infected),
-        pred=jnp.log(jnp.absolute(sol.ys[:, 1] + sol.ys[:, 3])),
+        pred=jnp.log(jnp.absolute(solution[:, 1] + solution[:, 3])),
     )
     loss2 = get_mse(
         data=jnp.log(recovered + dead),
-        pred=jnp.log(jnp.absolute(sol.ys[:, 2])),
+        pred=jnp.log(jnp.absolute(solution[:, 2])),
+    )
+    # loss1 = jnp.mean((jnp.log(infected) - jnp.log(jnp.absolute(sol.ys[:, 1] + sol.ys[:, 3]))) ** 2)
+    # loss2 = jnp.mean((jnp.log(recovered + dead) - jnp.log(jnp.absolute(sol.ys[:, 2]))) ** 2)
+    return loss1 + loss2
+
+
+def sir_base_loss_masked(solution: jnp.ndarray, data, mask: jnp.ndarray):
+    infected, dead, recovered = data[:, 0], data[:, 1], data[:, 2]
+    # loss is sum of MSE on Infected and Recovered+Dead
+    loss1 = get_masked_mse(
+        data=jnp.log(infected),
+        pred=jnp.log(jnp.absolute(solution[:, 1] + solution[:, 3])),
+        mask=mask,
+    )
+    loss2 = get_masked_mse(
+        data=jnp.log(recovered + dead),
+        pred=jnp.log(jnp.absolute(solution[:, 2])),
+        mask=mask,
     )
     # loss1 = jnp.mean((jnp.log(infected) - jnp.log(jnp.absolute(sol.ys[:, 1] + sol.ys[:, 3]))) ** 2)
     # loss2 = jnp.mean((jnp.log(recovered + dead) - jnp.log(jnp.absolute(sol.ys[:, 2]))) ** 2)

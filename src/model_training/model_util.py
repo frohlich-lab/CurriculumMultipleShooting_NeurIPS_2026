@@ -13,6 +13,12 @@ from typing import Any, List, Union
 def get_mse(pred: Array, data: Array):
     return jnp.mean((pred - data) ** 2)
 
+def get_masked_mse(pred: Array, data: Array, mask: Array):
+    # Masked mean square error - mean is computed only over non-zero terms
+    return jnp.sum(mask[:, None] * (pred - data) ** 2) / (jnp.sum(mask) * pred.shape[1])  # TODO -- does this hold for other cases?
+
+def get_sse(pred: Array, data: Array):
+    return jnp.sum((pred - data) ** 2)
 
 # TODO @GiacomoFabrini - add unit test
 def regularise_mlp(
@@ -47,31 +53,30 @@ def regularise_mlp_contribution(
     return reg_strength * (l2_norm_nn_contrib[-1]/timespan_length)**2
 
 
-def compute_discontinuity_penalty(prob, sol: Union[List[SimpleNamespace], SimpleNamespace]):
+def compute_discontinuity_penalty(
+        sol: SimpleNamespace,
+        cl_stage: int,
+        state_dimension: int,
+        reg_strength: float
+):
     """
-    Compute the discontinuity penalty by measuring the mean squared error
+    Compute the discontinuity penalty by measuring the sum of square errors
     between the last state of each shooting window and the first state of the next.
     """
-    if type(sol) is list:
-        num_windows = len(sol)
-        return jnp.mean(
-            jnp.array(
-                [
-                    get_mse(
-                        sol[i].ys[-1, :prob.func.state_dimension],
-                        sol[j].ys[0, :prob.func.state_dimension]
-                    )
-                    for i, j in zip(range(num_windows - 1), range(1, num_windows))
-                ]
-            )
+    # TODO RESTORE SSE instead of MSE after comparison!!!
+    if cl_stage < 2:  # without CL, curriculum_stage is set to 1 by default
+        mse = get_mse(
+            sol.ys[:-1, -1, :state_dimension], # from first to penultimate window, endpoint
+            sol.ys[1:, 0, :state_dimension]  # from second to last window, startpoint
         )
-    else:
-        return jnp.mean(
-            get_mse(
-                sol.ys[:-1, -1, :prob.func.state_dimension],  # up to second to last window, endpoint
-                sol.ys[1:, 0, :prob.func.state_dimension]  # from second to last window, startpoint
-            )
+    elif (cl_stage > 2) and (cl_stage < sol.ys.shape[0]):
+        mse = get_mse(
+            sol.ys[:-cl_stage, -1, :state_dimension],  # exclude invalid windows
+            sol.ys[1:-(cl_stage - 1), 0, :state_dimension]
         )
+    else: # no discontinuity penalty for single valid window!
+        mse = 0
+    return reg_strength * mse
 
 
 def _init_glorot(
@@ -120,8 +125,8 @@ def set_weight_bias(
 
 def bounded_tanh_transform_params(
         params: Union[Array, jnp.ndarray],
-        lb: np.ndarray,
-        ub: np.ndarray,
+        lb: tuple,
+        ub: tuple,
         loc: float = 1.73,   # same as in Philipps et al. 2024
 ) -> jnp.ndarray:
     """
@@ -130,7 +135,7 @@ def bounded_tanh_transform_params(
     """
     # For numerical stability, shift the bounds slightly // https://www.biorxiv.org/content/10.1101/2024.11.29.626122v1
     lb = np.array([max(0.0, item * (1 - 1e-6)) for item in lb])
-    ub = ub * (1 + 1e-6)
+    ub = np.array(ub) * (1 + 1e-6)
     return np.arctanh(2 * (params - lb) / (ub - lb) - 1) + loc
 
 def bounded_tanh_recover_params(
@@ -169,4 +174,3 @@ def process_mechanistic_params(
     else:
         raise ValueError(f"Unknown dynamic parameter scale: {options['dynamic_params_scale']}!")
     return mech_params
-

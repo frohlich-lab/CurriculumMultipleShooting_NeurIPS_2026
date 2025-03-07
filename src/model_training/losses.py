@@ -2,125 +2,83 @@ import diffrax
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-import numpy as np
 
-from functools import partial
-from src.model_examples.lotka_volterra.setup_diffrax_model import lv_base_loss as compute_loss_lv
-from src.model_examples.sir.setup_diffrax_model import sir_base_loss as compute_loss_sir
-from src.model_training.model_util import (compute_discontinuity_penalty, get_mse,
-                                           regularise_mlp, regularise_mlp_contribution)
+from src.model_training.model_util import compute_discontinuity_penalty, regularise_mlp, regularise_mlp_contribution
+from src.model_training.training_util import (get_sol_and_loss_single_shooting, get_sol_and_loss_multiple_shooting,
+                                              get_sol_and_loss_validation)
+from typing import Callable
 
 
-@eqx.filter_jit
+
+# @eqx.filter_jit
 def compute_loss(
         prob_params, prob_static,
         u0, t_save, t_span,
         data,
-        mlp_reg_exp, mlp_reg_strength, output_reg, multiple_shooting_penalty,
+        mlp_reg_exp: float,
+        mlp_reg_strength: float,
+        output_reg: float,
+        multiple_shooting_penalty: float,
         shooting_mode: str,
-        adjoint=None
+        loss_fn: Callable,
+        eval_mode: bool = False,
+        adjoint: diffrax.AbstractAdjoint = diffrax.RecursiveCheckpointAdjoint()  # default for everything apart from Hessian (DirectAdjoint)
 ):
     # Get full UDEProblem
     prob = eqx.combine(prob_params, prob_static)
 
-    # Get model-specific loss function
-    if prob.dynamical_model == "lotka_volterra":
-        loss_fn = partial(compute_loss_lv, state_dimension=prob.func.state_dimension)
-    elif prob.dynamical_model == "sir":
-        loss_fn = compute_loss_sir
-    else:
-        raise ValueError(f"Unknown dynamical model: {prob.dynamical_model}!")
-
-    # Handle single-/multiple-shooting
     if shooting_mode == "single":
-        sol = prob.solve_single_shooting(diffrax.Tsit5(), u0, t_save, t_span, adjoint=adjoint)
-        loss = loss_fn(sol=sol, data=data)
+        sol, loss = get_sol_and_loss_single_shooting(prob, adjoint, loss_fn, data)
+        discontinuity_penalty = 0
     elif shooting_mode == "multiple":
-        sol = prob.solve(diffrax.Tsit5(), u0, t_save, t_span, adjoint=adjoint)
-        if not isinstance(t_save, diffrax.SaveAt):
-            t_save = diffrax.SaveAt(ts=t_save)
-        num_windows = int(np.ceil(len(t_save.subs.ts) / (prob.shooting_window_length - 1)))
-        if type(sol) is list:
-            losses = jnp.array([
-                get_mse(
-                    pred=solution.ys[: len(data[start_idx:end_idx]), :prob.func.state_dimension],
-                    data=data[start_idx:end_idx]
-                )
-                for solution, i in zip(sol, range(num_windows))
-                for start_idx, end_idx in [(i * (prob.shooting_window_length - 1),
-                                            min((i + 1) * prob.shooting_window_length - i, len(data)))]
-            ])
-        else:
-            # using vmap, shape of sol is: (batch/window, timepoint, state var)
-            losses = jnp.array([
-                get_mse(
-                    pred=sol.ys[i, : len(data[start_idx:end_idx]), :prob.func.state_dimension],
-                    data=data[start_idx:end_idx]
-                )
-                for i in range(num_windows)
-                for start_idx, end_idx in [(i * (prob.shooting_window_length - 1),
-                                            min((i + 1) * prob.shooting_window_length - i, len(data)))]
-            ])
+        sol, loss = get_sol_and_loss_multiple_shooting(prob, adjoint, data)
         # Average losses and add discontinuity penalty
-        loss = (jnp.mean(losses)
-                + multiple_shooting_penalty * compute_discontinuity_penalty(prob, sol))
+        discontinuity_penalty = compute_discontinuity_penalty(
+            sol=sol,
+            cl_stage=prob.curriculum_stage,
+            state_dimension=prob_static.func.state_dimension,
+            reg_strength=multiple_shooting_penalty
+        )
+        loss +=  discontinuity_penalty
     else:
         raise ValueError(f"Unknown shooting mode: {shooting_mode}!")
 
     # Add MLP and output regularisation
     if prob.func.regularise_network:
-        if mlp_reg_strength > 0:
-            mlp_reg = regularise_mlp(
-                mlp=prob.func.mlp,
-                reg_exp=mlp_reg_exp,
-                reg_strength=mlp_reg_strength
+        mlp_reg = regularise_mlp(
+            mlp=prob.func.mlp,
+            reg_exp=mlp_reg_exp,
+            reg_strength=mlp_reg_strength
+        )
+        if shooting_mode == "single":  # "window_batch" calls vmapped single-shooting
+            mlp_output_reg = regularise_mlp_contribution(
+                l2_norm_nn_contrib=sol.ys[:, -1],
+                timespan_length=(t_save.subs.ts[-1] - t_save.subs.ts[0]) if eval_mode  # validation
+                    else jax.lax.stop_gradient(prob.t_save_windows[0][-1]-prob.t_save_windows[0][0]),  # training
+                reg_strength=output_reg
             )
+        elif shooting_mode == "multiple":
+            valid_windows = jax.lax.stop_gradient(prob.t_save_windows) if prob.curriculum_stage < 2 \
+                else jax.lax.stop_gradient(prob.t_save_windows)[:-(prob.curriculum_stage - 1), :]
+            # TODO @GiacomoFabrini - should this be a sum or a mean?
+            mlp_output_reg = jnp.sum(jnp.array(
+                [
+                    regularise_mlp_contribution(
+                        l2_norm_nn_contrib=sol.ys[i, :, -1],
+                        timespan_length=(t_save_window[-1] - t_save_window[0]),
+                        reg_strength=output_reg
+                    )
+                    for i, t_save_window in enumerate(jax.lax.stop_gradient(valid_windows))
+                ]
+            ))
         else:
-            mlp_reg = 0
-        if output_reg > 0:
-            if shooting_mode == "single":  # "window_batch" calls vmapped single-shooting
-                mlp_output_reg = regularise_mlp_contribution(
-                    l2_norm_nn_contrib=sol.ys[:, prob.func.state_dimension],
-                    timespan_length=t_span[-1]-t_span[0],
-                    reg_strength=output_reg
-                )
-            elif shooting_mode == "multiple":
-                if type(sol) is list:
-                    mlp_output_reg = jnp.sum(jnp.array(
-                        [
-                            regularise_mlp_contribution(
-                                l2_norm_nn_contrib=solution.ys[:, prob.func.state_dimension],
-                                timespan_length=t_save.subs.ts[end_idx] - t_save.subs.ts[start_idx],
-                                reg_strength=output_reg
-                            )
-                            for i, solution in enumerate(sol)
-                            for start_idx, end_idx in [(i * (prob.shooting_window_length - 1),
-                                                        min((i + 1) * prob.shooting_window_length - i, len(data)))]
-                        ]
-                    ))
-                else:
-                    # Need to stop gradient flow to prob.ms_t_save_windows once again + ensure simulations and
-                    # timepoint differences/spans are only accessed for non-repeated timepoints (i.e. end_idx-start_idx).
-                    # The second point does not seem essential - it works even without it (e.g. t_save_window[-1] instead
-                    # of t_save_window[end_idx-start_idx]).
-                    mlp_output_reg = jnp.sum(jnp.array(
-                        [
-                            regularise_mlp_contribution(
-                                l2_norm_nn_contrib=sol.ys[i, :len(data[start_idx:end_idx]), prob.func.state_dimension],
-                                timespan_length=(t_save_window[end_idx-start_idx] - t_save_window[0]),
-                                reg_strength=output_reg
-                            )
-                            for i, t_save_window in enumerate(jax.lax.stop_gradient(prob.ms_t_save_windows))
-                            for start_idx, end_idx in [(i * (prob.shooting_window_length - 1),
-                                                        min((i + 1) * prob.shooting_window_length - i, len(data)))]
-                        ]
-                    ))
-            else:
-                raise ValueError("This function should only be called with 'single' or 'multiple' shooting_mode!")
-        else:
-            mlp_output_reg = 0
+            raise ValueError("This function should only be called with 'single' or 'multiple' shooting_mode!")
         loss += (mlp_reg + mlp_output_reg)
-        return loss, mlp_output_reg
+        return loss, {
+            "discontinuity_penalty": discontinuity_penalty,
+            "mlp_reg": mlp_reg,
+            "nn_contrib_reg": mlp_output_reg
+        }
     return loss, None
 
 
@@ -129,27 +87,57 @@ def compute_loss_grad(
         u0, t_save, t_span,
         data,
         mlp_reg_exp, mlp_reg_strength, output_reg, multiple_shooting_penalty,
-        shooting_mode
+        shooting_mode,
+        loss_fn: Callable,
+        adjoint: diffrax.AbstractAdjoint = diffrax.RecursiveCheckpointAdjoint()
 ):
     return eqx.filter_value_and_grad(compute_loss, has_aux=True)(
         prob_params, prob_static,
         u0, t_save, t_span,
         data,
-        mlp_reg_exp, mlp_reg_strength, output_reg, multiple_shooting_penalty, shooting_mode,
-        adjoint=None
+        mlp_reg_exp, mlp_reg_strength, output_reg, multiple_shooting_penalty, shooting_mode, loss_fn,
+        eval_mode=False, adjoint=adjoint
     )
+
+
+def compute_validation_loss(
+        prob_params, prob_static,
+        u0, t_save, t_span,
+        data,
+        loss_fn: Callable,
+        adjoint: diffrax.AbstractAdjoint = diffrax.RecursiveCheckpointAdjoint()  # default for everything apart from Hessian (DirectAdjoint)
+):
+    # Get full UDEProblem
+    prob = eqx.combine(prob_params, prob_static)
+    sol, loss = get_sol_and_loss_validation(prob, u0, t_save, t_span, adjoint, loss_fn, data)
+    # only interested in MSE, not in mlp_reg or output_reg -> return a None reg_loss_dict
+    return loss, None
 
 
 # Optimistix loss needs to return a None aux
 def compute_loss_optx(prob_params, args):
     (prob_static, u0, t_save, t_span, data,
-     mlp_reg_exp, mlp_reg_strength, output_reg, multiple_shooting_penalty, shooting_mode) = args
+     mlp_reg_exp, mlp_reg_strength, output_reg,
+     multiple_shooting_penalty, shooting_mode, eval_mode, loss_fn) = args
     loss, _ = compute_loss(
         prob_params, prob_static,
         u0, t_save, t_span,
         data,
-        mlp_reg_exp, mlp_reg_strength, output_reg, multiple_shooting_penalty,shooting_mode,
-        None
+        mlp_reg_exp, mlp_reg_strength, output_reg, multiple_shooting_penalty, shooting_mode,
+        loss_fn,
+        eval_mode,
+    )
+    return loss, None
+
+
+# Optimistix loss needs to return a None aux
+def compute_val_loss_optx(prob_params, args):
+    (prob_static, u0, t_save, t_span, data, loss_fn) = args
+    loss, _ = compute_validation_loss(
+        prob_params, prob_static,
+        u0, t_save, t_span,
+        data,
+        loss_fn,
     )
     return loss, None
 
@@ -169,9 +157,11 @@ def compute_loss_optx(prob_params, args):
 def compute_hess_array(
         flat_p, unflatten_p,
         prob_static,
-        u0, t_save, t_span, data, adjoint,
-        mlp_reg_exp, mlp_reg_strength, output_reg, multiple_shooting_penalty,
-        shooting_mode
+        u0, t_save, t_span, data,
+        mlp_reg_exp, mlp_reg_strength, output_reg,
+        multiple_shooting_penalty, shooting_mode,
+        loss_fn,
+        adjoint=diffrax.DirectAdjoint()
 ):
     prob_params = unflatten_p(flat_p)
     loss, _ = compute_loss(
@@ -180,6 +170,8 @@ def compute_hess_array(
         data,
         mlp_reg_exp, mlp_reg_strength, output_reg, multiple_shooting_penalty,
         shooting_mode,
+        loss_fn,
+        eval_mode=False,
         adjoint=adjoint,
     )
     return loss
@@ -189,12 +181,14 @@ def compute_hess_array(
 def compute_batch_loss(
         prob_params, prob_static,
         u0, t_save, t_span, data,
-        mlp_reg_exp, mlp_reg_strength, output_reg, adjoint=None, **kwargs
+        mlp_reg_exp, mlp_reg_strength, output_reg,
+        loss_fn, **kwargs  # TODO kwargs needed or can be removed?
 ):
     losses, mlp_output_regs = jax.vmap(compute_loss, in_axes=(None, None, 0, 0, 0, 0, None, None, None, None, None, None))(
         prob_params, prob_static,
         u0, t_save, t_span, data,
-        mlp_reg_exp, mlp_reg_strength, output_reg, 0, "single", adjoint
+        mlp_reg_exp, mlp_reg_strength, output_reg, 0, "single", loss_fn,
+        False
     )
     mean_loss = jnp.mean(losses)
     if eqx.combine(prob_params, prob_static).func.regularise_network:
@@ -207,7 +201,7 @@ def compute_batch_loss(
 def compute_batch_loss_grad(
         prob_params, prob_static,
         u0, t_save, t_span, data,
-        mlp_reg_exp, mlp_reg_strength, output_reg, multiple_shooting_penalty, shooting_mode
+        mlp_reg_exp, mlp_reg_strength, output_reg, multiple_shooting_penalty, shooting_mode, loss_fn
 ):
     return eqx.filter_value_and_grad(compute_batch_loss, has_aux=True)(
         prob_params, prob_static,
@@ -215,13 +209,15 @@ def compute_batch_loss_grad(
         mlp_reg_exp, mlp_reg_strength, output_reg,
         multiple_shooting_penalty=multiple_shooting_penalty,
         shooting_mode=shooting_mode,
-        adjoint=None
+        loss_fn=loss_fn,
+        eval_mode=False,
     )
 
 # BATCH LOSS OPTIMISTIX/FIDES
 def compute_batch_loss_optx(prob_params, args):
     (prob_static, u0, t_save, t_span, data,
-     mlp_reg_exp, mlp_reg_strength, output_reg, multiple_shooting_penalty, shooting_mode) = args
+     mlp_reg_exp, mlp_reg_strength, output_reg,
+     multiple_shooting_penalty, shooting_mode, loss_fn) = args
     loss, _ = compute_batch_loss(
         prob_params, prob_static,
         u0, t_save, t_span,
@@ -229,7 +225,8 @@ def compute_batch_loss_optx(prob_params, args):
         mlp_reg_exp, mlp_reg_strength, output_reg,
         multiple_shooting_penalty=multiple_shooting_penalty,
         shooting_mode=shooting_mode,
-        adjoint=None
+        loss_fn=loss_fn,
+        eval_mode=False,
     )
     return loss, None
 
@@ -239,9 +236,11 @@ def compute_batch_loss_optx(prob_params, args):
 def compute_batch_hess_array(
         flat_p, unflatten_p,
         prob_static,
-        u0, t_save, t_span, data, adjoint,
-        mlp_reg_exp, mlp_reg_strength, output_reg, multiple_shooting_penalty,
-        shooting_mode
+        u0, t_save, t_span, data,
+        mlp_reg_exp, mlp_reg_strength, output_reg,
+        multiple_shooting_penalty, shooting_mode,
+        loss_fn: Callable,
+        adjoint=diffrax.DirectAdjoint()
 ):
     prob_params = unflatten_p(flat_p)
     loss, _ = compute_batch_loss(
@@ -251,6 +250,8 @@ def compute_batch_hess_array(
         mlp_reg_exp, mlp_reg_strength, output_reg,
         multiple_shooting_penalty=multiple_shooting_penalty,
         shooting_mode=shooting_mode,
+        loss_fn=loss_fn,
+        eval_mode=False,
         adjoint=adjoint,
     )
     return loss

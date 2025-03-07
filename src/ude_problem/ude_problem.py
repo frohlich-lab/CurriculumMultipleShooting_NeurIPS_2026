@@ -13,7 +13,7 @@ from src.common import activation_functions
 from src.model_examples.lotka_volterra.setup_diffrax_model import UDEFunction as UDEFunction_lv
 from src.model_examples.sir.setup_diffrax_model import UDEFunction as UDEFunction_sir
 from src.ude_problem import CustomDropoutMLP, ResidualMLP
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, List, Optional, Tuple, Union
 
 
 UDE_funcs = {
@@ -23,23 +23,25 @@ UDE_funcs = {
 
 
 def initialize_ms(
-        state_dimension: int,
+        effective_state_dimension: int,
         shooting_window_length: int,
         training_horizon: int,
         t_save: diffrax.SaveAt,
         strategy: str,
-        u0_guess: Optional[Array],
+        u0_guess: Optional[Tuple],
         network_regularisation: bool,
+        curriculum_learning: bool = False,
+        curriculum_params: Optional[dict[str, tuple]] = None,
         random_seed: int = 0,
-):
+) -> tuple[Array, Array, Array]:
     """
     Initialize auxiliary variables (num_windows, starting and ending points,
     save timepoints) and learnable initial values for the shooting windows.
 
     Parameters
     ----------
-    state_dimension: int
-        The dimensionality of the system state.
+    effective_state_dimension: int
+        The number of input features for the neural network. Includes state variables and augmentation variables.
     shooting_window_length: int
         The number of timepoints in each shooting window.
     training_horizon: int
@@ -48,50 +50,70 @@ def initialize_ms(
         Timepoints at which to save the training simulation.
     strategy: str
         Initialization strategy for initial conditions.
-    u0_guess: Array
+    u0_guess: Tuple
         Initial guess for the initial conditions.
     network_regularisation: bool
         If True, the network contribution to the dynamics will be regularised.
+    curriculum_learning: bool
+        If True, the model will be trained using curriculum learning.
+    curriculum_params: dict
+        Timepoints and masks for first curriculum learning stage.
     random_seed: int
         Random seed for random initialization.
     """
     # Pre-compute number of windows
     num_windows = int(np.ceil(training_horizon / (shooting_window_length - 1)))
 
-    # Compute auxiliary MS variables
-    t_windows = [
-        t_save.subs.ts[
-            i * (shooting_window_length - 1) : (i + 1) * shooting_window_length - i
-        ] for i in range(num_windows)
-    ]
-
-    # Ensure all windows have the same length by repeating endpoint -- JAX does not accept ragged arrays!
-    if len(t_windows[-1]) < shooting_window_length:
-        diff_len = shooting_window_length - len(t_windows[-1])
-        t_windows[-1] = np.concatenate([t_windows[-1], diff_len*[t_windows[-1][-1]]])
-    t_save_windows = jnp.array(t_windows)  # trying to keep Array format
+    if curriculum_learning and (curriculum_params is not None):
+        # pre-computed
+        t_save_windows, masks = jnp.array(curriculum_params["time"]), jnp.array(curriculum_params["mask"])
+    elif curriculum_learning and (curriculum_params is None):
+        raise ValueError("curriculum_params must be provided if curriculum_learning is True!")
+    else:
+        t_save_windows, masks = generate_ms_time_and_mask(
+            num_windows, shooting_window_length, training_horizon, t_save
+        )
 
     if strategy == 'z':
         # Augment initial conditions to include network regularisation
-        effective_state_dim = state_dimension+1 if network_regularisation else state_dimension
-        # return jnp.zeros((num_windows, effective_state_dim))
-        return t_save_windows, jnp.zeros((num_windows, effective_state_dim))
+        if network_regularisation:
+            effective_state_dimension += 1
+        return t_save_windows, masks, jnp.zeros((num_windows, effective_state_dimension))
     # TODO @GiacomoFabrini add an option to initialise with observed initial conditions
     elif strategy == 'g':
         if network_regularisation:
-            u0_guess = jnp.concatenate([u0_guess, jnp.zeros(1)])
-        # return jnp.tile(u0_guess, (num_windows, 1))
-        return t_save_windows, jnp.tile(u0_guess, (num_windows, 1))
+            u0_guess = jnp.concatenate([jnp.array(u0_guess), jnp.zeros(1)])
+        return t_save_windows, masks, jnp.tile(u0_guess, (num_windows, 1))
     elif strategy == 'ru':
         # Sample uniformly state_dimension variables
-        u0 = jr.uniform(jr.PRNGKey(random_seed), (num_windows, state_dimension))
+        u0 = jr.uniform(jr.PRNGKey(random_seed), (num_windows, effective_state_dimension))
         # Concatenate a 0 across all num_windows if using network regularisation
         if network_regularisation:
             u0 = jnp.concatenate([u0, jnp.zeros((num_windows, 1))], axis=1)
         # return u0
-        return t_save_windows, u0
+        return t_save_windows, masks, u0
     else:
         raise ValueError(f"Invalid shooting_iv_init strategy: {strategy}")
+
+
+def initialize_single(
+    training_horizon: int,
+    t_save: diffrax.SaveAt,
+    u0_guess: Tuple,
+    curriculum_learning: bool,
+    curriculum_params: Optional[dict[str, tuple]] = None
+) -> tuple[Array, Array, Array]:
+    if curriculum_learning:
+        if curriculum_params is not None:
+            t_windows = jnp.expand_dims(jnp.array(curriculum_params["time"]), axis=0)
+            masks = jnp.expand_dims(jnp.array(curriculum_params["mask"]), axis=0)
+        else:
+            raise ValueError("curriculum_indices must be provided if curriculum_learning is True")
+    else:
+        t_windows = jnp.array([t_save.subs.ts])
+        masks = jnp.array([jnp.ones(training_horizon)])
+    u0 = jnp.expand_dims(jnp.array(u0_guess), axis=0)
+    return t_windows, masks, u0
 
 
 class UDEProblem(eqx.Module):
@@ -111,16 +133,23 @@ class UDEProblem(eqx.Module):
     shooting_mode: str
     shooting_window_length: Optional[int]
     shooting_iv_init: Optional[str]
-    ms_t_save_windows: Optional[Array]
+    t_save_windows: Optional[Array]
+    masks: Optional[Array]
     initial_values: Optional[Array]
-    u0_guess: Optional[Any]
+    u0_guess: Optional[Tuple]
     init_random_seed: Optional[int]
+    curriculum_learning: bool
+    curriculum_params: Optional[dict[str, tuple]]
+    curriculum_stage: Optional[int]
 
     def __init__(
             self, dynamical_model, dynamic_parameters, mlp, options, state_dimension, training_horizon,
-            shooting_mode: str = "single", shooting_window_length=10, shooting_iv_init="zeros", u0_guess=None,
-            init_random_seed=0, regularise_network=None,
-            t_save_train=None, initial_values=None, ms_t_save_windows=None,  **kwargs,
+            shooting_mode: str = "single", shooting_window_length=10, shooting_iv_init="zeros",
+            u0_guess=None, init_random_seed=0, regularise_network=None,
+            t_save_train: Optional[diffrax.SaveAt] = None,
+            initial_values: Optional[Array] = None, masks: Optional[Array] = None, t_save_windows: Optional[Array] = None,
+            curriculum_learning: bool = False, curriculum_params: Optional[dict[str, tuple]]=None,
+            curriculum_stage: Optional[int]=1, **kwargs,
     ):
         """
         Parameters
@@ -145,12 +174,24 @@ class UDEProblem(eqx.Module):
             The length of the shooting windows.
         shooting_iv_init: str
             The initialisation strategy for the shooting windows.
-        u0_guess: array-like
+        u0_guess: tuple
             Initial guess for the initial conditions.
         init_random_seed: int
             Random seed for random initialisation (if shooting_iv_init == "random_uniform").
         regularise_network: bool
             If True, the network contribution to the dynamics will be regularised.
+        t_save_train: array-like
+            Timepoints at which to save the training simulation.
+        initial_values: array-like
+            Pre-computed initial values for the shooting windows.
+        t_save_windows: array-like
+            Pre-computed timepoints for the shooting windows.
+        curriculum_learning: bool
+            If True, the model will be trained using curriculum learning.
+        curriculum_params: dict
+            Dictionary containing timepoints and masks for specific curriculum learning stage.
+        curriculum_stage: int
+            Current stage of CL, if applicable.
         """
         super().__init__(**kwargs)
         self.dynamical_model = dynamical_model
@@ -163,79 +204,143 @@ class UDEProblem(eqx.Module):
             raise ValueError("shooting_window_length cannot be None for shooting_mode='multiple'")
         # Conditionally define the shooting window length and compute the number of shooting windows
         self.shooting_window_length = shooting_window_length if self.shooting_mode == "multiple" else self.training_horizon
-        if self.shooting_mode == "multiple":
-            self.shooting_iv_init = shooting_iv_init
-            # Initialise the learnable initial values for the shooting windows
+        self.curriculum_learning = curriculum_learning
+        self.curriculum_params = curriculum_params
+        if self.shooting_mode == "single":
+            self.shooting_iv_init, self.init_random_seed, self.curriculum_stage = None, None, 1
             self.u0_guess = u0_guess
-            self.init_random_seed = init_random_seed
-            if (ms_t_save_windows is not None) and (initial_values is not None):
-                # TODO @Giacomo - check whether there are other scenarios to be considered
-                self.ms_t_save_windows, self.initial_values = ms_t_save_windows, initial_values
+            if all(x is not None for x in (t_save_windows, initial_values, masks)):
+                # TODO @Giacomo - FIX REPETITION!
+                self.t_save_windows, self.masks, self.initial_values = t_save_windows, masks, initial_values
                 # Augment initial values to include network regularisation (each u0 should have mlp.layers[0].in_features+1 elements)
                 if self.func.regularise_network and (self.initial_values.shape[1] == self.func.mlp.layers[0].in_features):
                     self.initial_values = jnp.concatenate(
                         [self.initial_values, jnp.zeros((self.initial_values.shape[0], 1))], axis=1
                     )
             elif t_save_train is not None:
-                self.ms_t_save_windows, self.initial_values = initialize_ms(
-                    state_dimension=state_dimension,
+                self.t_save_windows, self.masks, self.initial_values = initialize_single(
+                    training_horizon=self.training_horizon,
+                    t_save=t_save_train,
+                    u0_guess=self.u0_guess,
+                    curriculum_learning=curriculum_learning,
+                    curriculum_params=curriculum_params
+                )
+            else:
+                raise ValueError("Either initial_values and t_save_windows OR t_save_train must be provided!")
+        elif self.shooting_mode == "multiple":
+            self.shooting_iv_init = shooting_iv_init
+            # Initialise the learnable initial values for the shooting windows
+            self.u0_guess = u0_guess
+            self.init_random_seed = init_random_seed
+            if all(x is not None for x in (t_save_windows, initial_values, masks, curriculum_stage)):
+                # TODO @Giacomo - check whether there are other scenarios to be considered
+                self.t_save_windows, self.masks, self.initial_values = t_save_windows, masks, initial_values
+                self.curriculum_stage = curriculum_stage
+                # Augment initial values to include network regularisation (each u0 should have mlp.layers[0].in_features+1 elements)
+                if self.func.regularise_network and (self.initial_values.shape[1] == self.func.mlp.layers[0].in_features):
+                    self.initial_values = jnp.concatenate(
+                        [self.initial_values, jnp.zeros((self.initial_values.shape[0], 1))], axis=1
+                    )
+            elif t_save_train is not None:
+                self.t_save_windows, self.masks, self.initial_values = initialize_ms(
+                    effective_state_dimension=int(self.func.mlp.layers[0].in_features),
                     shooting_window_length=self.shooting_window_length,
                     training_horizon=self.training_horizon,
                     t_save=t_save_train,
                     strategy=self.shooting_iv_init,
                     u0_guess=self.u0_guess,
                     network_regularisation=regularise_network,
-                    random_seed=self.init_random_seed
+                    random_seed=self.init_random_seed,
+                    curriculum_learning=curriculum_learning,
+                    curriculum_params=curriculum_params
                 )
+                # Initialise to first CL stage
+                self.curriculum_stage = 1
             else:
-                raise ValueError("Either initial_values and ms_t_save_windows OR t_save_train must be provided for MS!")
+                raise ValueError("Either initial_values and t_save_windows OR t_save_train must be provided for MS!")
         else:
+            # TODO FIX THIS - WINDOW_BATCH
             self.shooting_iv_init, self.u0_guess, self.init_random_seed = None, None, None
-            self.initial_values, self.ms_t_save_windows = None, None
+            self.initial_values, self.masks, self.t_save_windows = None, None, None
+            self.curriculum_stage = None
 
 
-    def solve(self, solver, u0, t_save, t_span, adjoint, *args):
-        if self.shooting_mode == "single" or self.shooting_mode == "window_batch":
-            return self.solve_single_shooting(solver, u0, t_save, t_span, adjoint, *args)
-        elif self.shooting_mode == "multiple":
-            return self.solve_multiple_shooting(
-                solver,
-                self.initial_values,
-                jax.lax.stop_gradient(self.ms_t_save_windows),  # stop update of shooting window timepoints
-                adjoint, *args
-            )
-            # return self.solve_multiple_shooting_loop(
-            #     solver,
-            #     self.initial_values,
-            #     t_save,  # stop update of shooting window timepoints
-            #     adjoint, *args
-            # )
-        else:
-            self._solve_error()
+    def get_augmented_state_variables(self):
+        return self.initial_values[:, self.func.state_dimension:self.func.mlp.layers[0].in_features][0]
 
 
     def solve_single_shooting(
-            self, solver, u0, t_save, t_span,
-            adjoint=diffrax.RecursiveCheckpointAdjoint(),
+            self,
+            solver: diffrax.AbstractSolver,
+            u0: Array,
+            t_save: Array,
+            adjoint: diffrax.AbstractAdjoint = diffrax.RecursiveCheckpointAdjoint(),
             controller=diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8),
     ):
-        if adjoint is None:
-            adjoint = diffrax.RecursiveCheckpointAdjoint()
-        if not isinstance(t_save, diffrax.SaveAt):
-            t_save = diffrax.SaveAt(ts=t_save)
-        t0, t1 = t_span
+        """
+        Solve the UDE using single-shooting (or single-shooting + CL) for training.
+        u0 and t_save can be the same as the internal initial values and timepoints, respectively.
+        """
+        t0, t1 = [t_save[0], t_save[-1]]
         sol = diffrax.diffeqsolve(diffrax.ODETerm(self.func),
                                   solver,
                                   t0,
                                   t1,
                                   None,
-                                  u0,
+                                  y0=jnp.concatenate(
+                                      [
+                                          jax.lax.stop_gradient(u0[:self.func.state_dimension]),
+                                          self.get_augmented_state_variables(),  # only update initial value for augmentation vars
+                                          jax.lax.stop_gradient(u0[-1:jnp.newaxis]),
+                                      ],
+                                      axis=0
+                                  ),
                                   args=u0,
-                                  saveat=t_save,
+                                  saveat=diffrax.SaveAt(ts=t_save),
                                   throw=False,
                                   stepsize_controller=controller,
                                   adjoint=adjoint)
         return sol
+
+
+    def solve_single_shooting_validation(
+            self,
+            solver: diffrax.AbstractSolver,
+            u0,
+            t_save: diffrax.SaveAt,
+            t_span: List,
+            adjoint: diffrax.AbstractAdjoint = diffrax.RecursiveCheckpointAdjoint(),
+            controller=diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8),
+    ):
+        """
+        Solve the UDE using single-shooting for comparison with validation data.
+        As this will not be wrapped in an eqx.filter_value_and_grad, we don't need to worry about stopping
+        gradients for various u0 components.
+        """
+
+        t0, t1 = t_span
+        sol = diffrax.diffeqsolve(
+            diffrax.ODETerm(self.func),
+            solver,
+            t0,
+            t1,
+            None,
+            y0=jnp.concatenate(
+                [
+                    u0[:self.func.state_dimension],
+                    self.get_augmented_state_variables(),  # insert trained, internal augmentation variables
+                    u0[-1:jnp.newaxis],
+                ],
+                axis=0
+            ),
+            args=u0,
+            saveat=t_save,
+            throw=False,
+            stepsize_controller=controller,
+            adjoint=adjoint
+        )
+        return sol
+
 
     @eqx.filter_vmap(
         in_axes={
@@ -244,10 +349,11 @@ class UDEProblem(eqx.Module):
         }
     )
     def solve_multiple_shooting(
-            self, solver,
-            u0, t_save,
-            # t_span,
-            adjoint=diffrax.RecursiveCheckpointAdjoint(),
+            self,
+            solver: diffrax.AbstractSolver,
+            u0: Array,
+            t_save: Array,
+            adjoint: diffrax.AbstractAdjoint = diffrax.RecursiveCheckpointAdjoint(),
             controller=diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8),
     ):
         """
@@ -258,16 +364,14 @@ class UDEProblem(eqx.Module):
         solver: diffrax.AbstractSolver
             The ODE solver to use.
         u0: array-like
-            The initial values for the ODE // not used for MS for now.
+            The initial values for the ODE - internal values passed from outside vmap.
         t_save: array-like
-            The time points at which to save the solution.
+            The time points at which to save the solution - internal values passed from outside vmap.
         controller: diffrax.PIDController, optional
             Adaptive stepsize controller.
         adjoint: diffrax.AbstractAdjoint, optional
             Adjoint method for backpropagation.
         """
-        if adjoint is None:
-            adjoint = diffrax.RecursiveCheckpointAdjoint()
 
         solution = diffrax.diffeqsolve(
             terms=diffrax.ODETerm(self.func),
@@ -275,8 +379,15 @@ class UDEProblem(eqx.Module):
             t0=t_save[0],
             t1=t_save[-1],
             dt0=None,
-            y0=u0,
-            saveat=diffrax.SaveAt(ts=t_save),  # ensure unique points
+            y0=jnp.concatenate(
+                [
+                    u0[:self.func.mlp.layers[0].in_features],  # state vars + potential augmentation - learnable
+                    jax.lax.stop_gradient(u0[-1:jnp.newaxis]),  # do NOT update network regularisation IV
+                    # u0[-1:jnp.newaxis],  # alternative, NOT USED: update network regularisation initial value
+                ],
+                axis=0
+            ),
+            saveat=diffrax.SaveAt(ts=t_save),
             stepsize_controller=controller,
             adjoint=adjoint
         )
@@ -284,120 +395,133 @@ class UDEProblem(eqx.Module):
         return solution
 
 
-    # def solve_multiple_shooting_loop(
-    #         self, solver,
-    #         u0, t_save,
-    #         # t_span,
-    #         adjoint=diffrax.RecursiveCheckpointAdjoint(),
-    #         controller=diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8),
-    # ):
-    #     """
-    #     Solve the UDE using multiple shooting.
-    #
-    #     Parameters
-    #     ----------
-    #     solver: diffrax.AbstractSolver
-    #         The ODE solver to use.
-    #     u0: array-like
-    #         The initial values for the ODE // not used for MS for now.
-    #     t_save: array-like
-    #         The time points at which to save the solution.
-    #     t_span: tuple
-    #         Start and end times for the integration // not used for MS for now.
-    #     controller: diffrax.PIDController, optional
-    #         Adaptive stepsize controller.
-    #     adjoint: diffrax.AbstractAdjoint, optional
-    #         Adjoint method for backpropagation.
-    #     """
-    #     if adjoint is None:
-    #         adjoint = diffrax.RecursiveCheckpointAdjoint()
-    #
-    #     if not isinstance(t_save, diffrax.SaveAt):
-    #         t_save = diffrax.SaveAt(ts=t_save)
-    #     num_windows = int(np.ceil(len(t_save.subs.ts) / (self.shooting_window_length - 1)))
-    #
-    #     solutions = []
-    #
-    #     for i in range(num_windows):
-    #         # Time range for the current shooting window
-    #         window_start = i * (self.shooting_window_length - 1)
-    #         window_end = window_start + self.shooting_window_length
-    #
-    #         t_window = t_save.subs.ts[window_start:window_end]
-    #         u0_window = self.initial_values[i]
-    #
-    #         # Solve for the current window
-    #         t_save_window = diffrax.SaveAt(ts=t_window)
-    #         sol = diffrax.diffeqsolve(
-    #             diffrax.ODETerm(self.func),
-    #             solver,
-    #             t0=t_window[0],
-    #             t1=t_window[-1],
-    #             dt0=None,
-    #             y0=u0_window,
-    #             saveat=t_save_window,
-    #             stepsize_controller=controller,
-    #             adjoint=adjoint
-    #         )
-    #         solutions.append(sol)
-    #
-    #     return solutions
-
-    def _solve_error(self):
-        raise ValueError(f"Invalid shooting mode: {self.shooting_mode}")
-
-
-    def copy(
+    def update_curriculum_time_mask(self, time: Tuple, mask: Tuple):
+        new_time = jnp.expand_dims(jnp.array(time), axis=0) if len(jnp.array(time).shape) == 1 else jnp.array(time)
+        new_mask = jnp.expand_dims(jnp.array(mask), axis=0) if len(jnp.array(mask).shape) == 1 else jnp.array(mask)
+        time_update = eqx.tree_at(
+            lambda m: m.t_save_windows,
             self,
-            new_mlp: Union[eqx.nn.MLP, CustomDropoutMLP] = None,
-            new_regularise_network: bool = None,
-            new_dynamic_parameters: jnp.ndarray = None,
-            new_options: dict = None,
+            new_time
+        )
+        return eqx.tree_at(
+            lambda m: m.masks,
+            time_update,
+            new_mask
+        )
+
+
+    def replace_mlp(
+            self,
+            new_mlp: Union[CustomDropoutMLP, eqx.nn.MLP],
+            regularise_network: Optional[bool] = None,
+            switch_to_inference: bool = False
     ):
         """
-        Creates a copy of the UDEProblem with an optional new MLP for the UDEFunction.
-        This allows to get a copy of the model for inference in case we are using Dropout layers in the MLP.
-
+        Replaces the MLP in the UDEFunction with a new one.
         Parameters
         ----------
-        new_mlp : eqx.nn.MLP or eqx.Module, optional
-            If provided, this will replace the existing MLP in the copied UDEFunction.
-        new_regularise_network: bool
-            If provided, this will replace the existing regularise_network flag in the copied UDEFunction.
-        new_dynamic_parameters: jnp.ndarray
-            If provided, this will overwrite the existing self.func.dynamic_parameters
-        new_options: dict
-            If provided, this will replace the existing self.func.options (e.g. linear/log10 scale to estimate parameters)
+        new_mlp:
+            The new MLP to use.
+        regularise_network: Optional[bool] (default None)
+            If not None, regularise_network flag will be set to this value.
+        switch_to_inference: bool (default False)
+            If True, MLP will be set to inference mode (dropout disabled).
+
         Returns
         -------
         UDEProblem
             A new instance of UDEProblem with the specified modifications.
         """
-        dynamical_model = self.dynamical_model
-        dynamic_parameters = new_dynamic_parameters if new_dynamic_parameters is not None \
-            else self.func.dynamic_parameters
-        options = new_options if new_options is not None \
-            else self.func.options
-        state_dimension = self.func.state_dimension
-        mlp = new_mlp if new_mlp is not None else self.func.mlp
-        training_horizon = self.training_horizon
-        shooting_mode = self.shooting_mode
-        shooting_window_length = self.shooting_window_length
-        shooting_iv_init = self.shooting_iv_init
-        # ms_starts = self.ms_starts
-        # ms_ends = self.ms_ends
-        ms_t_save_windows = self.ms_t_save_windows
-        initial_values = self.initial_values
-        u0_guess = self.u0_guess
-        init_random_seed = self.init_random_seed
-        regularise_network = new_regularise_network if new_regularise_network is not None \
-            else self.func.regularise_network
-        return UDEProblem(
-            dynamical_model, dynamic_parameters, mlp, options, state_dimension,
-            training_horizon, shooting_mode, shooting_window_length, shooting_iv_init, u0_guess,
-            init_random_seed, regularise_network,
-            t_save_train=None,
-            initial_values=initial_values, ms_t_save_windows=ms_t_save_windows,
+        new_model = eqx.tree_at(
+            lambda m: m.func.mlp,
+            self,
+            new_mlp if not switch_to_inference else eqx.nn.inference_mode(new_mlp, value=True)
+        )
+        if regularise_network is not None:
+            new_model = eqx.tree_at(
+                lambda m: m.func.regularise_network,
+                new_model,
+                regularise_network
+            )
+            new_model = eqx.tree_at(
+                lambda m: m.initial_values,
+                new_model,
+                jnp.concatenate([self.initial_values, jnp.zeros((self.initial_values.shape[0], 1))], axis=1)
+            )
+        return new_model
+
+
+    def replace_dynamic_parameters(self, new_dynamic_parameters: jnp.ndarray):
+        """
+        Replaces the dynamic parameters in the UDEFunction with new ones.
+        Parameters
+        ----------
+        new_dynamic_parameters: jnp.ndarray
+            The new dynamic parameters to use.
+
+        Returns
+        -------
+        UDEProblem
+            A new instance of UDEProblem with the specified modifications.
+        """
+        assert isinstance(new_dynamic_parameters, jnp.ndarray), \
+            f"New dynamic parameters must be a jnp.ndarray, not {type(new_dynamic_parameters)}"
+        assert new_dynamic_parameters.shape == self.func.dynamic_parameters.shape, \
+            (f"New dynamic parameters shape {new_dynamic_parameters.shape} does not match "
+             f"existing shape {self.func.dynamic_parameters.shape}!")
+        return eqx.tree_at(
+            lambda m: m.func.dynamic_parameters,
+            self,
+            new_dynamic_parameters
+        )
+
+
+    def zero_last_initial_values(self):
+        """
+        Zeroes the last initial values in the UDEProblem.
+        """
+        return eqx.tree_at(
+            lambda m: m.initial_values,
+            self,
+            jnp.concatenate(
+                [
+                    self.initial_values[:-(self.curriculum_stage - 1)],
+                    jnp.zeros((self.curriculum_stage - 1, self.initial_values.shape[1]))
+                ],
+                axis=0
+            )
+        )
+
+
+    def replace_options(self, new_options: dict):
+        """
+        Replaces the options in the UDEFunction with new ones.
+        Parameters
+        ----------
+        new_options: dict
+            The new options to use.
+
+        Returns
+        -------
+        UDEProblem
+            A new instance of UDEProblem with the specified modifications.
+        """
+        assert isinstance(new_options, dict), f"New options must be a dict, not {type(new_options)}"
+        return eqx.tree_at(
+            lambda m: m.func.options,
+            self,
+            new_options
+        )
+
+
+    def advance_curriculum_stage(self):
+        """
+        Advances the curriculum learning stage by one.
+        """
+        return eqx.tree_at(
+            lambda m: m.curriculum_stage,
+            self,
+            self.curriculum_stage + 1
         )
 
 
@@ -435,11 +559,20 @@ class UDEProblem(eqx.Module):
             'initial_values': np.array(
                 self.initial_values
             ).tolist() if self.initial_values is not None else None,
-            'ms_t_save_windows': np.array(
-                self.ms_t_save_windows
-            ).tolist() if self.ms_t_save_windows is not None else None,
+            'masks': np.array(
+                self.masks
+            ).tolist() if self.masks is not None else None,
+            't_save_windows': np.array(
+                self.t_save_windows
+            ).tolist() if self.t_save_windows is not None else None,
             'init_random_seed': self.init_random_seed,
             'regularise_network': self.func.regularise_network,
+            'curriculum_learning': self.curriculum_learning,
+            'curriculum_params': {
+                'time': np.array(self.curriculum_params["time"]).tolist() if self.curriculum_params is not None else None,
+                'mask': np.array(self.curriculum_params["mask"]).tolist() if self.curriculum_params is not None else None
+            },
+            "curriculum_stage": self.curriculum_stage if self.curriculum_learning else None,
             'in_size': self.func.mlp.in_size,
             'out_size': self.func.mlp.out_size,
             'width_size': self.func.mlp.width_size,
@@ -537,7 +670,15 @@ class UDEProblem(eqx.Module):
                 regularise_network=hyperparams["regularise_network"],
                 # Multiple-shooting attributes
                 initial_values=jnp.array(hyperparams["initial_values"], dtype=jnp.float64),
-                ms_t_save_windows=jnp.array(hyperparams["ms_t_save_windows"], dtype=jnp.float64)
+                masks=jnp.array(hyperparams["masks"], dtype=jnp.float64),
+                t_save_windows=jnp.array(hyperparams["t_save_windows"], dtype=jnp.float64),
+                # Curriculum learning attributes
+                curriculum_learning=hyperparams["curriculum_learning"],
+                curriculum_params={
+                    "time": tuple(hyperparams["curriculum_params"]["time"]),
+                    "mask": tuple(hyperparams["curriculum_params"]["mask"]),
+                },
+                curriculum_stage=hyperparams["curriculum_stage"],
             )
         return ude_prob
 
@@ -600,3 +741,42 @@ def build_mlp(
     else:
         raise ValueError("For use_dropout to be True, dropout_rate cannot be None.")
     return mlp
+
+
+def generate_ms_time_and_mask(
+        num_windows: int,
+        shooting_window_length: int,
+        training_horizon: int,
+        t_save: diffrax.SaveAt
+) -> Tuple[jnp.array, jnp.array]:
+    # Compute auxiliary MS variables
+    t_windows, masks = [], []
+    for i in range(num_windows):
+        # Select the core timepoints
+        start_idx = i * (shooting_window_length - 1)
+        end_idx = (i + 1) * shooting_window_length - i
+        core_indices = slice(start_idx, end_idx)
+        core_values = t_save.subs.ts[core_indices]
+
+        # Construct full-length window
+        window = np.zeros(training_horizon)
+        window[: start_idx] = core_values[0]
+        window[core_indices] = core_values
+        window[end_idx:] = core_values[-1]
+        t_windows.append(window)
+
+        # Construct mask
+        mask = np.zeros(training_horizon)
+        mask[core_indices] = 1
+        masks.append(mask)
+
+    t_save_windows = jnp.array(t_windows)
+    masks = jnp.array(masks)
+
+    # import matplotlib.pyplot as plt
+    # for arr, label in zip([t_save_windows, masks], ["time", "mask"]):
+    #     plt.imshow(arr, vmin=0, vmax=1)
+    #     ax = plt.gca()
+    #     ax.yaxis.set_visible(False)  # Hide y-axis labels and ticks
+    #     plt.savefig(f"multiple.{shooting_window_length}.noCL.{label}.pdf")
+    return t_save_windows, masks

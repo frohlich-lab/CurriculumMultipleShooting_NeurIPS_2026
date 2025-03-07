@@ -121,8 +121,9 @@ def mlp_train(
 
         if conf.use_dropout:
             # Get a copy of the model for inference
-            inference_model = model.copy(
-                new_mlp=eqx.nn.inference_mode(model.func.mlp, value=True)
+            inference_model = model.replace_mlp(
+                new_mlp=model.func.mlp,
+                switch_to_inference=True,
             )
         else:
             # no need for difference in training/inference behaviour
