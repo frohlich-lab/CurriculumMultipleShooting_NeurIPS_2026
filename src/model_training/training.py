@@ -165,7 +165,7 @@ def make_step(
         opt_params = params.fast
     else:
         opt_params = params
-    (loss_value, mlp_output_reg), grads = loss_grad_fn(
+    (loss_value, reg_loss_dict), grads = loss_grad_fn(
         prob_params=opt_params,
         prob_static=static,
         u0=u0,
@@ -197,7 +197,7 @@ def make_step(
         )
     updates, opt_state = opt.update(grads, opt_state, params)
     params = eqx.apply_updates(params, updates)
-    return params, opt_state, loss_value, mlp_output_reg, grads, hessian_metrics
+    return params, opt_state, loss_value, reg_loss_dict, grads, hessian_metrics
 
 
 # MAIN TRAINING FUNCTION
@@ -549,7 +549,7 @@ def train(
         for nn_epoch in range(n_epochs):
             if conf.shooting_mode == "multiple":
                 ivs.append(params.initial_values)
-            params, opt_state, loss_train, nn_contrib_reg, grads, hessian_metrics = make_step(
+            params, opt_state, loss_train, reg_loss_dict, grads, hessian_metrics = make_step(
                 params=params,
                 static=static,
                 opt=opt,
@@ -630,7 +630,7 @@ def train(
                 }]
             )
             # log loss_train, loss_val, learning rate, param values and grads on log-spaced epochs
-            if nn_epoch in log_epochs:
+            if (nn_epoch in log_epochs) or (nn_epoch == 0):
                 wandb.log(
                     {
                         "loss_train": loss_train,
@@ -677,15 +677,17 @@ def train(
                 if conf.output_reg > 0:
                     wandb.log(
                         {
-                            "output_regularisation_loss": nn_contrib_reg,
+                            "output_regularisation_loss": reg_loss_dict["output_reg"],
                         },
                         step=epoch+nn_epoch
                     )
-                    partial_results_df = partial_results_df.assign(nn_contrib_reg=nn_contrib_reg)
+                    partial_results_df = partial_results_df.assign(nn_contrib_reg=reg_loss_dict["output_reg"])
 
                 print(
                     f"epoch {nn_epoch} | "
                     f"loss_train {loss_train} | "
+                    f"nn_contrib_reg {reg_loss_dict['output_reg'] if reg_loss_dict is not None else 'n/a'} | "
+                    f"discontinuity_penalty {reg_loss_dict['discontinuity_penalty'] if reg_loss_dict is not None else 'n/a'} | "
                     f"loss_val {loss_val} | "
                 )
 

@@ -35,6 +35,7 @@ def compute_loss(
     if shooting_mode == "single":
         sol = prob.solve_single_shooting(diffrax.Tsit5(), u0, t_save, t_span, adjoint=adjoint)
         loss = loss_fn(sol=sol, data=data)
+        discontinuity_penalty = 0
     elif shooting_mode == "multiple":
         sol = prob.solve(diffrax.Tsit5(), u0, t_save, t_span, adjoint=adjoint)
         if not isinstance(t_save, diffrax.SaveAt):
@@ -62,10 +63,10 @@ def compute_loss(
                                             min((i + 1) * prob_static.shooting_window_length - i, len(data)))]
             ])
         # Average losses and add discontinuity penalty
-        loss = (
-            jnp.mean(losses)
-            + multiple_shooting_penalty * compute_discontinuity_penalty(sol, prob_static.func.state_dimension)
+        discontinuity_penalty = compute_discontinuity_penalty(
+            sol, prob_static.func.state_dimension, multiple_shooting_penalty
         )
+        loss = jnp.mean(losses) + discontinuity_penalty
     else:
         raise ValueError(f"Unknown shooting mode: {shooting_mode}!")
 
@@ -122,7 +123,7 @@ def compute_loss(
         else:
             mlp_output_reg = 0
         loss += (mlp_reg + mlp_output_reg)
-        return loss, mlp_output_reg
+        return loss, {"mlp_reg": mlp_reg, "output_reg": mlp_output_reg, "discontinuity_penalty": discontinuity_penalty}
     return loss, None
 
 
