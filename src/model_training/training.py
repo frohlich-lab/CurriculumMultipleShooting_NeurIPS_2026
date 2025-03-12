@@ -855,11 +855,10 @@ def train(
 
     # Save results dataframe to CSV
     results_total = pd.concat(results_dfs)
-    results_total.to_csv(
-        results_dir /
-        conf.dynamical_model /
-        (conf.__str__() + "_results.csv")
-    )
+    results_save_dir = results_dir / conf.dynamical_model
+    if not results_save_dir.exists():
+        results_save_dir.mkdir(exist_ok=True, parents=True)
+    results_total.to_csv(results_save_dir / (conf.__str__() + "_results.csv"))
 
     # Get W&B run directory
     # wandb_stripped_dir = wandb.run.dir.rsplit('/files', 1)[0]

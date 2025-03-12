@@ -1,5 +1,5 @@
 # Stage 1: Build dependencies
-FROM python:3.12-slim as builder
+FROM python:3.12-slim AS builder
 
 # Set /usr/wheels as working directory for pre-build
 WORKDIR /usr/wheels
