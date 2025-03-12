@@ -7,7 +7,7 @@ import numpy as np
 
 from jaxtyping import Array
 from types import SimpleNamespace
-from typing import Any, List, Union
+from typing import Any, List, Optional, Union
 
 
 def get_mse(pred: Array, data: Array):
@@ -15,10 +15,15 @@ def get_mse(pred: Array, data: Array):
 
 def get_masked_mse(pred: Array, data: Array, mask: Array):
     # Masked mean square error - mean is computed only over non-zero terms
-    return jnp.sum(mask[:, None] * (pred - data) ** 2) / (jnp.sum(mask) * pred.shape[1])  # TODO -- does this hold for other cases?
+    return jnp.sum(jnp.expand_dims(mask, axis=-1) * (pred - data) ** 2) / (jnp.sum(mask) * pred.shape[1])
 
 def get_sse(pred: Array, data: Array):
     return jnp.sum((pred - data) ** 2)
+
+def get_masked_sse(pred: Array, data: Array, mask: Array):
+    # Masked sum square error - sum is computed only over non-zero terms
+    return jnp.sum(jnp.expand_dims(mask, axis=-1) * (pred - data) ** 2)
+
 
 # TODO @GiacomoFabrini - add unit test
 def regularise_mlp(
@@ -57,26 +62,28 @@ def compute_discontinuity_penalty(
         sol: SimpleNamespace,
         cl_stage: int,
         state_dimension: int,
-        reg_strength: float
+        reg_strength: float,
+        masks: Optional[Array]
 ):
     """
     Compute the discontinuity penalty by measuring the sum of square errors
     between the last state of each shooting window and the first state of the next.
     """
-    # TODO RESTORE SSE instead of MSE after comparison!!!
+    # TODO - If comparing with Development_Docker, reinstate MSE instead of SSE!
     if cl_stage < 2:  # without CL, curriculum_stage is set to 1 by default
-        mse = get_mse(
+        sse = get_sse(
             sol.ys[:-1, -1, :state_dimension], # from first to penultimate window, endpoint
             sol.ys[1:, 0, :state_dimension]  # from second to last window, startpoint
         )
-    elif (cl_stage > 2) and (cl_stage < sol.ys.shape[0]):
-        mse = get_mse(
-            sol.ys[:-cl_stage, -1, :state_dimension],  # exclude invalid windows
-            sol.ys[1:-(cl_stage - 1), 0, :state_dimension]
+    elif (cl_stage >= 2) and (cl_stage < sol.ys.shape[0]):
+        sse = get_masked_sse(
+            sol.ys[:-cl_stage, :, :state_dimension],  # exclude invalid windows
+            sol.ys[1:-(cl_stage - 1), :, :state_dimension],
+            masks[:-cl_stage].astype(int) & masks[1:-(cl_stage - 1)].astype(int)
         )
     else: # no discontinuity penalty for single valid window!
-        mse = 0
-    return reg_strength * mse
+        sse = 0
+    return reg_strength * sse
 
 
 def _init_glorot(

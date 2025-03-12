@@ -37,7 +37,8 @@ def compute_loss(
             sol=sol,
             cl_stage=prob.curriculum_stage,
             state_dimension=prob_static.func.state_dimension,
-            reg_strength=multiple_shooting_penalty
+            reg_strength=multiple_shooting_penalty,
+            masks=jax.lax.stop_gradient(prob.masks)
         )
         loss +=  discontinuity_penalty
     else:
