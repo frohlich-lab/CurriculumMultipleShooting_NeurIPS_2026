@@ -147,7 +147,7 @@ def log_fit_plots(
 
 
 # NN OPTIMISATION STEP
-# @eqx.filter_jit
+@eqx.filter_jit
 def make_step(
         params: Union[PyTree, UDEProblem],
         static: Union[PyTree, UDEProblem],

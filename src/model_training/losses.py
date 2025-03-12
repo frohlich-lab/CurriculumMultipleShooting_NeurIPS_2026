@@ -10,7 +10,7 @@ from typing import Callable
 
 
 
-# @eqx.filter_jit
+@eqx.filter_jit
 def compute_loss(
         prob_params, prob_static,
         u0, t_save, t_span,
