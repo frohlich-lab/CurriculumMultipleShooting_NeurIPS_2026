@@ -578,21 +578,30 @@ def setup_curriculum_learning(
                         time.tolist()
                     ),
                     "mask": tuple(
-                        mask.tolist()
+                        mask.astype(int).tolist()
                     )
                 }
         else:
             raise ValueError(f"Curriculum learning cannot be used together with shooting_mode: {shooting_mode}")
 
         # import matplotlib.pyplot as plt
-        # for attribute in ["time", "mask"]:
+        # for attribute in ["time", "mask", "mask_overlap"]:
         #     plt.subplots(len(stage_dict.keys()), 1, figsize=(10, 3*len(stage_dict.keys())))
         #     for stage in sorted(stage_dict.keys()):
         #         plt.subplot(len(stage_dict.keys()), 1, stage)
-        #         if len(jnp.array(stage_dict[stage][attribute]).shape) == 1:
-        #             arr = jnp.expand_dims(jnp.array(stage_dict[stage][attribute]), axis=0)
+        #         if attribute in ["time", "mask"]:
+        #             if len(jnp.array(stage_dict[stage][attribute]).shape) == 1:
+        #                 arr = jnp.expand_dims(jnp.array(stage_dict[stage][attribute]), axis=0)
+        #             else:
+        #                 arr = jnp.array(stage_dict[stage][attribute])
         #         else:
-        #             arr = jnp.array(stage_dict[stage][attribute])
+        #             if len(jnp.array(stage_dict[stage]["mask"]).shape) == 1:
+        #                 arr = jnp.expand_dims(
+        #                     jnp.array(stage_dict[stage]["mask"])[:-1] & jnp.array(stage_dict[stage]["mask"])[1:],
+        #                     axis=0
+        #                 )
+        #             else:
+        #                 arr = jnp.array(stage_dict[stage]["mask"])[:-1] & jnp.array(stage_dict[stage]["mask"])[1:]
         #         plt.imshow(arr, vmin=0, vmax=1, aspect="auto")
         #         ax = plt.gca()
         #         ax.yaxis.set_visible(False)  # Hide y-axis labels and ticks
