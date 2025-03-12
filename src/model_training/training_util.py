@@ -1016,6 +1016,7 @@ def check_and_progress_curriculum(
                 jnp.abs(jnp.array(model_save_steps_start) - nn_epoch)
             )
         ) + 1  # 1-counting
+        model = eqx.combine(params, static)
         model = model.update_curriculum_time_mask(
             curriculum_params[cl_stage]["time"],
             curriculum_params[cl_stage]["mask"]
