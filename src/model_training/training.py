@@ -695,9 +695,9 @@ def train(
                 print(
                     f"epoch {nn_epoch} | "
                     f"loss_train {loss_train} | "
-                    f"discontinuity {reg_loss_dict['discontinuity_penalty'] if reg_loss_dict is not None else 'n/a'} | "
-                    f"mlp_reg {reg_loss_dict['mlp_reg'] if reg_loss_dict is not None else 'n/a'} | "
                     f"nn_contrib_reg {reg_loss_dict['nn_contrib_reg'] if reg_loss_dict is not None else 'n/a'} | "
+                    f"discontinuity_penalty {reg_loss_dict['discontinuity_penalty'] if reg_loss_dict is not None else 'n/a'} | "
+                    f"mlp_reg {reg_loss_dict['mlp_reg'] if reg_loss_dict is not None else 'n/a'} | "
                     f"loss_val {loss_val} | "
                 )
 
