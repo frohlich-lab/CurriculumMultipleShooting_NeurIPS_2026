@@ -268,6 +268,9 @@ class UDEProblem(eqx.Module):
     def get_augmented_state_variables(self):
         return self.initial_values[:, self.func.state_dimension:self.func.mlp.layers[0].in_features][0]
 
+    def get_auxiliary_output_variable(self):
+        return self.initial_values[:, self.func.mlp.layers[0].in_features:jnp.newaxis][0]
+
 
     def solve_single_shooting(
             self,
@@ -291,7 +294,7 @@ class UDEProblem(eqx.Module):
                                       [
                                           jax.lax.stop_gradient(u0[:self.func.state_dimension]),
                                           self.get_augmented_state_variables(),  # only update initial value for augmentation vars
-                                          jax.lax.stop_gradient(u0[-1:jnp.newaxis]),
+                                          jax.lax.stop_gradient(self.get_auxiliary_output_variable()),
                                       ],
                                       axis=0
                                   ),
@@ -329,7 +332,7 @@ class UDEProblem(eqx.Module):
                 [
                     u0[:self.func.state_dimension],
                     self.get_augmented_state_variables(),  # insert trained, internal augmentation variables
-                    u0[-1:jnp.newaxis],
+                    self.get_auxiliary_output_variable(),
                 ],
                 axis=0
             ),
