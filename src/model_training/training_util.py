@@ -936,7 +936,7 @@ def prep_bfgs_training(model, zero_out_mlp, use_output_reg: bool):
     model_bfgs = model.replace_mlp(
         new_mlp=mlp_replacement,
         switch_to_inference=True,
-        regularise_network=use_output_reg if use_output_reg else None
+        regularise_network=use_output_reg if (use_output_reg and not model.func.regularise_network) else None
     )
     return model_bfgs
 
