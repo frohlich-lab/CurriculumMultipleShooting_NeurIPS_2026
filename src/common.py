@@ -54,7 +54,7 @@ class Conf(dict):
     multiple_shooting_penalty: float = 0.0
     batch_size: int = 64  # batch size for window-batching
     # Curriculum Learning (growing fits)
-    curriculum_learning: bool = True
+    curriculum_learning: bool = False
     num_curriculum_steps: int = 5
     max_curriculum_epochs: Optional[int] = 2000
     serialise_curriculum_models: bool = False
@@ -94,7 +94,7 @@ class Conf(dict):
     # Plotting behaviour
     save_plots: bool = False
 
-    def __str__(self):
+    def __str__(self, serialise_model: bool = False) -> str:
         """
         Return string representation of the configuration. Removes unwanted fields.
 
@@ -108,6 +108,8 @@ class Conf(dict):
             "second_curriculum_learning",
             "experiment_name", "save_plot",
         ]
+        if serialise_model:
+            unwanted_fields.append("dynamical_model")
         # Remove some default values from the run name to avoid excessively long filenames
         if self.final_activation_fn_name == "identity":
             unwanted_fields.append("final_activation_fn_name")
