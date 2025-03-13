@@ -160,6 +160,7 @@ def make_step(
         conf: Conf,
         loss_grad_fn: Callable,
         compute_hessian_metrics: bool,
+        base_loss_fn: Callable,
 ):
     # TODO @GiacomoFabrini - check whether LookAhead still works with newer changes! If not, discuss and decide whether to keep or remove
     if conf.use_lookahead:
@@ -193,7 +194,7 @@ def make_step(
     elif compute_hessian_metrics:
         args = (u0, t_save, t_span, input_data)
         hessian_metrics = get_hessian_metrics(
-            get_hessian(opt_params, static, args, conf),
+            get_hessian(opt_params, static, args, conf, base_loss_fn),
             return_eigs_svs=False,
         )
     updates, opt_state = opt.update(grads, opt_state, params)
@@ -586,6 +587,7 @@ def train(
                 conf=conf,
                 loss_grad_fn=loss_dict["loss_grad_fn"],
                 compute_hessian_metrics=(conf.compute_hessian_metrics and (nn_epoch in log_epochs)),
+                base_loss_fn=loss_dict["base_loss_fn"],
             )
 
             if metric_handler.check_whether_should_break(loss_train):

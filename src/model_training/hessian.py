@@ -7,7 +7,7 @@ from jaxtyping import PyTree
 from src.model_training.training_util import get_hessian_metrics, make_grads_finite
 from src.model_training.losses import compute_hess_array, compute_batch_hess_array
 from src.ude_problem import UDEProblem
-from typing import Union
+from typing import Callable, Union
 
 
 # HESSIAN HELPER FUNCTIONS
@@ -16,9 +16,11 @@ def get_hessian(
         static: Union[PyTree, UDEProblem],
         args: tuple,
         conf: Conf,
+        base_loss_fn: Callable,
 ):
     # define hessian functions for different dynamical models
-    hessian_fn = compute_hess_array if conf.shooting_mode != "window_batch" else compute_batch_hess_array
+    hessian_fn = partial(compute_hess_array, loss_fn=base_loss_fn) if conf.shooting_mode != "window_batch" \
+        else partial(compute_batch_hess_array, loss_fn=base_loss_fn)
     # unpack args
     u0, t_save, t_span, input_data = args
     # flatten params PyTree and get unflatten function
