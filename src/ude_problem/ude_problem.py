@@ -105,8 +105,8 @@ def initialize_single(
 ) -> tuple[Tuple, Tuple, Array]:
     if curriculum_learning:
         if curriculum_params is not None:
-            t_windows = jnp.expand_dims(jnp.array(curriculum_params["time"]), axis=0)
-            masks = jnp.expand_dims(jnp.array(curriculum_params["mask"]), axis=0)
+            t_windows = tuple(jnp.expand_dims(jnp.array(curriculum_params["time"]), axis=0).tolist())
+            masks = tuple(jnp.expand_dims(jnp.array(curriculum_params["mask"]), axis=0).tolist())
         else:
             raise ValueError("curriculum_indices must be provided if curriculum_learning is True")
     else:
