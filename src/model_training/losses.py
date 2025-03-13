@@ -38,7 +38,7 @@ def compute_loss(
             cl_stage=prob.curriculum_stage,
             state_dimension=prob_static.func.state_dimension,
             reg_strength=multiple_shooting_penalty,
-            masks=jax.lax.stop_gradient(prob.masks)
+            masks=jnp.array(prob.masks)
         )
         loss +=  discontinuity_penalty
     else:
@@ -55,12 +55,12 @@ def compute_loss(
             mlp_output_reg = regularise_mlp_contribution(
                 l2_norm_nn_contrib=sol.ys[:, -1],
                 timespan_length=(t_save.subs.ts[-1] - t_save.subs.ts[0]) if eval_mode  # validation
-                    else jax.lax.stop_gradient(prob.t_save_windows[0][-1]-prob.t_save_windows[0][0]),  # training
+                    else jnp.array(prob.t_save_windows)[0][-1]-jnp.array(prob.t_save_windows)[0][0],  # training
                 reg_strength=output_reg
             )
         elif shooting_mode == "multiple":
-            valid_windows = jax.lax.stop_gradient(prob.t_save_windows) if prob.curriculum_stage < 2 \
-                else jax.lax.stop_gradient(prob.t_save_windows)[:-(prob.curriculum_stage - 1), :]
+            valid_windows = jnp.array(prob.t_save_windows) if prob.curriculum_stage < 2 \
+                else jnp.array(prob.t_save_windows)[:-(prob.curriculum_stage - 1), :]
             # TODO @GiacomoFabrini - should this be a sum or a mean?
             mlp_output_reg = jnp.sum(jnp.array(
                 [
@@ -69,7 +69,7 @@ def compute_loss(
                         timespan_length=(t_save_window[-1] - t_save_window[0]),
                         reg_strength=output_reg
                     )
-                    for i, t_save_window in enumerate(jax.lax.stop_gradient(valid_windows))
+                    for i, t_save_window in enumerate(valid_windows)
                 ]
             ))
         else:

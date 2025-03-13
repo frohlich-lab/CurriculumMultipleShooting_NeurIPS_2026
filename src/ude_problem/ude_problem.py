@@ -33,7 +33,7 @@ def initialize_ms(
         curriculum_learning: bool = False,
         curriculum_params: Optional[dict[str, tuple]] = None,
         random_seed: int = 0,
-) -> tuple[Array, Array, Array]:
+) -> tuple[Tuple, Tuple, Array]:
     """
     Initialize auxiliary variables (num_windows, starting and ending points,
     save timepoints) and learnable initial values for the shooting windows.
@@ -66,7 +66,7 @@ def initialize_ms(
 
     if curriculum_learning and (curriculum_params is not None):
         # pre-computed
-        t_save_windows, masks = jnp.array(curriculum_params["time"]), jnp.array(curriculum_params["mask"])
+        t_save_windows, masks = curriculum_params["time"], curriculum_params["mask"]
     elif curriculum_learning and (curriculum_params is None):
         raise ValueError("curriculum_params must be provided if curriculum_learning is True!")
     else:
@@ -102,7 +102,7 @@ def initialize_single(
     u0_guess: Tuple,
     curriculum_learning: bool,
     curriculum_params: Optional[dict[str, tuple]] = None
-) -> tuple[Array, Array, Array]:
+) -> tuple[Tuple, Tuple, Array]:
     if curriculum_learning:
         if curriculum_params is not None:
             t_windows = jnp.expand_dims(jnp.array(curriculum_params["time"]), axis=0)
@@ -110,8 +110,8 @@ def initialize_single(
         else:
             raise ValueError("curriculum_indices must be provided if curriculum_learning is True")
     else:
-        t_windows = jnp.array([t_save.subs.ts])
-        masks = jnp.array([jnp.ones(training_horizon)])
+        t_windows = tuple(jnp.array([t_save.subs.ts]).tolist())
+        masks = tuple(jnp.array([jnp.ones(training_horizon)]).tolist())
     u0 = jnp.expand_dims(jnp.array(u0_guess), axis=0)
     return t_windows, masks, u0
 
@@ -133,8 +133,8 @@ class UDEProblem(eqx.Module):
     shooting_mode: str
     shooting_window_length: Optional[int]
     shooting_iv_init: Optional[str]
-    t_save_windows: Optional[Array]
-    masks: Optional[Array]
+    t_save_windows: Optional[Tuple]
+    masks: Optional[Tuple]
     initial_values: Optional[Array]
     u0_guess: Optional[Tuple]
     init_random_seed: Optional[int]
@@ -404,12 +404,12 @@ class UDEProblem(eqx.Module):
         time_update = eqx.tree_at(
             lambda m: m.t_save_windows,
             self,
-            new_time
+            tuple(new_time.tolist())
         )
         return eqx.tree_at(
             lambda m: m.masks,
             time_update,
-            new_mask
+            tuple(new_mask.tolist())
         )
 
 
@@ -751,7 +751,7 @@ def generate_ms_time_and_mask(
         shooting_window_length: int,
         training_horizon: int,
         t_save: diffrax.SaveAt
-) -> Tuple[jnp.array, jnp.array]:
+) -> Tuple[Tuple, Tuple]:
     # Compute auxiliary MS variables
     t_windows, masks = [], []
     for i in range(num_windows):
@@ -773,8 +773,8 @@ def generate_ms_time_and_mask(
         mask[core_indices] = 1
         masks.append(mask)
 
-    t_save_windows = jnp.array(t_windows)
-    masks = jnp.array(masks)
+    t_save_windows = tuple(jnp.array(t_windows).tolist())
+    masks = tuple(jnp.array(masks).tolist())
 
     # import matplotlib.pyplot as plt
     # for arr, label in zip([t_save_windows, masks], ["time", "mask"]):

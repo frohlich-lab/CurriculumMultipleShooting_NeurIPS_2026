@@ -79,7 +79,7 @@ def get_fit_dfs(
             sol = prob.solve_multiple_shooting(
                 diffrax.Tsit5(),
                 prob.initial_values,
-                prob.t_save_windows,
+                jnp.array(prob.t_save_windows),
             )
         else:
             raise ValueError(f"Undefined shooting mode {prob.shooting_mode}.")

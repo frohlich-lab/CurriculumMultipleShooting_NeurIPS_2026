@@ -529,18 +529,18 @@ def setup_curriculum_learning(
             print(f"Multiple shooting + curriculum learning selected. Number of curriculum steps will be "
                   f"overridden with {num_windows}.")
             new_num_curriculum_steps = num_windows
-            lengths = [min((i+1)*shooting_window_length-i, len(data)) for i in range(num_windows)]
+            # lengths = [min((i+1)*shooting_window_length-i, len(data)) for i in range(num_windows)]
             first_time, first_mask = generate_ms_time_and_mask(
                 num_windows, shooting_window_length, len(data), t_save
             )
             # Fill the incremental data list with the incremental data
-            for step, length in zip(range(1, new_num_curriculum_steps + 1), lengths):
+            for step in range(1, new_num_curriculum_steps + 1):
                 start_epoch = int((step - 1) * (switch_epoch / (new_num_curriculum_steps-1)))
                 end_epoch = int(step * (switch_epoch / (new_num_curriculum_steps-1))) if step < new_num_curriculum_steps \
                     else n_epoch  # last CL stage lasts until final NN training epoch
                 if step == 1:
-                    time = first_time
-                    mask = first_mask
+                    time = jnp.array(first_time)
+                    mask = jnp.array(first_mask)
                 # elif step == new_num_curriculum_steps:
                 #     time = jnp.expand_dims(jnp.array(t_save.subs.ts), axis=0)
                 #     mask = jnp.expand_dims(jnp.ones(len(data)), axis=0)
@@ -573,7 +573,7 @@ def setup_curriculum_learning(
                 stage_dict[step] = {
                     "start": start_epoch,
                     "end": end_epoch,
-                    "length": length,
+                    "length": mask[0].sum(),
                     "time": tuple(
                         time.tolist()
                     ),
@@ -963,6 +963,7 @@ def get_sol_and_loss_validation(
     )
     return sol, loss
 
+
 def get_sol_and_loss_single_shooting(
         prob: UDEProblem,
         adjoint: diffrax.AbstractAdjoint,
@@ -972,13 +973,13 @@ def get_sol_and_loss_single_shooting(
     sol = prob.solve_single_shooting(
         diffrax.Tsit5(),
         prob.initial_values[0],  # pass 1D array
-        jax.lax.stop_gradient(prob.t_save_windows[0]),  # training: use internal t_save_windows, made into 1D array
+        jnp.array(prob.t_save_windows[0]),  # training: use internal t_save_windows, made into 1D array
         adjoint
     )
     loss = loss_fn(
         solution=sol.ys,
         data=data,
-        mask=jax.lax.stop_gradient(prob.masks.squeeze())
+        mask=jnp.array(prob.masks).squeeze()
     )
     return sol, loss
 
@@ -991,12 +992,12 @@ def get_sol_and_loss_multiple_shooting(
     sol = prob.solve_multiple_shooting(
         diffrax.Tsit5(),
         prob.initial_values,
-        jax.lax.stop_gradient(prob.t_save_windows),
+        jnp.array(prob.t_save_windows),
         adjoint
     )
     # TODO @GiacomoFabrini can this be simplified?
-    valid_masks = jax.lax.stop_gradient(prob.masks) if prob.curriculum_stage < 2 \
-        else jax.lax.stop_gradient(prob.masks)[:-(prob.curriculum_stage - 1), :]
+    valid_masks = jnp.array(prob.masks) if prob.curriculum_stage < 2 \
+        else jnp.array(prob.masks)[:-(prob.curriculum_stage - 1), :]
     # using vmap, shape of sol is: (batch/window, timepoint, state var)
     losses = jnp.array([
         get_masked_mse(
