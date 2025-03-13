@@ -62,7 +62,7 @@ def train_fides(
         wandb_log_final: bool = False
 ) -> tuple[UDEProblem, SimpleNamespace, UDEProblem, float, float, int, Optional[pd.DataFrame]]:
 
-    model_fides = prep_bfgs_training(model, zero_out_mlp)
+    model_fides = prep_bfgs_training(model, zero_out_mlp, bool(conf.output_reg or conf.mlp_reg_strength))
 
     # Split model_optx in learnable params and static component
     params, static = eqx.partition(model_fides, filter_spec)

@@ -45,7 +45,7 @@ def train_optimistix(
     # Additional training with BFGS via optimistix
     solver = optx.BFGS(**options)
 
-    model_optx = prep_bfgs_training(model, zero_out_mlp)
+    model_optx = prep_bfgs_training(model, zero_out_mlp, bool(conf.output_reg or conf.mlp_reg_strength))
 
     # Split model_optx in learnable params and static component
     params, static = eqx.partition(model_optx, filter_spec)
@@ -132,6 +132,12 @@ def optx_solve(
         if wandb_log and (iteration % 5 == 0):
             loss_train = fn_train(y, args)[0]
             loss_val = fn_val(y, args_val)[0]
+            # Include some logging (not automatic as in fides)
+            print(
+                f"epoch {starting_epoch+iteration} | "
+                f"loss_train: {loss_train} | "
+                f"loss_val: {loss_val}"
+            )
             wandb.log(
                 {
                     "loss_train": loss_train,

@@ -925,17 +925,18 @@ def augment_u0(u0):
     return jnp.concatenate([u0, jnp.zeros(zeros_shape)], axis=-1)
 
 
-def prep_bfgs_training(model, zero_out_mlp):
+def prep_bfgs_training(model, zero_out_mlp, use_output_reg: bool):
     # Zero out MLP if needed (mechanistic fit only)
     if zero_out_mlp:
         mlp_replacement = set_weight_bias(model.func.mlp, 0.0, jax.random.PRNGKey(0))
     else:
         mlp_replacement = model.func.mlp
 
-    # Set dropout behaviour to be deterministic
+    # Set dropout behaviour to be deterministic and enable output/neural network contribution regularisation
     model_bfgs = model.replace_mlp(
         new_mlp=mlp_replacement,
-        switch_to_inference=True
+        switch_to_inference=True,
+        regularise_network=use_output_reg if use_output_reg else None
     )
     return model_bfgs
 
