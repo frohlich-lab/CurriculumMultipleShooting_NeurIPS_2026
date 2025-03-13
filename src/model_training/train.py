@@ -86,6 +86,8 @@ optx_config, options = option_args
 
 # Setup curriculum learning (if enabled)
 # TODO @GiacomoFabrini - this fails if N_EPOCHS = 0
+if conf.curriculum_learning and N_EPOCHS == 0:
+    raise ValueError(f"Number of NN training epochs must be > 0 for curriculum learning - found {N_EPOCHS}!")
 curriculum_stage_dict = setup_curriculum_learning(
         data=train_args.data,
         t_save=train_args.t_save,
@@ -131,6 +133,9 @@ early_stopping_params = EarlyStoppingParams(
 # ================================================================
 #                            TRAIN
 # ================================================================
+model_save_subdir = model_save_dir / conf.dynamical_model
+model_save_subdir.mkdir(parents=True, exist_ok=True)
+
 training_output = train(
     model=ude_problem,
     train_args=train_args,
@@ -143,7 +148,7 @@ training_output = train(
     max_iter_optx_mechanistic=MECHANISTIC_FIT_EPOCHS,
     n_epochs=N_EPOCHS,
     max_iter_optx_finetune=MAX_ITER_OPTX_FINETUNE,
-    model_save_dir=model_save_dir,
+    model_save_dir=model_save_subdir,
     plot_args=plot_args,
 )
 

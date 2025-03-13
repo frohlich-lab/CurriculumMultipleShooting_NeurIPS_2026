@@ -769,7 +769,7 @@ def train(
         # Update epoch
         epoch += 1
         # Serialise the best ADAM model
-        best_model.save(model_save_dir / (conf.__str__() + "_best_ADAM.eqx"))
+        best_model.save(model_save_dir / (conf.__str__(serialise_model=True) + "_best_ADAM.eqx"))
 
     # Train with BFGS via optimistix
     if max_iter_optx_finetune > 0:  # otherwise end training and return trained model
@@ -858,8 +858,7 @@ def train(
     # Save results dataframe to CSV
     results_total = pd.concat(results_dfs)
     results_save_dir = results_dir / conf.dynamical_model
-    if not results_save_dir.exists():
-        results_save_dir.mkdir(exist_ok=True, parents=True)
+    results_save_dir.mkdir(exist_ok=True, parents=True)
     results_total.to_csv(results_save_dir / (conf.__str__() + "_results.csv"))
 
     # Get W&B run directory
@@ -873,17 +872,17 @@ def train(
     # except subprocess.CalledProcessError as e:
     #     raise ValueError(f"Error syncing wandb directory: {e}")
     # Serialise best model overall
-    best_model.save(model_save_dir / (conf.__str__() + "_best_final.eqx"))
+    best_model.save(model_save_dir / (conf.__str__(serialise_model=True) + "_best_final.eqx"))
     if not conf.serialise_curriculum_models:
         # Return best_model on validation dataset
         return best_model
     else:
         for cl_ind, epoch in enumerate(model_save_steps_start):
             models_curriculum_stage_start[epoch].save(
-                model_save_dir / (conf.__str__() + f"_ADAM_CL{cl_ind}_start.eqx")
+                model_save_dir / (conf.__str__(serialise_model=True) + f"_ADAM_CL{cl_ind}_start.eqx")
             )
         for cl_ind, epoch in enumerate(model_save_steps_end):
             models_curriculum_stage_end[epoch].save(
-                model_save_dir / (conf.__str__() + f"_ADAM_CL{cl_ind}_end.eqx")
+                model_save_dir / (conf.__str__(serialise_model=True) + f"_ADAM_CL{cl_ind}_end.eqx")
             )
         return best_model, {**models_curriculum_stage_start, **models_curriculum_stage_end}

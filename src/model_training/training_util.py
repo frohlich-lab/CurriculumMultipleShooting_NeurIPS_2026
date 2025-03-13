@@ -494,7 +494,7 @@ def setup_curriculum_learning(
         if max_curriculum_epochs is None:
             raise ValueError("Max curriculum steps must be defined for curriculum learning!")
         elif max_curriculum_epochs <= 0 or max_curriculum_epochs > n_epoch:
-            raise ValueError("Max curriculum steps cannot be negative nor larger than number of epochs!")
+            raise ValueError(f"Max curriculum steps cannot be negative nor larger than number of epochs: {n_epoch}!")
 
         # Calculate the epoch at which to switch to full data
         switch_epoch = min(max_curriculum_epochs, n_epoch)
