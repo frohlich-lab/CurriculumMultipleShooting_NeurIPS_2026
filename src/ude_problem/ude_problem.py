@@ -279,30 +279,34 @@ class UDEProblem(eqx.Module):
             t_save: Array,
             adjoint: diffrax.AbstractAdjoint = diffrax.RecursiveCheckpointAdjoint(),
             controller=diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8),
+            max_steps: int = 10000
     ):
         """
         Solve the UDE using single-shooting (or single-shooting + CL) for training.
         u0 and t_save can be the same as the internal initial values and timepoints, respectively.
         """
         t0, t1 = [t_save[0], t_save[-1]]
-        sol = diffrax.diffeqsolve(diffrax.ODETerm(self.func),
-                                  solver,
-                                  t0,
-                                  t1,
-                                  None,
-                                  y0=jnp.concatenate(
-                                      [
-                                          jax.lax.stop_gradient(u0[:self.func.state_dimension]),
-                                          self.get_augmented_state_variables(),  # only update initial value for augmentation vars
-                                          jax.lax.stop_gradient(self.get_auxiliary_output_variable()),
-                                      ],
-                                      axis=0
-                                  ),
-                                  args=u0,
-                                  saveat=diffrax.SaveAt(ts=t_save),
-                                  throw=False,
-                                  stepsize_controller=controller,
-                                  adjoint=adjoint)
+        sol = diffrax.diffeqsolve(
+            diffrax.ODETerm(self.func),
+            solver,
+            t0,
+            t1,
+            None,
+            y0=jnp.concatenate(
+                [
+                    jax.lax.stop_gradient(u0[:self.func.state_dimension]),
+                    self.get_augmented_state_variables(),  # only update initial value for augmentation vars
+                    jax.lax.stop_gradient(self.get_auxiliary_output_variable()),
+                ],
+                axis=0
+            ),
+            args=u0,
+            saveat=diffrax.SaveAt(ts=t_save),
+            throw=False,
+            stepsize_controller=controller,
+            adjoint=adjoint,
+            max_steps=max_steps
+        )
         return sol
 
 
@@ -358,6 +362,7 @@ class UDEProblem(eqx.Module):
             t_save: Array,
             adjoint: diffrax.AbstractAdjoint = diffrax.RecursiveCheckpointAdjoint(),
             controller=diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8),
+            max_steps: int = 10000
     ):
         """
         Solve the UDE using multiple shooting.
@@ -374,6 +379,8 @@ class UDEProblem(eqx.Module):
             Adaptive stepsize controller.
         adjoint: diffrax.AbstractAdjoint, optional
             Adjoint method for backpropagation.
+        max_steps: int, optional
+            Maximum number of steps for diffeqsolve.
         """
 
         solution = diffrax.diffeqsolve(
@@ -392,7 +399,8 @@ class UDEProblem(eqx.Module):
             ),
             saveat=diffrax.SaveAt(ts=t_save),
             stepsize_controller=controller,
-            adjoint=adjoint
+            adjoint=adjoint,
+            max_steps=max_steps
         )
 
         return solution
