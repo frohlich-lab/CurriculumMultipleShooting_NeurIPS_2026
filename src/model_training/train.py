@@ -164,9 +164,9 @@ if conf.serialise_curriculum_models:
         sindy_model = curriculum_models[list(curriculum_models.keys())[-1]]
         get_sindy_formula(
             model=sindy_model,
-            u0=u0_val,
-            t_save=t_save_validation,
-            t_span=t_span_validation,
+            u0=val_args["u0"],
+            t_save=val_args["t_save"],
+            t_span=val_args["t_span"],
             settings=["MLP", "UDE"],
             use_derivatives=conf.sindy_use_derivatives,
         )
