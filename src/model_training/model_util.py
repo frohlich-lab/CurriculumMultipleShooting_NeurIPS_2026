@@ -6,8 +6,7 @@ import jax.tree_util as jtu
 import numpy as np
 
 from jaxtyping import Array
-from types import SimpleNamespace
-from typing import Any, List, Optional, Union
+from typing import Any, Union
 
 
 def get_mse(pred: Array, data: Array):
@@ -15,7 +14,7 @@ def get_mse(pred: Array, data: Array):
 
 def get_masked_mse(pred: Array, data: Array, mask: Array):
     # Masked mean square error - mean is computed only over non-zero terms
-    return jnp.sum(jnp.expand_dims(mask, axis=-1) * (pred - data) ** 2) / (jnp.sum(mask) * pred.shape[1])
+    return jnp.sum(jnp.expand_dims(mask, axis=-1) * (pred - data) ** 2) / (jnp.sum(mask) * pred.shape[-1])
 
 def get_sse(pred: Array, data: Array):
     return jnp.sum((pred - data) ** 2)
@@ -59,29 +58,24 @@ def regularise_mlp_contribution(
 
 
 def compute_discontinuity_penalty(
-        sol: SimpleNamespace,
-        cl_stage: int,
+        solutions: Array,
+        # cl_stage: int,
         state_dimension: int,
         reg_strength: float,
-        masks: Optional[Array]
+        masks: Array,
 ):
     """
     Compute the discontinuity penalty by measuring the sum of square errors
     between the last state of each shooting window and the first state of the next.
     """
     # TODO - If comparing with Development_Docker, reinstate MSE instead of SSE!
-    if cl_stage < 2:  # without CL, curriculum_stage is set to 1 by default
-        sse = get_sse(
-            sol.ys[:-1, -1, :state_dimension], # from first to penultimate window, endpoint
-            sol.ys[1:, 0, :state_dimension]  # from second to last window, startpoint
-        )
-    elif (cl_stage >= 2) and (cl_stage < sol.ys.shape[0]):
+    if solutions.shape[0] > 1:  # valid for MS or for MS+CL before last stage
         sse = get_masked_sse(
-            sol.ys[:-cl_stage, :, :state_dimension],  # exclude invalid windows
-            sol.ys[1:-(cl_stage - 1), :, :state_dimension],
-            masks[:-cl_stage].astype(int) & masks[1:-(cl_stage - 1)].astype(int)
+            solutions[:-1, :, :state_dimension],  # endpoint
+            solutions[1:, :, :state_dimension],  # startpoint
+            masks[:-1].astype(int) & masks[1:].astype(int)
         )
-    else: # no discontinuity penalty for single valid window!
+    else:  # for MS+CL final CL stage (single valid window)
         sse = 0
     return reg_strength * sse
 

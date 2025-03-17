@@ -8,12 +8,12 @@ import wandb
 
 from diffrax import SaveAt
 from functools import partial
-from jaxtyping import PyTree
+from jaxtyping import Array, PyTree
 from src.common import Conf, dynamic_param_labels
 from src.model_training.training_util import transform_dynamic_params, prep_bfgs_training
 from src.ude_problem import UDEProblem
 from types import SimpleNamespace
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Union
 
 
 
@@ -22,22 +22,23 @@ def fides_loss_grad(
         unflatten_params: Callable,
         loss_grad_fn: Callable,
         prob_static: UDEProblem,
-        u0: jnp.ndarray,
-        t_save: SaveAt,
-        t_span,
+        t_save_windows: jnp.ndarray,
+        masks: jnp.ndarray,
         data,
+        last_valid_index: int,
         mlp_reg_exp: float,
         mlp_reg_strength: float,
         output_reg: float,
         multiple_shooting_penalty: float,
         shooting_mode: str,
+        max_steps: int
 ) -> tuple[float, np.ndarray]:
     # Unflatten params to compute loss and grads
     prob_params = unflatten_params(flat_params)
     (loss, _), grads= loss_grad_fn(
-        prob_params, prob_static, u0, t_save, t_span, data,
+        prob_params, prob_static, t_save_windows, masks, data, last_valid_index,
         mlp_reg_exp, mlp_reg_strength, output_reg,
-        multiple_shooting_penalty, shooting_mode
+        multiple_shooting_penalty, shooting_mode, max_steps=max_steps
     )
     # Flatten grads and cast to numpy array to avoid JAX immutability
     flat_grads = np.array(jax.flatten_util.ravel_pytree(grads)[0])
@@ -52,14 +53,15 @@ def train_fides(
         loss_grad_fn: Callable,
         epoch: int,
         max_iter: int,
-        u0_train: object,
         u0_val: object,
-        t_save_train: SaveAt, t_span_train: List, training_data: jnp.ndarray,
-        t_save_val: SaveAt, t_span_val: List, validation_data: jnp.ndarray,
+        t_save_windows: jnp.ndarray, masks: jnp.ndarray, training_data: jnp.ndarray,
+        t_save_val: Union[SaveAt, Array], t_span_val: List, validation_data: jnp.ndarray,
+        last_valid_index: int,
         loss_fn: Callable,
         val_loss_fn: Callable,
         zero_out_mlp: bool = False,
-        wandb_log_final: bool = False
+        wandb_log_final: bool = False,
+        max_diffrax_steps: int = 16384
 ) -> tuple[UDEProblem, SimpleNamespace, UDEProblem, float, float, int, Optional[pd.DataFrame]]:
 
     model_fides = prep_bfgs_training(model, zero_out_mlp, bool(conf.output_reg or conf.mlp_reg_strength))
@@ -75,15 +77,16 @@ def train_fides(
             unflatten_params=unflatten_params,
             loss_grad_fn=loss_grad_fn,
             prob_static=static,
-            u0=u0_train,
-            t_save=t_save_train,
-            t_span=t_span_train,
+            t_save_windows=t_save_windows,
+            masks=masks,
             data=training_data,
+            last_valid_index=last_valid_index,
             mlp_reg_exp=conf.mlp_reg_exp,
             mlp_reg_strength=conf.mlp_reg_strength,
             output_reg=conf.output_reg,
             multiple_shooting_penalty=conf.multiple_shooting_penalty,
             shooting_mode=conf.shooting_mode,
+            max_steps=max_diffrax_steps,
         ),
         ub=np.asarray([jnp.inf for _ in flat_params]),
         lb=np.asarray([-jnp.inf for _ in flat_params]),
@@ -114,15 +117,16 @@ def train_fides(
     loss_train, _ = loss_fn(
         prob_params=opt_params,
         prob_static=static,
-        u0=u0_train,
-        t_save=t_save_train,
-        t_span=t_span_train,
+        t_save_windows=t_save_windows,
+        masks=masks,
         data=training_data,
+        last_valid_index=last_valid_index,
         mlp_reg_exp=conf.mlp_reg_exp,
         mlp_reg_strength=conf.mlp_reg_strength,
         output_reg=conf.output_reg,
         multiple_shooting_penalty=conf.multiple_shooting_penalty,
         shooting_mode=conf.shooting_mode,
+        max_steps=max_diffrax_steps
     )
 
     # Compute validation loss
@@ -133,6 +137,7 @@ def train_fides(
         t_save=t_save_val,
         t_span=t_span_val,
         data=validation_data,
+        max_steps=2*max_diffrax_steps  # simulates for 2x the number of timepoints
     )
 
     # Get final model

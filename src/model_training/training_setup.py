@@ -1,16 +1,21 @@
 import jax.numpy as jnp
+import jax.random as jr
 import numpy as np
 
 from diffrax import SaveAt
 from functools import partial
+from jaxtyping import Array
 from src.common import activation_functions, Conf, default_out_sizes, normalise, state_dims, TrainValArgs, u0s
 from src.model_examples.lotka_volterra import setup_diffrax_model as setup_lv
 from src.model_examples.sir import setup_diffrax_model as setup_sir
 from src.model_training.model_util import set_weight_bias
-from src.model_training.losses import (compute_validation_loss, compute_loss, compute_loss_grad,
-                                       compute_val_loss_optx, compute_loss_optx,
-                                       compute_batch_loss, compute_batch_loss_grad, compute_batch_loss_optx)
+from src.model_training.losses import (
+    compute_validation_loss, compute_loss, compute_loss_grad,
+    compute_val_loss_optx, compute_loss_optx,
+    # compute_batch_loss, compute_batch_loss_grad, compute_batch_loss_optx
+)
 from src.ude_problem import build_mlp
+from typing import Optional, Tuple, Union
 
 
 def get_io_size(conf, u0):
@@ -50,17 +55,22 @@ def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple, u0) ->
     else:
         raise ValueError(f"Unknown dynamical model: {conf.dynamical_model}!")
 
+    # TODO @GiacomoFabrini - do we still need/want window_batch?
     val_loss_fn = partial(compute_validation_loss, loss_fn=base_loss_fn)
-    if conf.shooting_mode != "window_batch":
-        loss_fn = partial(compute_loss, loss_fn=base_loss_fn_masked)
-        loss_grad_fn = partial(compute_loss_grad, loss_fn=base_loss_fn_masked)
-        loss_optx = compute_loss_optx
-        val_loss_optx = compute_val_loss_optx
-    else:
-        loss_fn = partial(compute_batch_loss, loss_fn=base_loss_fn_masked)
-        loss_grad_fn = partial(compute_batch_loss_grad, loss_fn=base_loss_fn_masked)
-        loss_optx = compute_batch_loss_optx
-        val_loss_optx = None  # TODO @GiacomoFabrini - fix this!
+    loss_fn = partial(compute_loss, loss_fn=base_loss_fn_masked)
+    loss_grad_fn = partial(compute_loss_grad, loss_fn=base_loss_fn_masked)
+    loss_optx = compute_loss_optx
+    val_loss_optx = compute_val_loss_optx
+    # if conf.shooting_mode != "window_batch":
+    #     loss_fn = partial(compute_loss, loss_fn=base_loss_fn_masked)
+    #     loss_grad_fn = partial(compute_loss_grad, loss_fn=base_loss_fn_masked)
+    #     loss_optx = compute_loss_optx
+    #     val_loss_optx = compute_val_loss_optx
+    # else:
+    #     loss_fn = partial(compute_batch_loss, loss_fn=base_loss_fn_masked)
+    #     loss_grad_fn = partial(compute_batch_loss_grad, loss_fn=base_loss_fn_masked)
+    #     loss_optx = compute_batch_loss_optx
+    #     val_loss_optx = None
 
     options = {
         "dynamic_params_scale": conf.dynamic_params_scale,
@@ -229,3 +239,309 @@ def window_batch_dataloader(input_data, t_save, window_length: int, batch_size: 
     ])
 
     return windowed_batches, t_save_batches, t_span_batches
+
+
+def generate_ms_time_and_mask(
+        num_windows: int,
+        shooting_window_length: int,
+        training_horizon: int,
+        t_save: SaveAt
+) -> Tuple[Array, Array]:
+    # Compute auxiliary MS variables
+    t_windows, masks = [], []
+    for i in range(num_windows):
+        # Select the core timepoints
+        start_idx = i * (shooting_window_length - 1)
+        end_idx = (i + 1) * shooting_window_length - i
+        core_indices = slice(start_idx, end_idx)
+        core_values = t_save.subs.ts[core_indices]
+
+        # Construct full-length window
+        window = np.zeros(training_horizon)
+        window[: start_idx] = core_values[0]
+        window[core_indices] = core_values
+        window[end_idx:] = core_values[-1]
+        t_windows.append(window)
+
+        # Construct mask
+        mask = np.zeros(training_horizon)
+        mask[core_indices] = 1
+        masks.append(mask)
+
+    t_save_windows = jnp.array(t_windows)
+    masks = jnp.array(masks)
+
+    # import matplotlib.pyplot as plt
+    # for arr, label in zip([t_save_windows, masks], ["time", "mask"]):
+    #     plt.imshow(arr, vmin=0, vmax=1)
+    #     ax = plt.gca()
+    #     ax.yaxis.set_visible(False)  # Hide y-axis labels and ticks
+    #     plt.savefig(f"multiple.{shooting_window_length}.noCL.{label}.pdf")
+    return t_save_windows, masks
+
+
+def setup_curriculum_learning(
+        data: Array,
+        t_save: Union[Array, SaveAt],
+        n_epoch: int,
+        shooting_mode: str,
+        shooting_window_length: int, # only used for multiple shooting
+        curriculum_learning: bool,
+        num_curriculum_steps: int,
+        max_curriculum_epochs: Optional[int],
+):
+    stage_dict = {}
+
+    if curriculum_learning:
+        # Check number of epochs to spend on curriculum learning
+        if max_curriculum_epochs is None:
+            raise ValueError("Max curriculum steps must be defined for curriculum learning!")
+        elif max_curriculum_epochs <= 0 or max_curriculum_epochs > n_epoch:
+            raise ValueError(f"Max curriculum steps cannot be negative nor larger than number of epochs: {n_epoch}!")
+
+        # Calculate the epoch at which to switch to full data
+        switch_epoch = min(max_curriculum_epochs, n_epoch)
+
+        if shooting_mode == "single":
+            # Check number of curriculum steps
+            if num_curriculum_steps is None:
+                raise ValueError("Number of steps must be defined for curriculum learning!")
+            elif num_curriculum_steps <= 0:
+                raise ValueError("Number of steps must be positive!")
+
+            # Fill the incremental data list with the incremental data
+            for step in range(1, num_curriculum_steps + 1):
+                length = int(len(data) * (step / num_curriculum_steps))
+                start_epoch = int((step - 1) * (switch_epoch / num_curriculum_steps))
+                end_epoch = int(step * (switch_epoch / num_curriculum_steps)) if step < num_curriculum_steps \
+                    else n_epoch  # last CL stage lasts until final NN training epoch
+                stage_dict[step] = {
+                    "start": start_epoch,
+                    "end": end_epoch,
+                    "length": length,
+                    "time": jnp.expand_dims(jnp.concatenate(
+                        [t_save.subs.ts[:length], t_save.subs.ts[length-1]*jnp.ones(len(data)-length)]
+                    ), axis=0),
+                    "mask": jnp.expand_dims(jnp.zeros(len(data)).at[:length].set(1), axis=0),
+                    "last_valid_index": 1, # only 1 valid window at each stage
+                }
+        elif shooting_mode == "multiple":
+            num_windows = int(np.ceil(len(data) / (shooting_window_length - 1)))
+            print(f"Multiple shooting + curriculum learning selected. Number of curriculum steps will be "
+                  f"overridden with {num_windows}.")
+            new_num_curriculum_steps = num_windows
+            # Fill the incremental data list with the incremental data
+            for step in range(1, new_num_curriculum_steps + 1):
+                start_epoch = int((step - 1) * (switch_epoch / (new_num_curriculum_steps-1)))
+                end_epoch = int(step * (switch_epoch / (new_num_curriculum_steps-1))) if step < new_num_curriculum_steps \
+                    else n_epoch  # last CL stage lasts until final NN training epoch
+                if step == 1:
+                    time, mask = generate_ms_time_and_mask(
+                        num_windows, shooting_window_length, len(data), t_save
+                    )
+                else:
+                    # Subset to non-zero masks and time to compute next CL stage ones
+                    if step > 2:
+                        mask = mask[:-(step-2)]
+                        time = time[:-(step-2)]
+                    # Merge adjacent windows and replace the last (disappearing) one with a zero mask
+                    merged_mask = jnp.concatenate([
+                        jnp.logical_or(mask[:-1], mask[1:]).astype(float),
+                        jnp.zeros((step-1, len(data)))
+                    ], axis=0)
+                    # Update time values
+                    merged_time = jnp.where(mask[:-1] == 1, time[:-1], time[1:])
+                    # Fix mis-padded values by propagating the lowest valid timepoint forward
+                    min_valid_timepoints = jnp.argmin(merged_time, axis=1, keepdims=True)
+                    min_valid_time = jnp.min(merged_time, axis=1, keepdims=True)
+                    indices = jnp.arange(merged_time.shape[1])[None, :]  # Shape (1, num_timepoints) for broadcasting
+                    override_mask = indices < min_valid_timepoints  # Shape (num_windows, num_timepoints)
+                    merged_time = jnp.where(override_mask, min_valid_time, merged_time)
+                    # and replace the last window with zeros
+                    merged_time = jnp.concatenate([
+                        merged_time, jnp.zeros((step-1, len(data)))
+                    ], axis=0)
+
+                    mask = merged_mask
+                    time = merged_time
+
+                stage_dict[step] = {
+                    "start": start_epoch,
+                    "end": end_epoch,
+                    "length": mask[0].sum(),
+                    "time": time,
+                    "mask": mask.astype(int),
+                    "last_valid_index": num_windows - (step-1)
+                }
+        else:
+            raise ValueError(f"Curriculum learning cannot be used together with shooting_mode: {shooting_mode}")
+
+        # import matplotlib.pyplot as plt
+        # for attribute in ["time", "mask", "mask_overlap"]:
+        #     plt.subplots(len(stage_dict.keys()), 1, figsize=(10, 3*len(stage_dict.keys())))
+        #     for stage in sorted(stage_dict.keys()):
+        #         plt.subplot(len(stage_dict.keys()), 1, stage)
+        #         if attribute in ["time", "mask"]:
+        #             if len(jnp.array(stage_dict[stage][attribute]).shape) == 1:
+        #                 arr = jnp.expand_dims(jnp.array(stage_dict[stage][attribute]), axis=0)
+        #             else:
+        #                 arr = jnp.array(stage_dict[stage][attribute])
+        #         else:
+        #             if len(jnp.array(stage_dict[stage]["mask"]).shape) == 1:
+        #                 arr = jnp.expand_dims(
+        #                     jnp.array(stage_dict[stage]["mask"])[:-1] & jnp.array(stage_dict[stage]["mask"])[1:],
+        #                     axis=0
+        #                 )
+        #             else:
+        #                 arr = jnp.array(stage_dict[stage]["mask"])[:-1] & jnp.array(stage_dict[stage]["mask"])[1:]
+        #         plt.imshow(arr, vmin=0, vmax=1, aspect="auto")
+        #         ax = plt.gca()
+        #         ax.yaxis.set_visible(False)  # Hide y-axis labels and ticks
+        #         plt.title(f"CL Stage {stage}")
+        #     plt.tight_layout()
+        #     plt.savefig(f"{shooting_mode}.{shooting_window_length}.{curriculum_learning}.{attribute}.pdf")
+        return stage_dict
+    else:
+        return None
+
+
+def initialize_single_shooting(
+    training_horizon: int,
+    t_save: Union[Array, SaveAt],
+    u0_guess: Tuple,
+    curriculum_learning: bool,
+    curriculum_params: Optional[dict[str, tuple]] = None
+) -> tuple[Array, Array, Array]:
+    if curriculum_learning:
+        if curriculum_params is not None:
+            t_windows = curriculum_params["time"]
+            masks = curriculum_params["mask"]
+        else:
+            raise ValueError("curriculum_indices must be provided if curriculum_learning is True")
+    else:
+        t_windows = jnp.array([t_save.subs.ts])
+        masks = jnp.array([jnp.ones(training_horizon)])
+    u0 = jnp.expand_dims(jnp.array(u0_guess), axis=0)
+    return t_windows, masks, u0
+
+
+def initialize_multiple_shooting(
+        effective_state_dimension: int,
+        shooting_window_length: int,
+        training_horizon: int,
+        t_save: Union[Array, SaveAt],
+        strategy: str,
+        u0_guess: Optional[Tuple],
+        network_regularisation: bool,
+        curriculum_learning: bool = False,
+        curriculum_params: Optional[dict[str, tuple]] = None,
+        random_seed: int = 0,
+) -> tuple[Array, Array, Array]:
+    """
+    Initialize auxiliary variables (num_windows, starting and ending points,
+    save timepoints) and learnable initial values for the shooting windows.
+
+    Parameters
+    ----------
+    effective_state_dimension: int
+        The number of input features for the neural network. Includes state variables and augmentation variables.
+    shooting_window_length: int
+        The number of timepoints in each shooting window.
+    training_horizon: int
+        Overall training horizon (time-range of training datapoints).
+    t_save: diffrax.SaveAt
+        Timepoints at which to save the training simulation.
+    strategy: str
+        Initialization strategy for initial conditions.
+    u0_guess: Tuple
+        Initial guess for the initial conditions.
+    network_regularisation: bool
+        If True, the network contribution to the dynamics will be regularised.
+    curriculum_learning: bool
+        If True, the model will be trained using curriculum learning.
+    curriculum_params: dict
+        Timepoints and masks for first curriculum learning stage.
+    random_seed: int
+        Random seed for random initialization.
+    """
+    # Pre-compute number of windows
+    num_windows = int(np.ceil(training_horizon / (shooting_window_length - 1)))
+
+    if curriculum_learning and (curriculum_params is not None):
+        # pre-computed
+        t_save_windows, masks = curriculum_params["time"], curriculum_params["mask"]
+    elif curriculum_learning and (curriculum_params is None):
+        raise ValueError("curriculum_params must be provided if curriculum_learning is True!")
+    else:
+        t_save_windows, masks = generate_ms_time_and_mask(
+            num_windows, shooting_window_length, training_horizon, t_save
+        )
+
+    if strategy == 'z':
+        # Augment initial conditions to include network regularisation
+        if network_regularisation:
+            effective_state_dimension += 1
+        return t_save_windows, masks, jnp.zeros((num_windows, effective_state_dimension))
+    # TODO @GiacomoFabrini add an option to initialise with observed initial conditions
+    elif strategy == 'g':
+        if network_regularisation:
+            u0_guess = jnp.concatenate([jnp.array(u0_guess), jnp.zeros(1)])
+        return t_save_windows, masks, jnp.tile(u0_guess, (num_windows, 1))
+    elif strategy == 'ru':
+        # Sample uniformly state_dimension variables
+        u0 = jr.uniform(jr.PRNGKey(random_seed), (num_windows, effective_state_dimension))
+        # Concatenate a 0 across all num_windows if using network regularisation
+        if network_regularisation:
+            u0 = jnp.concatenate([u0, jnp.zeros((num_windows, 1))], axis=1)
+        # return u0
+        return t_save_windows, masks, u0
+    else:
+        raise ValueError(f"Invalid shooting_iv_init strategy: {strategy}")
+
+
+def setup_time_masks_u0_curriculum(
+        conf: Conf,
+        nn_num_epochs: int,
+        train_args: TrainValArgs,
+        u0_guess: Union[tuple, jnp.ndarray],
+        effective_state_dimension: int,
+        network_regularisation: bool = False  # disabled at start of training
+) -> Tuple[Array, Array, Array, dict]:
+    # Setup curriculum learning (if enabled)
+    # TODO this crashes the run - might want to think about a different approach or is this fine?
+    if conf.curriculum_learning and nn_num_epochs == 0:
+        raise ValueError(f"Number of NN training epochs must be > 0 to use curriculum learning - found {nn_num_epochs}!")
+    curriculum_stage_dict = setup_curriculum_learning(
+        data=train_args.data,
+        t_save=train_args.t_save,
+        n_epoch=nn_num_epochs,
+        shooting_mode=conf.shooting_mode,
+        shooting_window_length=conf.shooting_window_length,
+        curriculum_learning=conf.curriculum_learning,
+        num_curriculum_steps=conf.num_curriculum_steps,
+        max_curriculum_epochs=conf.max_curriculum_epochs,
+    )
+    if conf.shooting_mode == "single":
+        t_save_windows, masks, u0 = initialize_single_shooting(
+            training_horizon=train_args.data.shape[0],
+            t_save=train_args.t_save,
+            u0_guess=u0_guess,
+            curriculum_learning=conf.curriculum_learning,
+            curriculum_params=curriculum_stage_dict[1] if conf.curriculum_learning else None
+        )
+    elif conf.shooting_mode == "multiple":
+        t_save_windows, masks, u0 = initialize_multiple_shooting(
+            effective_state_dimension=effective_state_dimension,
+            shooting_window_length=conf.shooting_window_length,
+            training_horizon=train_args.data.shape[0],
+            t_save=train_args.t_save,
+            strategy=conf.shooting_iv_init,
+            u0_guess=u0_guess,
+            network_regularisation=network_regularisation,
+            curriculum_learning=conf.curriculum_learning,
+            curriculum_params=curriculum_stage_dict[1] if conf.curriculum_learning else None,
+            random_seed=conf.multistart_job,
+        )
+    else:
+        raise ValueError(f"Unknown shooting mode: {conf.shooting_mode}!")
+    return t_save_windows, masks, u0, curriculum_stage_dict

@@ -20,8 +20,8 @@ from pathlib import Path
 from src.common import Conf, dynamic_param_labels, EarlyStoppingParams, hessian_metrics_wandb, plots_dir
 from src.model_training.model_util import bounded_tanh_transform_params, get_masked_mse, set_weight_bias
 from src.model_training.training_configuration import N_EPOCHS, MAX_ITER_OPTX_FINETUNE
-from src.ude_problem.ude_problem import UDEProblem, generate_ms_time_and_mask
-from typing import Any, Callable, List, Optional, Union
+from src.ude_problem.ude_problem import UDEProblem
+from typing import Any, Callable, List, Union
 
 
 # Scheduler from Fabian's NeuralCoarseGraining
@@ -133,7 +133,7 @@ def initialise_wandb(
             # "frozen_mechanistic_params_optx"
             # if conf.freeze_mechanistic_params_optx else "learnable_mechanistic_params_optx",  # DISABLED TO MERGE WITH MLP
         ],
-        mode="offline",  # TODO restore after debugging
+        # mode="offline",  # TODO restore after debugging
     )
 
     # Define shared metrics
@@ -477,148 +477,11 @@ def plot_model_weights(model: UDEProblem, conf: Conf, filename: str = None):
     plt.show()
 
 
-def setup_curriculum_learning(
-        data: Array,
-        t_save: diffrax.SaveAt,
-        n_epoch: int,
-        shooting_mode: str,
-        shooting_window_length: int, # only used for multiple shooting
-        curriculum_learning: bool,
-        num_curriculum_steps: int,
-        max_curriculum_epochs: Optional[int],
-):
-    stage_dict = {}
-
-    if curriculum_learning:
-        # Check number of epochs to spend on curriculum learning
-        if max_curriculum_epochs is None:
-            raise ValueError("Max curriculum steps must be defined for curriculum learning!")
-        elif max_curriculum_epochs <= 0 or max_curriculum_epochs > n_epoch:
-            raise ValueError(f"Max curriculum steps cannot be negative nor larger than number of epochs: {n_epoch}!")
-
-        # Calculate the epoch at which to switch to full data
-        switch_epoch = min(max_curriculum_epochs, n_epoch)
-
-        if shooting_mode == "single":
-            # Check number of curriculum steps
-            if num_curriculum_steps is None:
-                raise ValueError("Number of steps must be defined for curriculum learning!")
-            elif num_curriculum_steps <= 0:
-                raise ValueError("Number of steps must be positive!")
-
-            # Fill the incremental data list with the incremental data
-            for step in range(1, num_curriculum_steps + 1):
-                length = int(len(data) * (step / num_curriculum_steps))
-                start_epoch = int((step - 1) * (switch_epoch / num_curriculum_steps))
-                end_epoch = int(step * (switch_epoch / num_curriculum_steps))
-                stage_dict[step] = {
-                    "start": start_epoch,
-                    "end": end_epoch,
-                    "length": length,
-                    "time": tuple(
-                        jnp.concatenate(
-                            [t_save.subs.ts[:length], t_save.subs.ts[length-1]*jnp.ones(len(data)-length)]
-                        ).tolist()
-                    ),
-                    "mask": tuple(
-                        jnp.zeros(len(data)).at[:length].set(1).tolist()
-                    )
-                }
-        elif shooting_mode == "multiple":
-            num_windows = int(np.ceil(len(data) / (shooting_window_length - 1)))
-            print(f"Multiple shooting + curriculum learning selected. Number of curriculum steps will be "
-                  f"overridden with {num_windows}.")
-            new_num_curriculum_steps = num_windows
-            # lengths = [min((i+1)*shooting_window_length-i, len(data)) for i in range(num_windows)]
-            first_time, first_mask = generate_ms_time_and_mask(
-                num_windows, shooting_window_length, len(data), t_save
-            )
-            # Fill the incremental data list with the incremental data
-            for step in range(1, new_num_curriculum_steps + 1):
-                start_epoch = int((step - 1) * (switch_epoch / (new_num_curriculum_steps-1)))
-                end_epoch = int(step * (switch_epoch / (new_num_curriculum_steps-1))) if step < new_num_curriculum_steps \
-                    else n_epoch  # last CL stage lasts until final NN training epoch
-                if step == 1:
-                    time = jnp.array(first_time)
-                    mask = jnp.array(first_mask)
-                # elif step == new_num_curriculum_steps:
-                #     time = jnp.expand_dims(jnp.array(t_save.subs.ts), axis=0)
-                #     mask = jnp.expand_dims(jnp.ones(len(data)), axis=0)
-                else:
-                    # Subset to non-zero masks and time to compute next CL stage ones
-                    if step > 2:
-                        mask = mask[:-(step-2)]
-                        time = time[:-(step-2)]
-                    # Merge adjacent windows and replace the last (disappearing) one with a zero mask
-                    merged_mask = jnp.concatenate([
-                        jnp.logical_or(mask[:-1], mask[1:]).astype(float),
-                        jnp.zeros((step-1, len(data)))
-                    ], axis=0)
-                    # Update time values
-                    merged_time = jnp.where(mask[:-1] == 1, time[:-1], time[1:])
-                    # Fix mis-padded values by propagating the lowest valid timepoint forward
-                    min_valid_timepoints = jnp.argmin(merged_time, axis=1, keepdims=True)
-                    min_valid_time = jnp.min(merged_time, axis=1, keepdims=True)
-                    indices = jnp.arange(merged_time.shape[1])[None, :]  # Shape (1, num_timepoints) for broadcasting
-                    override_mask = indices < min_valid_timepoints  # Shape (num_windows, num_timepoints)
-                    merged_time = jnp.where(override_mask, min_valid_time, merged_time)
-                    # and replace the last window with zeros
-                    merged_time = jnp.concatenate([
-                        merged_time, jnp.zeros((step-1, len(data)))
-                    ], axis=0)
-
-                    mask = merged_mask
-                    time = merged_time
-
-                stage_dict[step] = {
-                    "start": start_epoch,
-                    "end": end_epoch,
-                    "length": mask[0].sum(),
-                    "time": tuple(
-                        time.tolist()
-                    ),
-                    "mask": tuple(
-                        mask.astype(int).tolist()
-                    )
-                }
-        else:
-            raise ValueError(f"Curriculum learning cannot be used together with shooting_mode: {shooting_mode}")
-
-        # import matplotlib.pyplot as plt
-        # for attribute in ["time", "mask", "mask_overlap"]:
-        #     plt.subplots(len(stage_dict.keys()), 1, figsize=(10, 3*len(stage_dict.keys())))
-        #     for stage in sorted(stage_dict.keys()):
-        #         plt.subplot(len(stage_dict.keys()), 1, stage)
-        #         if attribute in ["time", "mask"]:
-        #             if len(jnp.array(stage_dict[stage][attribute]).shape) == 1:
-        #                 arr = jnp.expand_dims(jnp.array(stage_dict[stage][attribute]), axis=0)
-        #             else:
-        #                 arr = jnp.array(stage_dict[stage][attribute])
-        #         else:
-        #             if len(jnp.array(stage_dict[stage]["mask"]).shape) == 1:
-        #                 arr = jnp.expand_dims(
-        #                     jnp.array(stage_dict[stage]["mask"])[:-1] & jnp.array(stage_dict[stage]["mask"])[1:],
-        #                     axis=0
-        #                 )
-        #             else:
-        #                 arr = jnp.array(stage_dict[stage]["mask"])[:-1] & jnp.array(stage_dict[stage]["mask"])[1:]
-        #         plt.imshow(arr, vmin=0, vmax=1, aspect="auto")
-        #         ax = plt.gca()
-        #         ax.yaxis.set_visible(False)  # Hide y-axis labels and ticks
-        #         plt.title(f"CL Stage {stage}")
-        #     plt.tight_layout()
-        #     plt.savefig(f"{shooting_mode}.{shooting_window_length}.{curriculum_learning}.{attribute}.pdf")
-        return stage_dict
-
-    else:
-        return None
-
 def generate_incremental_arrays(
         data: Array,
-        t_save: diffrax.SaveAt,
+        t_save: Union[diffrax.SaveAt, Array],
         t_span: List,
         n_epoch: int,
-        max_curriculum_epochs: Optional[int],
         curriculum_params: dict[int, Any]
 ):
     # Initialize the list to store the results
@@ -949,13 +812,15 @@ def get_sol_and_loss_validation(
         adjoint: diffrax.AbstractAdjoint,
         loss_fn: Callable,
         data: Array,
+        max_steps: int = 8192
 ):
     sol = prob.solve_single_shooting_validation(
         diffrax.Tsit5(),
         u0,
         t_save,  # use provided t_save
         t_span,  # use provided t_span
-        adjoint=adjoint
+        adjoint=adjoint,
+        max_steps=max_steps
     )
     loss = loss_fn(
         solution=sol.ys,
@@ -969,17 +834,21 @@ def get_sol_and_loss_single_shooting(
         adjoint: diffrax.AbstractAdjoint,
         loss_fn: Callable,
         data: Array,
+        t_save_windows: Array,
+        masks: Array,
+        max_steps: int = 8192
 ):
     sol = prob.solve_single_shooting(
         diffrax.Tsit5(),
         prob.initial_values[0],  # pass 1D array
-        jnp.array(prob.t_save_windows[0]),  # training: use internal t_save_windows, made into 1D array
-        adjoint
+        t_save_windows[0],
+        adjoint,
+        max_steps
     )
     loss = loss_fn(
         solution=sol.ys,
         data=data,
-        mask=jnp.array(prob.masks).squeeze()
+        mask=masks.squeeze()
     )
     return sol, loss
 
@@ -988,36 +857,45 @@ def get_sol_and_loss_multiple_shooting(
         prob: UDEProblem,
         adjoint: diffrax.AbstractAdjoint,
         data: Array,
+        t_save_windows: Array,
+        masks: Array,
+        last_valid_index: int,
+        max_steps: int = 8192
 ):
     sol = prob.solve_multiple_shooting(
         diffrax.Tsit5(),
-        prob.initial_values,
-        jnp.array(prob.t_save_windows),
-        adjoint
+        prob.initial_values[:last_valid_index],
+        t_save_windows[:last_valid_index],
+        adjoint,
+        max_steps
     )
-    # TODO @GiacomoFabrini can this be simplified?
-    valid_masks = jnp.array(prob.masks) if prob.curriculum_stage < 2 \
-        else jnp.array(prob.masks)[:-(prob.curriculum_stage - 1), :]
+    # # TODO @GiacomoFabrini can this be simplified?
+    # valid_masks = jnp.array(prob.masks) if prob.curriculum_stage < 2 \
+    #     else jnp.array(prob.masks)[:-(prob.curriculum_stage - 1), :]
     # using vmap, shape of sol is: (batch/window, timepoint, state var)
     losses = jnp.array([
         get_masked_mse(
             pred=sol.ys[i, :, :prob.func.state_dimension],
             data=data,
-            mask=mask,
+            mask=masks[i]
         )
-        for i, mask in enumerate(valid_masks)
+        # for i, mask in enumerate(valid_masks)
+        for i in range(last_valid_index)
     ])
     return sol, jnp.mean(losses)
 
 
 def check_and_progress_curriculum(
-        params,
-        static,
-        filter_spec,
+        # params,
+        # static,
+        # filter_spec,
+        t_save_windows,
+        masks,
         nn_epoch: int,
+        cl_stage: int,
         model_save_steps_start: List,
-        shooting_mode: str,
-        curriculum_params: List[dict]
+        # shooting_mode: str,
+        curriculum_params: dict
 ):
     # If epoch matches, update CL stage, inner timepoints and masks, and zero last set of initial values (window)
     if (nn_epoch != 0) and (nn_epoch in model_save_steps_start):
@@ -1027,14 +905,16 @@ def check_and_progress_curriculum(
                 jnp.abs(jnp.array(model_save_steps_start) - nn_epoch)
             )
         ) + 1  # 1-counting
-        model = eqx.combine(params, static)
-        model = model.update_curriculum_time_mask(
-            curriculum_params[cl_stage]["time"],
-            curriculum_params[cl_stage]["mask"]
-        )
-        if shooting_mode == "multiple":
-            model = model.advance_curriculum_stage()
-            model.zero_last_initial_values()
-        # Re-partition prior to returning for next stage
-        params, static = eqx.partition(model, filter_spec)
-    return params, static
+        # model = eqx.combine(params, static)
+        # model = model.update_curriculum_time_mask(
+        #     curriculum_params[cl_stage]["time"],
+        #     curriculum_params[cl_stage]["mask"]
+        # )
+        # if shooting_mode == "multiple":
+        #     model = model.advance_curriculum_stage()
+        #     model.zero_last_initial_values()
+        # # Re-partition prior to returning for next stage
+        # params, static = eqx.partition(model, filter_spec)
+        t_save_windows = curriculum_params[cl_stage]["time"]
+        masks = curriculum_params[cl_stage]["mask"]
+    return t_save_windows, masks, cl_stage

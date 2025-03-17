@@ -7,11 +7,11 @@ import wandb
 
 from src.common import Conf, dynamic_param_labels
 from diffrax import SaveAt
-from jaxtyping import PyTree
+from jaxtyping import Array, PyTree
 from src.model_training.training_util import log_model_stats, transform_dynamic_params, prep_bfgs_training
 from src.ude_problem import UDEProblem
 from types import SimpleNamespace
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Union
 
 
 # OPTIMISTIX OPTIMISATION FUNCTIONS
@@ -26,14 +26,15 @@ def train_optimistix(
         val_loss_optx: Callable,
         epoch: int,
         num_epochs: int,
-        u0_train: object,
         u0_val: object,
-        t_save_train: SaveAt, t_span_train: List, training_data: jnp.ndarray,
-        t_save_val: SaveAt, t_span_val: List, validation_data: jnp.ndarray,
+        t_save_windows: Array, masks: Array, training_data: jnp.ndarray,
+        t_save_val: Union[SaveAt, Array], t_span_val: List, validation_data: jnp.ndarray,
+        last_valid_index: int,
         frozen_mechanistic: bool = False, frozen_nn: bool = False,
         zero_out_mlp: bool = False,
         wandb_log: bool = True,
         wandb_log_final: bool = True,
+        max_diffrax_steps: int = 8192
 ) -> tuple[UDEProblem, SimpleNamespace, UDEProblem, float, float, int, Optional[pd.DataFrame]]:
 
     # Define options and tags for BFGS solver
@@ -52,14 +53,14 @@ def train_optimistix(
 
     # Define additional arguments to pass optimistix loss function (train and val) for step by step solve
     args = (
-        static, u0_train, t_save_train, t_span_train, training_data,
+        static, t_save_windows, masks, training_data, last_valid_index,
         conf.mlp_reg_exp, conf.mlp_reg_strength, conf.output_reg,
-        conf.multiple_shooting_penalty, conf.shooting_mode, False,  # not in eval
-        base_loss
+        conf.multiple_shooting_penalty, conf.shooting_mode,
+        base_loss, max_diffrax_steps
     )
     args_val = (
         static, u0_val, t_save_val, t_span_val, validation_data,
-        val_base_loss
+        val_base_loss, 2*max_diffrax_steps  # simulates for 2x the number of timepoints
     )
     # Shape+dtype of the output of `fn`
     f_struct = jax.ShapeDtypeStruct((), jnp.float64)

@@ -1,4 +1,3 @@
-import diffrax
 import fire
 import jax.random as jr
 import jax.numpy as jnp
@@ -8,8 +7,9 @@ from jax import config
 from src.common import (Conf, EarlyStoppingParams, model_save_dir,
                         state_dims, true_dynamic_parameters)
 from src.model_training.training_setup import (broadcast_bounds, get_data_and_funcs_for_train,
-                                               get_initial_conditions, setup_mlp)
-from src.model_training.training_util import setup_curriculum_learning, sample_dynamical_params, get_sindy_formula
+                                               get_initial_conditions,
+                                               setup_mlp, setup_time_masks_u0_curriculum)
+from src.model_training.training_util import sample_dynamical_params, get_sindy_formula
 from src.ude_problem import UDEProblem
 from training import train
 from training_configuration import MECHANISTIC_FIT_EPOCHS, N_EPOCHS, MAX_ITER_OPTX_FINETUNE
@@ -84,20 +84,32 @@ mlp = setup_mlp(conf, u0, key_mlp, key_init)
     )
 optx_config, options = option_args
 
-# Setup curriculum learning (if enabled)
-# TODO @GiacomoFabrini - this fails if N_EPOCHS = 0
-if conf.curriculum_learning and N_EPOCHS == 0:
-    raise ValueError(f"Number of NN training epochs must be > 0 for curriculum learning - found {N_EPOCHS}!")
-curriculum_stage_dict = setup_curriculum_learning(
-        data=train_args.data,
-        t_save=train_args.t_save,
-        n_epoch=N_EPOCHS,
-        shooting_mode=conf.shooting_mode,
-        shooting_window_length=conf.shooting_window_length,
-        curriculum_learning=conf.curriculum_learning,
-        num_curriculum_steps=conf.num_curriculum_steps,
-        max_curriculum_epochs=conf.max_curriculum_epochs,
-    )
+## Setup curriculum learning (if enabled)
+## TODO this crashes the run - might want to think about a different approach or is this fine?
+# if conf.curriculum_learning and N_EPOCHS == 0:
+#     raise ValueError(f"Number of NN training epochs must be > 0 to use curriculum learning - found {N_EPOCHS}!")
+# curriculum_stage_dict = setup_curriculum_learning(
+#     data=train_args.data,
+#     t_save=train_args.t_save,
+#     n_epoch=N_EPOCHS,
+#     shooting_mode=conf.shooting_mode,
+#     shooting_window_length=conf.shooting_window_length,
+#     curriculum_learning=conf.curriculum_learning,
+#     num_curriculum_steps=conf.num_curriculum_steps,
+#     max_curriculum_epochs=conf.max_curriculum_epochs,
+# )
+
+# Set up SaveAt windows, binary masks and initial values
+t_save_windows, masks, initial_values, curriculum_stage_dict = setup_time_masks_u0_curriculum(
+    conf=conf,
+    nn_num_epochs=N_EPOCHS,
+    train_args=train_args,
+    u0_guess=train_args.u0,
+    effective_state_dimension=mlp.layers[0].in_features,
+    network_regularisation=False,
+)
+# Update plot args
+plot_args["t_save_windows"] = t_save_windows
 
 ude_problem = UDEProblem(
     dynamical_model=conf.dynamical_model,
@@ -105,16 +117,17 @@ ude_problem = UDEProblem(
     mlp=mlp,
     options=options,
     state_dimension=state_dims[conf.dynamical_model],
-    training_horizon=train_args.data.shape[0],
-    shooting_mode=conf.shooting_mode,
-    shooting_window_length=conf.shooting_window_length,
-    shooting_iv_init=conf.shooting_iv_init,
-    t_save_train=train_args.t_save if type(train_args.t_save) == diffrax.SaveAt \
-        else diffrax.SaveAt(ts=train_args.t_save),
-    u0_guess=train_args.u0,
-    init_random_seed=conf.multistart_job,
-    curriculum_learning=conf.curriculum_learning,
-    curriculum_params=curriculum_stage_dict[1] if conf.curriculum_learning else None,
+    # training_horizon=train_args.data.shape[0],
+    # shooting_mode=conf.shooting_mode,
+    # shooting_window_length=conf.shooting_window_length,
+    # shooting_iv_init=conf.shooting_iv_init,
+    # t_save_train=train_args.t_save if type(train_args.t_save) == diffrax.SaveAt \
+    #     else diffrax.SaveAt(ts=train_args.t_save),
+    # u0_guess=train_args.u0,
+    # init_random_seed=conf.multistart_job,
+    # curriculum_learning=conf.curriculum_learning,
+    # curriculum_params=curriculum_stage_dict[1] if conf.curriculum_learning else None,
+    initial_values=initial_values
 )
 
 # # Linear schedule Fabian set up for the DMM -- DISABLED WITH NEW SCHEDULER
@@ -140,6 +153,8 @@ training_output = train(
     model=ude_problem,
     train_args=train_args,
     val_args=val_args,
+    t_save_windows=t_save_windows,
+    masks=masks,
     curriculum_params=curriculum_stage_dict if conf.curriculum_learning else None,
     conf=conf,
     early_stopping_params=early_stopping_params,

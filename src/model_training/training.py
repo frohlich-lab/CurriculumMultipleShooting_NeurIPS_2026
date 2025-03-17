@@ -1,6 +1,5 @@
 import diffrax
 import equinox as eqx
-# import equinox.debug
 import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
@@ -18,7 +17,8 @@ from diffrax import SaveAt
 from jaxtyping import Array, Float, PyTree
 from pathlib import Path
 from src.model_training.training_util import (check_and_progress_curriculum, configure_early_stopping,
-                                              generate_incremental_arrays, generate_log_epochs,
+                                              # generate_incremental_arrays,
+                                              generate_log_epochs,
                                               get_opt_opt_state_params, get_scheduler,
                                               initialise_wandb, log_model_stats, log_plots,
                                               make_grads_finite, max_grad_norm, get_hessian_metrics,
@@ -38,7 +38,9 @@ def get_fit_dfs(
         u0,
         t_save,
         t_span,
+        t_save_windows,
         data: jnp.ndarray,
+        shooting_mode: str,
         dataset: str,
 ) -> Tuple[pd.DataFrame, Optional[pd.DataFrame], pd.DataFrame]:
     # Model prediction
@@ -71,18 +73,18 @@ def get_fit_dfs(
                                })
     else:
         raise ValueError(f"Undefined dynamical model {prob.dynamical_model}.")
-    if (prob.shooting_mode == "single") or (dataset != "train"):
+    if (shooting_mode == "single") or (dataset != "train"):
         return df_pred, None, df_obs
     else:
-        if prob.shooting_mode == "multiple":
+        if shooting_mode == "multiple":  # TODO need to fix this for MS and MS+CL
             # TODO @GiacomoFabrini -- need to fix u0/t_save - provided vs internal?
             sol = prob.solve_multiple_shooting(
                 diffrax.Tsit5(),
                 prob.initial_values,
-                jnp.array(prob.t_save_windows),
+                t_save_windows,
             )
         else:
-            raise ValueError(f"Undefined shooting mode {prob.shooting_mode}.")
+            raise ValueError(f"Undefined shooting mode {shooting_mode}.")
         if prob.dynamical_model == "lotka_volterra":
             df_pred_train = pd.concat([
                 pd.DataFrame({"time": sol.ts[i],
@@ -108,8 +110,9 @@ def get_fit_dfs(
 def log_fit_plots(
         model: UDEProblem,
         u0: jnp.ndarray,
-        t_save_train: SaveAt, t_span_train: List, training_data: jnp.ndarray,
-        t_save_val: SaveAt, t_span_val: List, validation_data: jnp.ndarray,
+        t_save_train: Union[SaveAt, Array], t_span_train: List, training_data: jnp.ndarray,
+        t_save_val: Union[SaveAt, Array], t_span_val: List, validation_data: jnp.ndarray,
+        t_save_windows: jnp.ndarray,
         conf: Conf,
         colors: List[str],
         epoch: int,
@@ -128,7 +131,7 @@ def log_fit_plots(
             assert model.func.regularise_network == True, ("Regularisation of the network is required, u0 has more "
                                                            "elements than state dimension.")
         df_predict, df_predict_train, df_obs = get_fit_dfs(
-            model, u0, t_save, t_span, data, dataset,
+            model, u0, t_save, t_span, t_save_windows, data, conf.shooting_mode, dataset,
         )
         plot_dir = plots_dir / conf.dynamical_model / plot_subdir
         plot_dir.mkdir(exist_ok=True, parents=True)
@@ -136,7 +139,7 @@ def log_fit_plots(
             [df_predict, df_predict_train],
             df_obs,
             dataset,
-            model.shooting_mode,
+            conf.shooting_mode,
             colors,
             epoch,
             f"{dataset}_{plot_name}",
@@ -154,9 +157,9 @@ def make_step(
         opt: optax.GradientTransformation,
         opt_state: PyTree,
         input_data: Float[Array, '...'],  # TODO @GiacomoFabrini fix input data shape
-        u0: jnp.ndarray,
-        t_save: SaveAt,
-        t_span: List,
+        t_save_windows: Array,
+        masks: Array,
+        last_valid_index: int,
         conf: Conf,
         loss_grad_fn: Callable,
         compute_hessian_metrics: bool,
@@ -170,10 +173,10 @@ def make_step(
     (loss_value, reg_loss_dict), grads = loss_grad_fn(
         prob_params=opt_params,
         prob_static=static,
-        u0=u0,
-        t_save=t_save,
-        t_span=t_span,
+        t_save_windows=t_save_windows,
+        masks=masks,
         data=input_data,
+        last_valid_index=last_valid_index,
         mlp_reg_exp=conf.mlp_reg_exp,
         mlp_reg_strength=conf.mlp_reg_strength,
         output_reg=conf.output_reg,
@@ -181,18 +184,20 @@ def make_step(
         shooting_mode=conf.shooting_mode,
     )
     grads = make_grads_finite(grads)
+    # print(grads.func.dynamic_parameters)
+    # print(grads.initial_values)
     # Initialise hessian metrics with NaNs
     hessian_metrics = {
         metric: jnp.nan
         for metric in hessian_metrics_wandb.keys()
     }
     if conf.hessian_precondition:
-        args = (u0, t_save, t_span, input_data)
+        args = (t_save_windows, masks, input_data)
         grads, updated_hessian_metrics = apply_hessian_preconditioning_to_grads(
-            grads, opt_params, static, args, conf
+            grads, opt_params, static, args, conf, base_loss_fn
         )
     elif compute_hessian_metrics:
-        args = (u0, t_save, t_span, input_data)
+        args = (t_save_windows, masks, input_data, last_valid_index)
         hessian_metrics = get_hessian_metrics(
             get_hessian(opt_params, static, args, conf, base_loss_fn),
             return_eigs_svs=False,
@@ -207,6 +212,8 @@ def train(
         model: UDEProblem,
         train_args: TrainValArgs,
         val_args: TrainValArgs,
+        t_save_windows: Array,
+        masks: Array,
         curriculum_params: Optional[dict[int, Any]],
         conf: Conf,
         early_stopping_params: EarlyStoppingParams,
@@ -229,6 +236,10 @@ def train(
         Training arguments (u0, t_save, t_span, data) in TrainValArgs class.
     :param val_args:
         Validation arguments (u0, t_save, t_span, data) in TrainValArgs class.
+    :param t_save_windows:
+        Array of timepoints to use for training.
+    :param masks:
+        Array of binary masks to use for training.
     :param curriculum_params: Optional[dict]
         Dictionary of curriculum learning parameters.
     :param conf:
@@ -302,105 +313,113 @@ def train(
     # Save the initialised MLP from model
     initialised_mlp = model.func.mlp
 
-    # TODO @GiacomoFabrini - DISABLED THIS - DO WE NEED IT?!
-    if conf.curriculum_loss_landscape_BFGS and conf.curriculum_learning:
-        # Generate incremental training data for NN training - curriculum learning or not (if not, full data at each epoch)
-        incremental_training_data, incremental_train_save, incremental_t_span, steps = generate_incremental_arrays(
-            data=training_data,
-            t_save=t_save_train,
-            t_span=t_span_train,
-            n_epoch=n_epochs,
-            max_curriculum_epochs=conf.max_curriculum_epochs,
-            curriculum_params=curriculum_params,
-        )
-        # For each number of training datapoints, i.e. at each step in the curriculum learning ladder,
-        # train the model with optimistix (BFGS)
-        for curriculum_step in range(conf.num_curriculum_steps):
-            print(len(incremental_training_data[steps[curriculum_step]]))
-            # Reset starting epoch
-            epoch = 0
-            # NN learnable, mechanistic parameters can be learnable or frozen depending on conf.freeze_mechanistic_params_landscape_BFGS
-            if conf.second_opt == "optx":
-                cl_model, sol, static, loss_train, loss_val, epoch, _ = train_optimistix(
-                    model=model,
-                    filter_spec=filter_spec_freeze_mechanistic if conf.freeze_mechanistic_params_landscape_BFGS
-                        else eqx.is_array,
-                    conf=conf,
-                    optx_config=optx_config,
-                    base_loss=loss_dict["base_loss_fn"],
-                    loss_optx=loss_dict["loss_optx"],
-                    val_base_loss=loss_dict["val_base_loss_fn"],
-                    val_loss_optx=loss_dict["val_loss_optx"],
-                    epoch=epoch,
-                    num_epochs=10000,  # TODO @GiacomoFabrini - do we want to include an extra hyperparam for this?
-                    u0_train=u0,
-                    u0_val=u0_val,
-                    t_save_train=incremental_train_save[steps[curriculum_step]],
-                    t_span_train=incremental_t_span[steps[curriculum_step]],
-                    training_data=incremental_training_data[steps[curriculum_step]],
-                    t_save_val=t_save_val,
-                    t_span_val=t_span_val,
-                    validation_data=validation_data,
-                    frozen_mechanistic=conf.freeze_mechanistic_params_landscape_BFGS,
-                    frozen_nn=False,
-                    zero_out_mlp=False,
-                    wandb_log=False,
-                )
-            else:
-                cl_model, sol, static, loss_train, loss_val, epoch, _ = train_fides(
-                    model=model,
-                    filter_spec=filter_spec_freeze_mechanistic if conf.freeze_mechanistic_params_landscape_BFGS
-                    else eqx.is_array,
-                    conf=conf,
-                    loss_grad_fn=loss_dict["loss_grad_fn"],
-                    epoch=epoch,
-                    max_iter=10000,  # TODO @GiacomoFabrini - do we want to include an extra hyperparam for this?
-                    u0_train=u0,
-                    u0_val=u0_val,
-                    t_save_train=incremental_train_save[steps[curriculum_step]],
-                    t_span_train=incremental_t_span[steps[curriculum_step]],
-                    training_data=incremental_training_data[steps[curriculum_step]],
-                    t_save_val=t_save_val,
-                    t_span_val=t_span_val,
-                    validation_data=validation_data,
-                    loss_fn=loss_dict["loss_fn"],
-                    val_loss_fn=loss_dict["val_loss_fn"],
-                    zero_out_mlp=False,
-                )
-            # Compute training loss on the full training set
-            whole_train_loss,  _ = loss_dict["loss_fn"](
-                prob_params=sol.value,
-                prob_static=static,
-                u0=u0,
-                t_save=t_save_train,
-                t_span=t_span_train,
-                data=training_data,
-                mlp_reg_exp=conf.mlp_reg_exp,
-                mlp_reg_strength=conf.mlp_reg_strength,
-                output_reg=conf.output_reg,
-            )
-            # Log metrics to wandb
-            wandb.log(
-                {
-                    "loss_train": loss_train,
-                    "full_train_loss": whole_train_loss,
-                    "loss_val": loss_val,
-                    "num_train_samples": len(incremental_training_data[steps[curriculum_step]]),
-                },
-                step=curriculum_step,
-            )
-            # Log fit plots to wandb
-            log_fit_plots(
-                cl_model, u0,
-                t_save_train, t_span_train, training_data,  # plot for full training set just for reference
-                t_save_val, t_span_val, validation_data,
-                conf, colors, curriculum_step,
-                f"BFGS_local_minima_{curriculum_step+1}",
-                "BFGS_local_minima",
-            )
-        return model
+    # TODO @GiacomoFabrini - DISABLED THIS - DO WE NEED IT?! -- CURRENTLY BROKEN
+    # Untested how t_save_windows and masks work with this approach
+    # if conf.curriculum_loss_landscape_BFGS and conf.curriculum_learning:
+    #     # Generate incremental training data for NN training - curriculum learning or not (if not, full data at each epoch)
+    #     incremental_training_data, incremental_train_save, incremental_t_span, steps = generate_incremental_arrays(
+    #         data=training_data,
+    #         t_save=t_save_train,
+    #         t_span=t_span_train,
+    #         n_epoch=n_epochs,
+    #         curriculum_params=curriculum_params,
+    #     )
+    #     # For each number of training datapoints, i.e. at each step in the curriculum learning ladder,
+    #     # train the model with optimistix (BFGS)
+    #     for curriculum_step in range(conf.num_curriculum_steps):
+    #         print(len(incremental_training_data[steps[curriculum_step]]))
+    #         # Reset starting epoch
+    #         epoch = 0
+    #         # NN learnable, mechanistic parameters can be learnable or frozen depending on conf.freeze_mechanistic_params_landscape_BFGS
+    #         if conf.second_opt == "optx":
+    #             cl_model, sol, static, loss_train, loss_val, epoch, _ = train_optimistix(
+    #                 model=model,
+    #                 filter_spec=filter_spec_freeze_mechanistic if conf.freeze_mechanistic_params_landscape_BFGS
+    #                     else eqx.is_array,
+    #                 conf=conf,
+    #                 optx_config=optx_config,
+    #                 base_loss=loss_dict["base_loss_fn"],
+    #                 loss_optx=loss_dict["loss_optx"],
+    #                 val_base_loss=loss_dict["val_base_loss_fn"],
+    #                 val_loss_optx=loss_dict["val_loss_optx"],
+    #                 epoch=epoch,
+    #                 num_epochs=10000,  # TODO @GiacomoFabrini - do we want to include an extra hyperparam for this?
+    #                 u0_val=u0_val,
+    #                 t_save_windows=t_save_windows,
+    #                 masks=masks,
+    #                 training_data=incremental_training_data[steps[curriculum_step]],
+    #                 t_save_val=t_save_val,
+    #                 t_span_val=t_span_val,
+    #                 validation_data=validation_data,
+    #                 last_valid_index=1, # TODO fix this!
+    #                 frozen_mechanistic=conf.freeze_mechanistic_params_landscape_BFGS,
+    #                 frozen_nn=False,
+    #                 zero_out_mlp=False,
+    #                 wandb_log=False,
+    #             )
+    #         else:
+    #             cl_model, sol, static, loss_train, loss_val, epoch, _ = train_fides(
+    #                 model=model,
+    #                 filter_spec=filter_spec_freeze_mechanistic if conf.freeze_mechanistic_params_landscape_BFGS
+    #                 else eqx.is_array,
+    #                 conf=conf,
+    #                 loss_grad_fn=loss_dict["loss_grad_fn"],
+    #                 epoch=epoch,
+    #                 max_iter=10000,  # TODO @GiacomoFabrini - do we want to include an extra hyperparam for this?
+    #                 u0_val=u0_val,
+    #                 t_save_windows=t_save_windows,
+    #                 masks=masks,
+    #                 training_data=incremental_training_data[steps[curriculum_step]],
+    #                 t_save_val=t_save_val,
+    #                 t_span_val=t_span_val,
+    #                 validation_data=validation_data,
+    #                 last_valid_index=1,  # TODO fix this!
+    #                 loss_fn=loss_dict["loss_fn"],
+    #                 val_loss_fn=loss_dict["val_loss_fn"],
+    #                 zero_out_mlp=False,
+    #             )
+    #         # Compute training loss on the full training set
+    #         whole_train_loss,  _ = loss_dict["loss_fn"](
+    #             prob_params=sol.value,
+    #             prob_static=static,
+    #             t_save=t_save_train,
+    #             t_span=t_span_train,
+    #             data=training_data,
+    #             mlp_reg_exp=conf.mlp_reg_exp,
+    #             mlp_reg_strength=conf.mlp_reg_strength,
+    #             output_reg=conf.output_reg,
+    #         )
+    #         # Log metrics to wandb
+    #         wandb.log(
+    #             {
+    #                 "loss_train": loss_train,
+    #                 "full_train_loss": whole_train_loss,
+    #                 "loss_val": loss_val,
+    #                 "num_train_samples": len(incremental_training_data[steps[curriculum_step]]),
+    #             },
+    #             step=curriculum_step,
+    #         )
+    #         # Log fit plots to wandb
+    #         log_fit_plots(
+    #             cl_model, u0,
+    #             t_save_train, t_span_train, training_data,  # plot for full training set just for reference
+    #             t_save_val, t_span_val, validation_data,
+    #             t_save_windows,
+    #             conf, colors, curriculum_step,
+    #             f"BFGS_local_minima_{curriculum_step+1}",
+    #             "BFGS_local_minima",
+    #         )
+    #     return model
+
+    # Initialise list of result dataframes and define last_valid_index based on shooting mode
 
     results_dfs = []
+    if conf.shooting_mode == "multiple":
+        num_windows = int(jnp.ceil(len(training_data) / (conf.shooting_window_length - 1)))
+        last_valid_index = num_windows
+    else:
+        last_valid_index = 1
+
     # STAGE 1: fit mechanistic model parameters -- zero-out and freeze neural network
     if max_iter_optx_mechanistic > 0:
         wandb_log = True
@@ -416,14 +435,14 @@ def train(
                 val_loss_optx=loss_dict["val_loss_optx"],
                 epoch=epoch,
                 num_epochs=max_iter_optx_mechanistic,
-                u0_train=u0,
                 u0_val=u0_val,
-                t_save_train=t_save_train,
-                t_span_train=t_span_train,
+                t_save_windows=t_save_windows,
+                masks=masks,
                 training_data=training_data,
                 t_save_val=t_save_val,
                 t_span_val=t_span_val,
                 validation_data=validation_data,
+                last_valid_index=last_valid_index,
                 frozen_mechanistic=False,
                 frozen_nn=True,
                 zero_out_mlp=True,
@@ -438,14 +457,14 @@ def train(
                 loss_grad_fn=loss_dict["loss_grad_fn"],
                 epoch=epoch,
                 max_iter=max_iter_optx_mechanistic,
-                u0_train=u0,
                 u0_val=u0_val,
-                t_save_train=t_save_train,
-                t_span_train=t_span_train,
+                t_save_windows=t_save_windows,
+                masks=masks,
                 training_data=training_data,
                 t_save_val=t_save_val,
                 t_span_val=t_span_val,
                 validation_data=validation_data,
+                last_valid_index=last_valid_index,
                 loss_fn=loss_dict["loss_fn"],
                 val_loss_fn=loss_dict["val_loss_fn"],
                 zero_out_mlp=True,
@@ -493,7 +512,6 @@ def train(
             regularise_network=True,
         )
         # Add initial zero as starting condition for the 2-norm of the neural network contribution
-        u0 = augment_u0(u0)
         u0_val = augment_u0(u0_val)
         plot_args["u0"] = augment_u0(plot_args["u0"])
 
@@ -569,11 +587,17 @@ def train(
                 ivs.append(params.initial_values)
 
             if conf.curriculum_learning:
-                params, static = check_and_progress_curriculum(
-                    params, static, adam_filter_spec,
-                    nn_epoch, model_save_steps_start, conf.shooting_mode,
-                    curriculum_params
+                t_save_windows, masks, cl_stage = check_and_progress_curriculum(
+                    t_save_windows, masks, nn_epoch, cl_stage, model_save_steps_start, curriculum_params
                 )
+
+                # if cl_stage >= 2:  # zero out last set of initial values - not needed anymore
+                #     model = eqx.combine(params, static)
+                #     model = model.zero_last_initial_values(cl_stage)
+                #     params, static = eqx.partition(model, adam_filter_spec)
+
+                # Update last valid window index
+                last_valid_index = curriculum_params[cl_stage]["last_valid_index"]
 
             params, opt_state, loss_train, reg_loss_dict, grads, hessian_metrics = make_step(
                 params=params,
@@ -581,9 +605,9 @@ def train(
                 opt=opt,
                 opt_state=opt_state,
                 input_data=training_data,
-                u0=u0,
-                t_save=t_save_train,
-                t_span=t_span_train,
+                t_save_windows=t_save_windows,
+                masks=masks,
+                last_valid_index=last_valid_index,
                 conf=conf,
                 loss_grad_fn=loss_dict["loss_grad_fn"],
                 compute_hessian_metrics=(conf.compute_hessian_metrics and (nn_epoch in log_epochs)),
@@ -771,7 +795,7 @@ def train(
         # Serialise the best ADAM model
         best_model.save(model_save_dir / (conf.__str__(serialise_model=True) + "_best_ADAM.eqx"))
 
-    # Train with BFGS via optimistix
+    # Train with BFGS via optimistix/fides
     if max_iter_optx_finetune > 0:  # otherwise end training and return trained model
         # Setup filter spec
         if conf.freeze_mechanistic_params_optx:
@@ -794,14 +818,14 @@ def train(
                 val_loss_optx=loss_dict["val_loss_optx"],
                 epoch=epoch,
                 num_epochs=max_iter_optx_finetune,
-                u0_train=u0,
                 u0_val=u0_val,
-                t_save_train=t_save_train,
-                t_span_train=t_span_train,
+                t_save_windows=t_save_windows,
+                masks=masks,
                 training_data=training_data,
                 t_save_val=t_save_val,
                 t_span_val=t_span_val,
                 validation_data=validation_data,
+                last_valid_index=last_valid_index,
                 frozen_mechanistic=conf.freeze_mechanistic_params_optx,
                 frozen_nn=conf.freeze_nn_optx,
                 zero_out_mlp=False,
@@ -816,14 +840,14 @@ def train(
                 loss_grad_fn=loss_dict["loss_grad_fn"],
                 epoch=epoch,
                 max_iter=max_iter_optx_finetune,
-                u0_train=u0,
                 u0_val=u0_val,
-                t_save_train=t_save_train,
-                t_span_train=t_span_train,
+                t_save_windows=t_save_windows,
+                masks=masks,
                 training_data=training_data,
                 t_save_val=t_save_val,
                 t_span_val=t_span_val,
                 validation_data=validation_data,
+                last_valid_index=last_valid_index,
                 loss_fn=loss_dict["loss_fn"],
                 val_loss_fn=loss_dict["val_loss_fn"],
                 zero_out_mlp=False,
