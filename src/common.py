@@ -249,7 +249,7 @@ hessian_metrics_wandb = {
 
 dynamic_param_labels = {
     "lotka_volterra": ["alpha", "delta"],
-    "sir": ['beta', 'gamma', 'delta'],
+    "sir": ["beta", "gamma", "delta"],
 }
 
 # Ground truth dynamic parameters for models in use (LV, guesses only for SIR)
