@@ -84,21 +84,6 @@ mlp = setup_mlp(conf, u0, key_mlp, key_init)
     )
 optx_config, options = option_args
 
-## Setup curriculum learning (if enabled)
-## TODO this crashes the run - might want to think about a different approach or is this fine?
-# if conf.curriculum_learning and N_EPOCHS == 0:
-#     raise ValueError(f"Number of NN training epochs must be > 0 to use curriculum learning - found {N_EPOCHS}!")
-# curriculum_stage_dict = setup_curriculum_learning(
-#     data=train_args.data,
-#     t_save=train_args.t_save,
-#     n_epoch=N_EPOCHS,
-#     shooting_mode=conf.shooting_mode,
-#     shooting_window_length=conf.shooting_window_length,
-#     curriculum_learning=conf.curriculum_learning,
-#     num_curriculum_steps=conf.num_curriculum_steps,
-#     max_curriculum_epochs=conf.max_curriculum_epochs,
-# )
-
 # Set up SaveAt windows, binary masks and initial values
 t_save_windows, masks, initial_values, curriculum_stage_dict = setup_time_masks_u0_curriculum(
     conf=conf,
@@ -117,16 +102,6 @@ ude_problem = UDEProblem(
     mlp=mlp,
     options=options,
     state_dimension=state_dims[conf.dynamical_model],
-    # training_horizon=train_args.data.shape[0],
-    # shooting_mode=conf.shooting_mode,
-    # shooting_window_length=conf.shooting_window_length,
-    # shooting_iv_init=conf.shooting_iv_init,
-    # t_save_train=train_args.t_save if type(train_args.t_save) == diffrax.SaveAt \
-    #     else diffrax.SaveAt(ts=train_args.t_save),
-    # u0_guess=train_args.u0,
-    # init_random_seed=conf.multistart_job,
-    # curriculum_learning=conf.curriculum_learning,
-    # curriculum_params=curriculum_stage_dict[1] if conf.curriculum_learning else None,
     initial_values=initial_values
 )
 
