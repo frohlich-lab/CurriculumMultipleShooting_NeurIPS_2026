@@ -332,7 +332,29 @@ def log_model_stats(
             )
         }
 
-    stats = {**layer_stats, **dynamic_param_stats}
+    # Log values and grads for shooting window initial values
+    initial_values_labels = [
+        "u0_" + str(i+1) for i in range(model.initial_values.shape[0])
+    ]
+    initial_value_stats = {
+        f'initial_values.{par_label}_{value_label}': wandb.Histogram(
+            np.log10(np.abs(np.array(par_val[par_val != 0])))
+        )
+        if value_label == 'grads'
+        else wandb.Histogram(par_val)
+        for value_label, par_vals in zip(
+            ('vals', 'grads'),
+            (model.initial_values, grad.initial_values),
+            strict=False
+        )
+        for par_label, par_val in zip(
+            initial_values_labels,
+            np.array(par_vals).ravel(),
+            strict=False
+        )
+    }
+
+    stats = {**layer_stats, **dynamic_param_stats, **initial_value_stats}
     return stats
 
 
