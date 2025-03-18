@@ -101,6 +101,9 @@ def train_fides(
         )
         # Unflatten optimised parameters into UDEProblem-like opt_params
         opt_params = unflatten_params(opt_x)
+    except eqx.EquinoxRuntimeError:
+        print("Could not optimise with fides - exceeded max_steps -> using initial params.")
+        opt_params = params
     except RuntimeError as e:
         # catch RuntimeError in case of not finite initial loss, initial gradients (or initial gradient Hessian)
         # try to report on type of failure
