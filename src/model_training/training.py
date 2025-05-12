@@ -590,12 +590,6 @@ def train(
                 t_save_windows, masks, cl_stage = check_and_progress_curriculum(
                     t_save_windows, masks, nn_epoch, cl_stage, model_save_steps_start, curriculum_params
                 )
-
-                # if cl_stage >= 2:  # zero out last set of initial values - not needed anymore
-                #     model = eqx.combine(params, static)
-                #     model = model.zero_last_initial_values(cl_stage)
-                #     params, static = eqx.partition(model, adam_filter_spec)
-
                 # Update last valid window index
                 last_valid_index = curriculum_params[cl_stage]["last_valid_index"]
 

@@ -214,21 +214,6 @@ class UDEProblem(eqx.Module):
         return solution
 
 
-    def update_curriculum_time_mask(self, time: Tuple, mask: Tuple):
-        new_time = jnp.expand_dims(jnp.array(time), axis=0) if len(jnp.array(time).shape) == 1 else jnp.array(time)
-        new_mask = jnp.expand_dims(jnp.array(mask), axis=0) if len(jnp.array(mask).shape) == 1 else jnp.array(mask)
-        time_update = eqx.tree_at(
-            lambda m: m.t_save_windows,
-            self,
-            tuple(new_time.tolist())
-        )
-        return eqx.tree_at(
-            lambda m: m.masks,
-            time_update,
-            tuple(new_mask.tolist())
-        )
-
-
     def replace_mlp(
             self,
             new_mlp: Union[CustomDropoutMLP, eqx.nn.MLP],
@@ -314,23 +299,6 @@ class UDEProblem(eqx.Module):
             self,
             new_options
         )
-
-
-    # def zero_last_initial_values(self, cl_stage: int):
-    #     """
-    #     Zeroes the last initial values in the UDEProblem.
-    #     """
-    #     return eqx.tree_at(
-    #         lambda m: m.initial_values,
-    #         self,
-    #         jnp.concatenate(
-    #             [
-    #                 self.initial_values[:-(cl_stage - 1)],
-    #                 jnp.zeros((cl_stage - 1, self.initial_values.shape[1]))
-    #             ],
-    #             axis=0
-    #         )
-    #     )
 
 
     def get_hyperparams(self) -> dict[str, Any]:

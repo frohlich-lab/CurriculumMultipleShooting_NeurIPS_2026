@@ -908,15 +908,11 @@ def get_sol_and_loss_multiple_shooting(
 
 
 def check_and_progress_curriculum(
-        # params,
-        # static,
-        # filter_spec,
         t_save_windows,
         masks,
         nn_epoch: int,
         cl_stage: int,
         model_save_steps_start: List,
-        # shooting_mode: str,
         curriculum_params: dict
 ):
     # If epoch matches, update CL stage, inner timepoints and masks, and zero last set of initial values (window)
@@ -927,16 +923,6 @@ def check_and_progress_curriculum(
                 jnp.abs(jnp.array(model_save_steps_start) - nn_epoch)
             )
         ) + 1  # 1-counting
-        # model = eqx.combine(params, static)
-        # model = model.update_curriculum_time_mask(
-        #     curriculum_params[cl_stage]["time"],
-        #     curriculum_params[cl_stage]["mask"]
-        # )
-        # if shooting_mode == "multiple":
-        #     model = model.advance_curriculum_stage()
-        #     model.zero_last_initial_values()
-        # # Re-partition prior to returning for next stage
-        # params, static = eqx.partition(model, filter_spec)
         t_save_windows = curriculum_params[cl_stage]["time"]
         masks = curriculum_params[cl_stage]["mask"]
     return t_save_windows, masks, cl_stage
