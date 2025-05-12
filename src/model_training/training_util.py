@@ -135,7 +135,7 @@ def initialise_wandb(
         tags=[
             "early_stop" if conf.use_early_stop else "no_early_stop",
             # "frozen_mechanistic_params_optx"
-            # if conf.freeze_mechanistic_params_optx else "learnable_mechanistic_params_optx",  # DISABLED TO MERGE WITH MLP
+            # if conf.freeze_mechanistic_params_optx else "learnable_mechanistic_params_optx", DISABLED TO MERGE WITH MLP
         ],
         # mode="offline",  # TODO restore after debugging
     )
@@ -919,7 +919,7 @@ def check_and_progress_curriculum(
         model_save_steps_start: List,
         curriculum_params: dict
 ):
-    # If epoch matches, update CL stage, inner timepoints and masks, and zero last set of initial values (window)
+    # If the epoch matches, update CL stage, inner timepoints and masks, and zero last set of initial values (window)
     if (nn_epoch != 0) and (nn_epoch in model_save_steps_start):
         print("----------------------------------")
         cl_stage = int(

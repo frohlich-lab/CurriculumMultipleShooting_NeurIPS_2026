@@ -1,5 +1,6 @@
 import jax.numpy as jnp
 import jax.random as jr
+# import matplotlib.pyplot as plt
 import numpy as np
 
 from diffrax import SaveAt
@@ -256,7 +257,7 @@ def generate_ms_time_and_mask(
         core_indices = slice(start_idx, end_idx)
         core_values = t_save.subs.ts[core_indices]
 
-        # Construct full-length window
+        # Construct the full-length window
         window = np.zeros(training_horizon)
         window[: start_idx] = core_values[0]
         window[core_indices] = core_values
@@ -303,7 +304,7 @@ def setup_curriculum_learning(
         switch_epoch = min(max_curriculum_epochs, n_epoch)
 
         if shooting_mode == "single":
-            # Check number of curriculum steps
+            # Check the number of curriculum steps is defined and non-negative
             if num_curriculum_steps is None:
                 raise ValueError("Number of steps must be defined for curriculum learning!")
             elif num_curriculum_steps <= 0:
@@ -326,6 +327,7 @@ def setup_curriculum_learning(
                     "last_valid_index": 1, # only 1 valid window at each stage
                 }
         elif shooting_mode == "multiple":
+            # The number of curriculum steps is automatically defined by the number of shooting windows
             num_windows = int(np.ceil(len(data) / (shooting_window_length - 1)))
             print(f"Multiple shooting + curriculum learning selected. Number of curriculum steps will be "
                   f"overridden with {num_windows}.")
@@ -376,7 +378,7 @@ def setup_curriculum_learning(
         else:
             raise ValueError(f"Curriculum learning cannot be used together with shooting_mode: {shooting_mode}")
 
-        # import matplotlib.pyplot as plt
+
         # for attribute in ["time", "mask", "mask_overlap"]:
         #     plt.subplots(len(stage_dict.keys()), 1, figsize=(10, 3*len(stage_dict.keys())))
         #     for stage in sorted(stage_dict.keys()):
@@ -464,7 +466,7 @@ def initialize_multiple_shooting(
     random_seed: int
         Random seed for random initialization.
     """
-    # Pre-compute number of windows
+    # Pre-compute the number of windows
     num_windows = int(np.ceil(training_horizon / (shooting_window_length - 1)))
 
     if curriculum_learning and (curriculum_params is not None):
@@ -505,7 +507,7 @@ def setup_time_masks_u0_curriculum(
         train_args: TrainValArgs,
         u0_guess: Union[tuple, jnp.ndarray],
         effective_state_dimension: int,
-        network_regularisation: bool = False  # disabled at start of training
+        network_regularisation: bool = False  # disabled at the start of training
 ) -> Tuple[Array, Array, Array, dict]:
     # Setup curriculum learning (if enabled)
     # TODO this crashes the run - might want to think about a different approach or is this fine?
