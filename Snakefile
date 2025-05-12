@@ -149,6 +149,11 @@ rule merge_csvs:
             dynamical_model=DYNAMICAL_MODEL,
             experiment_name=EXPERIMENT_NAME
         )
+    retries: 1
+    resources:
+        mem="16GB",
+        runtime="3h",
+        nodes=1,
     shell:
         "python3 {input.script}"
 
