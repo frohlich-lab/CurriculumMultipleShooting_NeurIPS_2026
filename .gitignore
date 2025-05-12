@@ -19,3 +19,5 @@ src/old/*
 src/results/*
 plots/*
 src/models/*
+/.snakemake
+/models
