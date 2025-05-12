@@ -396,25 +396,25 @@ def log_plots(
             label=f'obs_{label}',
         )
         if (shooting_mode != "single") and (dataset == "train"):
-            for batch in sorted(df_predict_shooting_train.batch.unique()):
-                # Only draw line between points corresponding to the same batch/window
+            for window in sorted(df_predict_shooting_train.window.unique()):
+                # Only draw line between points corresponding to the same window/batch (unused)
                 plt.plot(
                     df_predict_shooting_train[
-                        df_predict_shooting_train.batch == batch
+                        df_predict_shooting_train.window == window
                     ]["time"].values,
                     df_predict_shooting_train[
-                        df_predict_shooting_train.batch == batch
+                        df_predict_shooting_train.window == window
                     ][label].values,
                     color=color,
                     ls='--',
                     alpha=0.5,
                 )
             if shooting_mode == "multiple":
-                for window in sorted(df_predict_shooting_train.batch.unique()):
+                for window in sorted(df_predict_shooting_train.window.unique()):
                     # mark start of each shooting window just for reference
                     plt.axvline(
                         x=df_predict_shooting_train[
-                            df_predict_shooting_train.batch == window
+                            df_predict_shooting_train.window == window
                         ]["time"].values[0],
                         color='black',
                         alpha=0.6,

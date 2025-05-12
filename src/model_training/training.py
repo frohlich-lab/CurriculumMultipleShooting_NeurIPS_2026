@@ -90,16 +90,16 @@ def get_fit_dfs(
                 pd.DataFrame({"time": sol.ts[i],
                               "prey": sol.ys[i, :, 0],
                               "predator": sol.ys[i, :, 1],
-                              }).assign(batch=i + 1)
-                for i in range(sol.ys.shape[0])  # batch/shooting-window dimension
+                              }).assign(window=i + 1)
+                for i in range(sol.ys.shape[0])  # shooting-window/batch (unused) dimension
             ])
         elif prob.dynamical_model == "sir":
             df_pred_train = pd.concat([
                 pd.DataFrame({"time": sol.ts[i],
                               "Infected": jnp.log(jnp.absolute(sol.ys[i, :, 1] + sol.ys[i, :, 3])),
                               "Recovered + dead": jnp.log(jnp.absolute(sol.ys[i, :, 2])),
-                              }).assign(batch=i + 1)
-                for i in range(sol.ys.shape[0])  # batch/shooting-window dimension
+                              }).assign(window=i + 1)
+                for i in range(sol.ys.shape[0])  # shooting-window/batch (unused) dimension
             ])
         else:
             raise ValueError(f"Undefined dynamical model {prob.dynamical_model}.")
