@@ -48,10 +48,12 @@ def mlp_training_step(
         targets: Float[Array, '...'],
         conf: Conf,
 ):
-    if conf.use_lookahead:
-        opt_params = params.fast
-    else:
-        opt_params = params
+    # Disabled LookAhead
+    # if conf.use_lookahead:
+    #     opt_params = params.fast
+    # else:
+    #     opt_params = params
+    opt_params = params
     loss_value, grads = compute_mlp_loss_grad(
         opt_params,
         static,
@@ -114,10 +116,12 @@ def mlp_train(
             targets=training_targets,
             conf=conf,
         )
-        model = eqx.combine(
-            params.fast if conf.use_lookahead else params,
-            static,
-        )
+        # Disabled LookAhead
+        # model = eqx.combine(
+        #     params.fast if conf.use_lookahead else params,
+        #     static,
+        # )
+        model = eqx.combine(params, static)
 
         if conf.use_dropout:
             # Get a copy of the model for inference

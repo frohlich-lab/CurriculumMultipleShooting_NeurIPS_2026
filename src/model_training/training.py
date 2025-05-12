@@ -165,11 +165,12 @@ def make_step(
         compute_hessian_metrics: bool,
         base_loss_fn: Callable,
 ):
-    # TODO @GiacomoFabrini - check whether LookAhead still works with newer changes! If not, discuss and decide whether to keep or remove
-    if conf.use_lookahead:
-        opt_params = params.fast
-    else:
-        opt_params = params
+    # # TODO @GiacomoFabrini - check whether LookAhead still works with newer changes! If not, discuss and decide whether to keep or remove
+    # if conf.use_lookahead:
+    #     opt_params = params.fast
+    # else:
+    #     opt_params = params
+    opt_params = params
     (loss_value, reg_loss_dict), grads = loss_grad_fn(
         prob_params=opt_params,
         prob_static=static,
@@ -612,10 +613,12 @@ def train(
                 break
 
             # Recombine dynamic and static into full model
-            model = eqx.combine(
-                params.fast if conf.use_lookahead else params,
-                static,
-            )
+            # Disabled LookAhead
+            # model = eqx.combine(
+            #     params.fast if conf.use_lookahead else params,
+            #     static,
+            # )
+            model = eqx.combine(params, static)
 
             # Save model at the start/end of each curriculum learning stage
             if conf.serialise_curriculum_models:
