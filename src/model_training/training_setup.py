@@ -291,14 +291,20 @@ def setup_curriculum_learning(
         num_curriculum_steps: int,
         max_curriculum_epochs: Optional[int],
 ):
-    stage_dict = {}
-
-    if curriculum_learning:
-        # Check number of epochs to spend on curriculum learning
+    if not curriculum_learning:
+        return None
+    else:
+        # Check whether the shooting-mode is compatible with curriculum-learning
+        if shooting_mode not in ["single", "multiple"]:
+            raise ValueError(f"Curriculum learning cannot be used together with shooting_mode: {shooting_mode}")
+        # Check the number of epochs to spend on curriculum learning is defined and sensible
         if max_curriculum_epochs is None:
             raise ValueError("Max curriculum steps must be defined for curriculum learning!")
         elif max_curriculum_epochs <= 0 or max_curriculum_epochs > n_epoch:
-            raise ValueError(f"Max curriculum steps cannot be negative nor larger than number of epochs: {n_epoch}!")
+            raise ValueError(
+                f"Max curriculum steps cannot be negative nor larger than number of epochs: {n_epoch}!")
+
+        stage_dict = {}
 
         # Calculate the epoch at which to switch to full data
         switch_epoch = min(max_curriculum_epochs, n_epoch)
@@ -375,8 +381,6 @@ def setup_curriculum_learning(
                     "mask": mask.astype(int),
                     "last_valid_index": num_windows - (step-1)
                 }
-        else:
-            raise ValueError(f"Curriculum learning cannot be used together with shooting_mode: {shooting_mode}")
 
 
         # for attribute in ["time", "mask", "mask_overlap"]:
@@ -403,8 +407,6 @@ def setup_curriculum_learning(
         #     plt.tight_layout()
         #     plt.savefig(f"{shooting_mode}.{shooting_window_length}.{curriculum_learning}.{attribute}.pdf")
         return stage_dict
-    else:
-        return None
 
 
 def initialize_single_shooting(
