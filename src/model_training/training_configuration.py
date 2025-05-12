@@ -173,9 +173,9 @@ SHOOTING_IV_INITS = {
 
 MULTIPLE_SHOOTING_PENALTIES = {
     0.0,
-    # 1e-1,
-    # 1e-2,
-    # 1e-3,
+    1e-1,
+    1e-2,
+    1e-3,
 }
 
 # Batch size -- unused, only for window-batch, DISABLED
@@ -208,9 +208,9 @@ DYNAMIC_PARAMS_SCALES = {
 }
 
 MULTISTART_DEVIATIONS = {
-    0.0,
+    0,
     1,
-    # 2
+    2
 }
 
 DYNAMIC_PARAMS_PERTURB_METHODS = {
@@ -291,4 +291,4 @@ N_EPOCHS = 4000  # default from UDE paper: 2000 / SIR: 40000-100000
 # MAX_ITER_OPTX_FINETUNE = 10000  # default from UDE paper -- used to fine-tune mechanistic params + NN together
 MAX_ITER_OPTX_FINETUNE = 10000
 
-EXPERIMENT_NAME = "test_snake"
+EXPERIMENT_NAME = "nemo_v1"
