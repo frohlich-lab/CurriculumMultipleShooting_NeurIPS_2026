@@ -16,6 +16,7 @@ from dataclasses import replace
 from diffrax import SaveAt
 from jaxtyping import Array, Float, PyTree
 from pathlib import Path
+from src.common import TRAINING_RESULTS
 from src.model_training.training_util import (check_and_progress_curriculum, configure_early_stopping,
                                               # generate_incremental_arrays,
                                               generate_log_epochs,
@@ -878,9 +879,9 @@ def train(
 
     # Save results dataframe to CSV
     results_total = pd.concat(results_dfs)
-    results_save_dir = results_dir / conf.dynamical_model
+    results_save_dir = results_dir / conf.dynamical_model / "train"
     results_save_dir.mkdir(exist_ok=True, parents=True)
-    results_total.to_csv(results_save_dir / (conf.__str__() + "_results.csv"))
+    results_total.to_csv(TRAINING_RESULTS.format_map(conf.__dict__))
 
     # Get W&B run directory
     # wandb_stripped_dir = wandb.run.dir.rsplit('/files', 1)[0]

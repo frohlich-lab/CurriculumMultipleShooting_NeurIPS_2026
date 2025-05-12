@@ -9,6 +9,22 @@ from jaxtyping import Array, PyTree
 from typing import List, Optional, Union
 
 
+# TODO @GiacomoFabrini - review these based on experiments!
+unwanted_fields = [
+    "dynamical_model",
+    "final_activation_fn_name",
+    "use_skip_connections",  # might need
+    "use_dropout", "input_dropout_rate", "hidden_dropout_rate",  # might need
+    "serialise_curriculum_models",
+    "dynamic_params_lb", "dynamic_params_ub",
+    "get_sindy_formula", "sindy_use_derivatives",
+    "freeze_mechanistic_params_adam", "freeze_mechanistic_params_optx",  # might need
+    "freeze_nn_adam", "freeze_nn_optx",  # might need
+    "curriculum_loss_landscape_BFGS", "freeze_mechanistic_params_landscape_BFGS", "second_curriculum_learning",
+    "save_plots",
+]
+
+
 @dataclasses.dataclass(frozen=True, repr=True, eq=True, order=True)
 class Conf(dict):
     # Dynamical model to simulate
@@ -80,10 +96,6 @@ class Conf(dict):
     freeze_mechanistic_params_optx: bool = False
     freeze_nn_adam: bool = False
     freeze_nn_optx: bool = False
-    # Overall run details & behaviour
-    experiment_name: str = None
-    training_setting: str = None  # options: "UDE", "MLP"
-    mlpexp_target: str = "RHS"  # options: "RHS", "interaction"
     # Niche scenario settings: BFGS landscape, 2 curriculum learning stages (fit MLP, fit dynamic params)
     curriculum_loss_landscape_BFGS: bool = False
     freeze_mechanistic_params_landscape_BFGS: bool = False
@@ -93,6 +105,10 @@ class Conf(dict):
     normalise_timepoints: bool = False
     # Plotting behaviour
     save_plots: bool = False
+    # Training settings
+    training_setting: str = None  # options: "UDE", "MLP"
+    mlpexp_target: str = "RHS"  # options: "RHS", "interaction"
+    experiment_name: str = None
 
     def __str__(self, serialise_model: bool = False) -> str:
         """
@@ -100,75 +116,8 @@ class Conf(dict):
 
         Note: enables printing of Conf objects in fire
         """
-        unwanted_fields = [
-            "serialise_curriculum_models",
-            "dynamic_params_lb", "dynamic_params_ub",
-            "compute_hessian_metrics",
-            "get_sindy_formula", "sindy_use_derivatives",
-            "second_curriculum_learning",
-            "experiment_name", "save_plot",
-        ]
-        if serialise_model:
-            unwanted_fields.append("dynamical_model")
-        # Remove some default values from the run name to avoid excessively long filenames
-        if self.final_activation_fn_name == "identity":
-            unwanted_fields.append("final_activation_fn_name")
-        if self.init_scale == 0.1:
-            unwanted_fields.append("init_scale")
-        if not self.use_skip_connections:
-            unwanted_fields.append("use_skip_connections")
-        if not self.use_dropout:
-            unwanted_fields.extend(["use_dropout", "input_dropout_rate", "hidden_dropout_rate"])
 
-        if not self.use_lookahead:  # if not using LookAhead, do not include related params
-            unwanted_fields.extend(["use_lookahead", "lookahead_sync", "lookahead_step_size", "lookahead_reset_state"])
-        if not self.curriculum_learning:  # if not using curriculum learning, do not include number of steps/epochs
-            unwanted_fields.extend(["num_curriculum_steps", "max_curriculum_epochs"])
-
-        if self.shooting_mode == "single":
-            unwanted_fields.extend(["multiple_shooting_penalty", "shooting_window_length", "shooting_iv_init", "batch_size"])
-        elif self.shooting_mode == "multiple":
-            unwanted_fields.extend(["batch_size"])
-        elif self.shooting_mode == "window_batch":
-            unwanted_fields.extend(["multiple_shooting_penalty"])
-
-        if self.mlp_reg_strength == 0:
-            unwanted_fields.extend(["mlp_reg_exp", "mlp_reg_strength"])
-
-        # Remove default node augmentation -- not currently investigated
-        if self.node_augmentation == 0:
-            unwanted_fields.append("node_augmentation")
-
-        # Remove UDE-specific params in the case of MLP experiments and vice versa
-        if self.training_setting != "MLP_experiment":
-            unwanted_fields.extend(["mlpexp_target"])
-        else:
-            unwanted_fields.extend(
-                [
-                    "node_augmentation",
-                    "freeze_mechanistic_params_adam", "freeze_mechanistic_params_optx",
-                    "freeze_nn_adam", "freeze_nn_optx",
-                ]
-            )
-
-        if all(not getattr(self, field) for field in
-               ["freeze_mechanistic_params_adam", "freeze_mechanistic_params_optx", "freeze_nn_adam", "freeze_nn_optx"]
-               ):
-            unwanted_fields.extend(["freeze_mechanistic_params_adam", "freeze_mechanistic_params_optx",
-                                    "freeze_nn_adam", "freeze_nn_optx"])
-
-        # Handle BFGS loss landscape-specific parameters
-        if not self.curriculum_loss_landscape_BFGS:
-            unwanted_fields.extend(["freeze_mechanistic_params_landscape_BFGS"])
-        else:  # for BFGS baseline, no need to report NN optimiser and related hyperparams, nor hessian
-            unwanted_fields.extend(
-                [
-                    "optimiser", "max_lrate", "lrate_span", "lrate_decay", "warmup_fct", "opt_steps", "opt_mult",
-                    "use_early_stop",
-                    "freeze_mechanistic_params_adam", "freeze_mechanistic_params_optx",
-                    "hessian_precondition", "compute_hessian_metrics",
-                ]
-            )
+        # TODO @GiacomoFabrini - need to handle niche settings (loss landscape BFGS, second curriculum)
 
         values = (
             getattr(self, field.name)
@@ -208,10 +157,66 @@ def flatten(v: PyTree):
     return out, lambda x: pullback(x)[0]
 
 
-basedir: Path = Path(__file__).resolve().parent
+basedir: Path = Path(__file__).resolve().parent.parent  # Test_UDE, outside src
 plots_dir = basedir / "plots"
 results_dir = basedir / "results"
 model_save_dir = basedir / "models"
+
+default_attributes = [
+    k
+    for k, v in vars(Conf).items()
+    if not k.startswith('__') and k not in unwanted_fields
+]
+
+# default_attributes = [
+#     "dynamical_model",
+#     "mlp_layer_width",
+#     "mlp_depth",
+#     "init_scale",
+#     "use_bias",
+#     "use_final_bias",
+#     "activation_fn_name",
+#     "optimiser",
+#     "max_lrate",
+#     "lrate_span",
+#     "lrate_decay",
+#     "warmup_fct",
+#     "opt_steps",
+#     "opt_mult",
+#     "use_early_stop",
+#     "mlp_reg_exp",
+#     "mlp_reg_strength",
+#     "output_reg",
+#     "shooting_mode",
+#     "shooting_window_length",
+#     "shooting_iv_init",
+#     "multiple_shooting_penalty",
+#     "curriculum_learning",
+#     "num_curriculum_steps",
+#     "max_curriculum_epochs",
+#     "dynamic_params_scale",
+#     "multistart_deviation",
+#     "multistart_job",
+#     "dynamic_params_perturb_method",
+#     "node_augmentation",
+#     "hessian_precondition",
+#     "compute_hessian_metrics",
+#     "second_opt",
+#     "normalise_data",
+#     "normalise_timepoints",
+#     "training_setting",
+#     "mlpexp_target",
+#     "experiment_name"
+# ]
+
+defaults = {
+    x: f"{{{x}}}"
+    for x in default_attributes
+}
+
+basic_template = "__".join(defaults.values())
+TRAINING_RESULTS = str(results_dir / "{dynamical_model}" / "train" / (basic_template + ".csv"))
+MERGED_TRAINING_RESULTS = str(results_dir / "{dynamical_model}" / "merged_results__{experiment_name}.csv")
 
 
 def rbf(x):
