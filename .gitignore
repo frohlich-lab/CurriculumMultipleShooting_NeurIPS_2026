@@ -21,3 +21,4 @@ plots/*
 src/models/*
 /.snakemake
 /models
+*.sh
