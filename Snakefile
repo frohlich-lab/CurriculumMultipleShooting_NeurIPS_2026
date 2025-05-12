@@ -5,7 +5,7 @@ from src.model_training.training_configuration import (
 )
 
 # Container if needed
-singularity: "docker://giacomofabrini/test_ude:arm64"
+singularity: "docker://giacomofabrini/test_ude:amd64"
 
 param_combos = generate_param_combinations(N_STARTS)
 
