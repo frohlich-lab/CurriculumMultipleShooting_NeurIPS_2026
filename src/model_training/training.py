@@ -881,7 +881,7 @@ def train(
     results_total = pd.concat(results_dfs)
     results_save_dir = results_dir / conf.dynamical_model / "train"
     results_save_dir.mkdir(exist_ok=True, parents=True)
-    results_total.to_csv(TRAINING_RESULTS.format_map(conf.__dict__))
+    results_total.to_csv(TRAINING_RESULTS.format_map(conf.__dict__), index=False)
 
     # Get W&B run directory
     # wandb_stripped_dir = wandb.run.dir.rsplit('/files', 1)[0]

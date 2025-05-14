@@ -24,5 +24,5 @@ for dynamical_model in DYNAMICAL_MODEL:
             str(MERGED_TRAINING_RESULTS).format(
                 dynamical_model=dynamical_model,
                 experiment_name=EXPERIMENT_NAME
-            )
+            ), index=False
         )
