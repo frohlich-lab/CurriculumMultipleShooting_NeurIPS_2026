@@ -284,7 +284,7 @@ NORMALISE_TIMEPOINTS = {
     # False,
 }
 
-N_STARTS = 10  # number of multi-starts
+N_STARTS = 50  # number of multi-starts
 
 MECHANISTIC_FIT_EPOCHS = 0
 N_EPOCHS = 4000  # default from UDE paper: 2000 / SIR: 40000-100000

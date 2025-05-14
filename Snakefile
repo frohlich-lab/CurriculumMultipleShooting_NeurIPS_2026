@@ -1,7 +1,7 @@
 from src.generate_run_configs import generate_param_combinations
-from src.common import TRAINING_RESULTS, MERGED_TRAINING_RESULTS
+from src.common import TRAINING_RESULTS, AGGREGATION_PLOTS, PLOT_TYPES
 from src.model_training.training_configuration import (
-    DYNAMICAL_MODEL, N_STARTS, EXPERIMENT_NAME,
+    DYNAMICAL_MODEL, N_STARTS, EXPERIMENT_NAME, SHOOTING_MODES,
 )
 
 # Container if needed
@@ -58,7 +58,7 @@ rule train_udes:
         mem="4GB",
         runtime="24h",
         nodes=1,
-        threads=2,
+        threads=2
     shell:
         'python3 {input.script} ' + ' '.join(
             f'--{arg}={{wildcards.{arg}}}'
@@ -131,9 +131,9 @@ rule train_udes:
 #     )
 # ]
 # print(f"New training output: {new_training_output}")
-rule merge_csvs:
+rule aggregate_results:
     input:
-        script = 'src/merge_csvs.py',
+        script = 'src/aggregate_results.py',
         training = [
             y
             for hyperparam_config in param_combos
@@ -145,19 +145,23 @@ rule merge_csvs:
         ]
     output:
         expand(
-            MERGED_TRAINING_RESULTS,
+            AGGREGATION_PLOTS,
             dynamical_model=DYNAMICAL_MODEL,
-            experiment_name=EXPERIMENT_NAME
+            filename=[
+                f"{plot_type}_{shooting_mode}"
+                for plot_type in PLOT_TYPES
+                for shooting_mode in SHOOTING_MODES
+            ]
         )
     retries: 1
     resources:
         mem="16GB",
         runtime="3h",
-        nodes=1,
+        nodes=1
     shell:
         "python3 {input.script}"
 
 
 rule all:
     input:
-        rules.merge_csvs.output
+        rules.aggregate_results.output
