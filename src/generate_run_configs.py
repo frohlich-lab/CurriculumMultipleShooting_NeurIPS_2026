@@ -1,13 +1,13 @@
 import itertools as itt
 
-from src.common import Conf
 from src.model_training.training_configuration import (
     DYNAMICAL_MODEL,
     MLP_WIDTHS, MLP_DEPTHS,
     INIT_SCALES, USE_BIASES, USE_FINAL_BIASES,
-    MLP_ACTIVATIONS, MLP_FINAL_ACTIVATIONS,
-    USE_SKIP_CONNECTIONS,
-    USE_DROPOUT, INPUT_DROPOUT_RATES, HIDDEN_DROPOUT_RATES,
+    MLP_ACTIVATIONS,
+    # MLP_FINAL_ACTIVATIONS,
+    # USE_SKIP_CONNECTIONS,
+    # USE_DROPOUT, INPUT_DROPOUT_RATES, HIDDEN_DROPOUT_RATES,
     OPTIMISERS,
     MAX_LEARNING_RATES, LEARNING_RATE_SPANS, LEARNING_RATE_DECAYS, WARMUP_FCTS, OPT_STEPS, OPT_MULT,
     # USE_LOOKAHEAD, LOOKAHEAD_SYNC,
@@ -16,17 +16,18 @@ from src.model_training.training_configuration import (
     OUTPUT_REG,
     SHOOTING_MODES, SHOOTING_WINDOW_LENGTHS, SHOOTING_IV_INITS, MULTIPLE_SHOOTING_PENALTIES,
     # BATCH_SIZES,
-    CURRICULUM_LEARNING, NUM_CURRICULUM_STEPS, MAX_CURRICULUM_EPOCHS, SERIALISE_CURRICULUM_MODELS,
+    CURRICULUM_LEARNING, NUM_CURRICULUM_STEPS, MAX_CURRICULUM_EPOCHS,
+    # SERIALISE_CURRICULUM_MODELS,
     DYNAMIC_PARAMS_SCALES, MULTISTART_DEVIATIONS, DYNAMIC_PARAMS_PERTURB_METHODS,
     NODE_AUGMENTATIONS,
     HESSIAN_PRECONDITION, COMPUTE_HESSIAN_METRICS,
     SECOND_OPTS,
-    FREEZE_MECHANISTIC_PARAMS_ADAM, FREEZE_MECHANISTIC_PARAMS_OPTX, FREEZE_NN_ADAM, FREEZE_NN_OPTX,
+    # FREEZE_MECHANISTIC_PARAMS_ADAM, FREEZE_MECHANISTIC_PARAMS_OPTX, FREEZE_NN_ADAM, FREEZE_NN_OPTX,
     TRAINING_SETTINGS, MLPEXP_TARGETS,
     NORMALISE_DATA, NORMALISE_TIMEPOINTS,
     N_STARTS
 )
-from typing import List, Dict, Tuple
+from typing import List, Dict
 
 
 def generate_param_combinations(n_starts: int) -> List[Dict]:
@@ -119,7 +120,7 @@ def generate_param_combinations(n_starts: int) -> List[Dict]:
             params["serialise_curriculum_models"] = False
 
         if params.get("curriculum_learning", False) and params.get("shooting_mode", None) == "multiple":
-            params["num_curriculum_steps"] = 5  # set to default, won't matter
+            params["num_curriculum_steps"] = 5  # set to default value (won't matter if curriculum is not used)
 
         if params.get("training_setting") == "UDE":
             params["mlpexp_target"] = "None"
