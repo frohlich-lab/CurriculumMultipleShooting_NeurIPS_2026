@@ -143,9 +143,9 @@ MLP_REG_STRENGTHS = {
 
 OUTPUT_REG = {
     0,
-    # 1e-1,
-    # 1e0,
-    # 1e1,
+    1e-1,
+    1e0,
+    1e1,
     # 1e2,
     # 1e3,
     # 1e4,
@@ -288,7 +288,6 @@ N_STARTS = 50  # number of multi-starts
 
 MECHANISTIC_FIT_EPOCHS = 0
 N_EPOCHS = 4000  # default from UDE paper: 2000 / SIR: 40000-100000
-# MAX_ITER_OPTX_FINETUNE = 10000  # default from UDE paper -- used to fine-tune mechanistic params + NN together
 MAX_ITER_OPTX_FINETUNE = 10000
 
 EXPERIMENT_NAME = "nemo_v1"
