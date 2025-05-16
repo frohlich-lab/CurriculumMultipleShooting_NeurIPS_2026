@@ -219,7 +219,8 @@ TRAINING_RESULTS = str(results_dir / "{dynamical_model}" / "train" / (basic_temp
 MERGED_TRAINING_RESULTS = str(results_dir / "{dynamical_model}" / "merged_results__{experiment_name}.csv")
 AGGREGATION_PLOTS = str(plots_dir / "{dynamical_model}" / "{filename}.pdf")
 PLOT_TYPES = [
-    "final_validation_loss_boxplot",
+    "final_loss_train_boxplot",
+    "final_loss_val_boxplot",
     "corr_start_vs_final",
     "corr_train_vs_val"
 ]

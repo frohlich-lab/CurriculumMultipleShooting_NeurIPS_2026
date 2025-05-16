@@ -74,20 +74,22 @@ for dynamical_model in DYNAMICAL_MODEL:
         fig_dir = plots_dir / dynamical_model
         fig_dir.mkdir(exist_ok=True, parents=True)
 
-        # Boxplot of final ADAM validation loss across settings
-        tiled_plot(
-            df=final_epoch_df,
-            row_col="output_reg",
-            col_col="multiple_shooting_penalty",
-            kind="box",
-            x_col="multistart_deviation",
-            y_col="loss_val",
-            hue_col="curriculum_learning",
-            fig_dir=plots_dir / "lotka_volterra",
-            plot_name="final_validation_loss_boxplot",
-            ylim=(1e-5, 1e10),
-            yscale="log"
-        )
+        for loss_col in ["loss_train", "loss_val"]:
+            # Boxplot of training/validation loss across settings
+            tiled_plot(
+                df=final_epoch_df,
+                row_col="output_reg",
+                col_col="multiple_shooting_penalty",
+                kind="box",
+                x_col="multistart_deviation",
+                y_col=loss_col,
+                hue_col="curriculum_learning",
+                fig_dir=plots_dir / "lotka_volterra",
+                plot_name=f"final_{loss_col}_boxplot",
+                ylim=(1e-5, 1e10),
+                yscale="log"
+            )
+
 
         # Compute the fraction of runs that achieve a final validation loss below a given threshold (here 1e-3)
         fractions = compute_success_fraction(df=final_epoch_df, threshold=1e-3, group_cols=hyperparam_groups)
@@ -123,7 +125,7 @@ for dynamical_model in DYNAMICAL_MODEL:
             "loss_val_starting_epoch", "loss_val_final_epoch",
             "loss_train_starting_epoch", "loss_train_final_epoch"
         ], inplace=True)
-        # Exclude absurdly large values
+        # Exclude absurdly large values -- TODO need to refine threshold here!
         merged = merged[(merged.loss_val_starting_epoch < 1e10) & (merged.loss_val_final_epoch < 1e10)]
 
         # Correlation analysis: loss_val at starting and final ADAM epochs; final ADAM loss_train and loss_val
