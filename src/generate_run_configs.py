@@ -113,6 +113,7 @@ def generate_param_combinations(n_starts: int) -> List[Dict]:
         if params.get("shooting_mode") == "single":
             params["shooting_iv_init"] = None
             params["multiple_shooting_penalty"] = 0.0
+            params["shooting_window_length"] = 0  # set to 0, not used
 
         if not params.get("curriculum_learning", False):
             params["num_curriculum_steps"] = 0
