@@ -145,7 +145,7 @@ OUTPUT_REG = {
     0,
     1e-4,
     1e-3,
-    1e-2,
+    # 1e-2,
     # 1e-1,
     # 1e0,
     # 1e1,
@@ -164,8 +164,11 @@ SHOOTING_MODES = {
 }
 
 SHOOTING_WINDOW_LENGTHS = {
-    7,
+    6,  # 13 windows
+    # 7,
+    8,  # 9 windows
     # 10,
+    14,  # 5 windows
 }
 
 SHOOTING_IV_INITS = {
@@ -176,9 +179,9 @@ SHOOTING_IV_INITS = {
 
 MULTIPLE_SHOOTING_PENALTIES = {
     0.0,
-    1e-1,
-    1e-2,
-    1e-3,
+    # 1e-1,
+    # 1e-2,
+    # 1e-3,
 }
 
 # Batch size -- unused, only for window-batch, DISABLED
@@ -293,4 +296,4 @@ MECHANISTIC_FIT_EPOCHS = 0
 N_EPOCHS = 4000  # default from UDE paper: 2000 / SIR: 40000-100000
 MAX_ITER_OPTX_FINETUNE = 10000
 
-EXPERIMENT_NAME = "nemo_v1"
+EXPERIMENT_NAME = "nemo_v2_wl"
