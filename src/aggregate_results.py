@@ -1,15 +1,10 @@
 import numpy as np
-import os
-import pandas as pd
+# import pandas as pd
 
-from generate_run_configs import generate_param_combinations
-from src.common import dynamic_param_labels, TRAINING_RESULTS, MERGED_TRAINING_RESULTS, plots_dir, true_dynamic_parameters
+from src.common import dynamic_param_labels, plots_dir, true_dynamic_parameters
 from src.model_training.training_configuration import DYNAMICAL_MODEL, EXPERIMENT_NAME, N_EPOCHS, N_STARTS
 from src.utils import *
 
-
-
-dfs = {dynamical_model: [] for dynamical_model in DYNAMICAL_MODEL}
 
 hyperparam_groups = [
     "mlp_layer_width", "mlp_depth",
@@ -29,81 +24,173 @@ hyperparam_groups = [
     "normalise_data", "normalise_timepoints",
     "training_setting", "mlpexp_target",
 ]
+expanded_hyperparam_groups = hyperparam_groups + ["multistart_job"]
+
+# Base training metrics
 metrics = [
     "loss_train", "loss_val", "max_grad_norm",
 ]
+# Hessian-derived metrics
 log_metrics = [
-    "condition_number",
+    # "condition_number",
     "frobenius_norm_diagonal", "frobenius_norm_off_diagonal",
     "ratio_frobenius_norm_offdiag_to_diag",
     "max_abs_diagonal_element", "max_abs_off_diagonal_element",
-    "max_eigenvalue", "min_eigenvalue",
-    "max_sv", "min_sv",
+    "max_eigenvalue",
+    # "min_eigenvalue",
+    "max_sv",
+    # "min_sv",
 ]
 
-for hyperparam_config in generate_param_combinations(N_STARTS):
-    training_result_file = TRAINING_RESULTS.format(**hyperparam_config, experiment_name=EXPERIMENT_NAME)
-    if os.path.exists(training_result_file):
-        df = pd.read_csv(training_result_file)
-        dfs[hyperparam_config["dynamical_model"]].append(df)
-del df
+# Assemble result dataframe dictionary from training output CSVs
+df_dict = fetch_result_df_dict(
+    dynamical_models=DYNAMICAL_MODEL,
+    num_starts=N_STARTS,
+    experiment_name=EXPERIMENT_NAME,
+    attributes_to_fix=["mlpexp_target", "shooting_iv_init", "discontinuity_penalty"],
+    filter_results=True,
+    loss_train_threshold=1e10,
+)
+
 
 for dynamical_model in DYNAMICAL_MODEL:
-    if len(dfs[dynamical_model]) == 0:
+    if df_dict[dynamical_model] is None:
         print(f"No results for {dynamical_model}")
         continue
     else:
+        results_df = df_dict[dynamical_model]
         # Add dynamical model specific parameters/metrics
         metrics_model = metrics + dynamic_param_labels[dynamical_model]
 
-        # Clean up dataframe
-        results_df = clean_results(
-            df=pd.concat(dfs[dynamical_model]),
-            attributes_to_fix=["mlpexp_target", "shooting_iv_init", "discontinuity_penalty"]
+        # Exclude runs with validation loss exceeding group-wise 1.5*interquartile range
+        results_df_filtered = exclude_loss_val_outside_iqr(
+            df=results_df,
+            hyperparam_groups=hyperparam_groups,
         )
+        del results_df
 
         # Get dataframe with start and final ADAM epoch losses
         start_epoch_df, final_epoch_df = compute_epoch_subset(
-            df=results_df,
+            df=results_df_filtered,
             metrics=metrics_model,
             group_cols=hyperparam_groups,
             max_epochs=N_EPOCHS
         )
 
+        col_param = "multiple_shooting_penalty" if final_epoch_df.multiple_shooting_penalty.nunique() > 1 \
+            else "shooting_window_length"
+
         # Assign and check figure directory
         fig_dir = plots_dir / dynamical_model
         fig_dir.mkdir(exist_ok=True, parents=True)
 
-        for loss_col in ["loss_train", "loss_val"]:
-            # Boxplot of training/validation loss across settings
-            tiled_plot(
+        # Boxplot of final model metrics across settings
+        for metric in metrics_model:
+            if metric == "alpha":
+                ref_val = true_dynamic_parameters["lotka_volterra"].tolist()[0]
+            elif metric == "delta":
+                ref_val = true_dynamic_parameters["lotka_volterra"].tolist()[1]
+            else:
+                ref_val = None
+            tiled_plot_plotnine(
                 df=final_epoch_df,
                 row_col="output_reg",
-                col_col="multiple_shooting_penalty",
+                col_col=col_param,
                 kind="box",
                 x_col="multistart_deviation",
-                y_col=loss_col,
+                y_col=metric,
                 hue_col="curriculum_learning",
                 fig_dir=plots_dir / "lotka_volterra",
-                plot_name=f"final_{loss_col}_boxplot",
-                ylim=(1e-5, 1e10),
-                yscale="log"
+                plot_name=f"final_{metric}_boxplot",
+                # y_limits=(-5, 10),  # with plotnine, y_limits for log-scaled axes must be specified in log-space
+                yscale="log",
+                ref_line_y=ref_val,
+            )
+
+
+        # Plot average metric profiles across settings
+        log_epochs = results_df_filtered[~results_df_filtered[log_metrics[0]].isna()].epoch.unique()
+        results_df_reduced = results_df_filtered[results_df_filtered.epoch.isin(log_epochs)].copy()
+        loss_df_reduced = results_df_reduced[hyperparam_groups + ["multistart_job", "epoch"] + metrics_model].copy()
+        hessian_df = results_df_reduced[hyperparam_groups + ["multistart_job", "epoch"] + log_metrics].copy()
+        del results_df_reduced
+
+        # Boxplot of hessian metrics across settings (final recorded log-epoch)
+        for log_metric in log_metrics:
+            tiled_plot_plotnine(
+                df=hessian_df[hessian_df.epoch == hessian_df.epoch.max()],
+                row_col="output_reg",
+                col_col=col_param,
+                kind="box",
+                x_col="multistart_deviation",
+                y_col=log_metric,
+                hue_col="curriculum_learning",
+                fig_dir=plots_dir / "lotka_volterra",
+                plot_name=f"final_{log_metric}_boxplot",
+                # y_limits=(-5, 10),  # with plotnine, y_limits for log-scaled axes must be specified in log-space
+                yscale="log",
+            )
+
+
+        # Loss metrics + max_grad_norm
+        for model_metric in metrics_model:
+            if model_metric == "alpha":
+                ref_val = true_dynamic_parameters["lotka_volterra"].tolist()[0]
+            elif model_metric == "delta":
+                ref_val = true_dynamic_parameters["lotka_volterra"].tolist()[1]
+            elif model_metric in ["loss_train", "loss_val"]:
+                ref_val = 1e-3
+            else:
+                ref_val = None
+
+            tiled_plot_plotnine(
+                df=loss_df_reduced,
+                row_col='output_reg',
+                col_col=col_param,
+                kind='line',
+                x_col='epoch',
+                y_col=model_metric,
+                hue_col='curriculum_learning',
+                style_col='multistart_deviation',
+                yscale='log',
+                xscale='log',
+                y_limits=(-5, 10) if model_metric == "loss_train" else None,
+                fig_dir=plots_dir / "lotka_volterra",
+                plot_name=f"{model_metric}_profile",
+                ref_line_y=ref_val,
+            )
+
+        # Hessian-derived metrics
+        for log_metric in log_metrics:
+            tiled_plot_plotnine(
+                df=hessian_df,
+                row_col='output_reg',
+                col_col=col_param,
+                kind='line',
+                x_col='epoch',
+                y_col=log_metric,
+                hue_col='curriculum_learning',
+                style_col='multistart_deviation',
+                yscale='log',
+                xscale='log',
+                fig_dir=plots_dir / "lotka_volterra",
+                plot_name=f"{log_metric}_profile",
             )
 
 
         # Compute the fraction of runs that achieve a final validation loss below a given threshold (here 1e-3)
         fractions = compute_success_fraction(df=final_epoch_df, threshold=1e-3, group_cols=hyperparam_groups)
-        tiled_plot(
+        tiled_plot_plotnine(
             df=fractions,
             row_col="output_reg",
-            col_col="multiple_shooting_penalty",
+            col_col=col_param,
             kind="bar",
             x_col="multistart_deviation",
             y_col="fraction_below_0.001",
             hue_col="curriculum_learning",
             fig_dir=fig_dir,
             plot_name="fraction_below_0.001",
-            ylim=(0, 1)
+            y_limits=(0, 1)
         )
 
         # Combine info from start and final epochs
@@ -125,23 +212,23 @@ for dynamical_model in DYNAMICAL_MODEL:
             "loss_val_starting_epoch", "loss_val_final_epoch",
             "loss_train_starting_epoch", "loss_train_final_epoch"
         ], inplace=True)
-        # Exclude absurdly large values -- TODO need to refine threshold here!
-        merged = merged[(merged.loss_val_starting_epoch < 1e10) & (merged.loss_val_final_epoch < 1e10)]
+        # # Exclude absurdly large values -- this should be taken care of by the IQR filtering above
+        # merged = merged[(merged.loss_val_starting_epoch < 1e10) & (merged.loss_val_final_epoch < 1e10)]
 
         # Correlation analysis: loss_val at starting and final ADAM epochs; final ADAM loss_train and loss_val
         summary_df = compute_loss_correlations(merged, hyperparam_groups)
         for y_col in ["corr_start_vs_final", "corr_train_vs_val"]:
-            tiled_plot(
+            tiled_plot_plotnine(
                 df=summary_df,
                 row_col="output_reg",
-                col_col="multiple_shooting_penalty",
+                col_col=col_param,
                 kind="bar",
                 x_col="multistart_deviation",
                 y_col=y_col,
                 hue_col="curriculum_learning",
                 fig_dir=fig_dir,
                 plot_name=y_col,
-                ylim=(-1, 1)
+                y_limits=(-1, 1)
             )
 
         # For Lotka-Volterra (ground truth dynamic params available), compute the fraction of runs
@@ -154,10 +241,10 @@ for dynamical_model in DYNAMICAL_MODEL:
                 hyperparam_groups=hyperparam_groups,
                 tolerance=tolerance
             )
-            tiled_plot(
+            tiled_plot_plotnine(
                 df=tolerance_params,
                 row_col="output_reg",
-                col_col="multiple_shooting_penalty",
+                col_col=col_param,
                 kind="bar",
                 x_col="multistart_deviation",
                 y_col="fraction_within_tolerance",
@@ -165,28 +252,3 @@ for dynamical_model in DYNAMICAL_MODEL:
                 fig_dir=plots_dir / "lotka_volterra",
                 plot_name=f"fraction_within_tolerance{tolerance}",
             )
-
-
-        # # Group by all hyperparams in hyperparam_groups and compute mean and std profile for all metrics across each epoch
-        # grouped = final_df.groupby(hyperparam_groups + ["epoch"])[metrics].agg(['mean', 'std'])
-        #
-        # # Flatten MultiIndex columns (optional but recommended for clarity)
-        # grouped.columns = [
-        #     f"{metric}_{stat}" for metric, stat in grouped.columns
-        # ]
-        # grouped = grouped.reset_index()
-        # log_final = final_df.dropna(subset=log_metrics)
-        # log_grouped = log_final.groupby(hyperparam_groups + ["epoch"])[log_metrics].agg(['mean', 'std'])
-        # # Flatten MultiIndex columns (optional but recommended for clarity)
-        # log_grouped.columns = [
-        #     f"{metric}_{stat}" for metric, stat in log_grouped.columns
-        # ]
-        # log_grouped = log_grouped.reset_index()
-        # # Merge the two DataFrames on the common columns
-        # grouped = pd.merge(grouped, log_grouped, on=hyperparam_groups + ["epoch"], how='left')
-        # results_df.to_csv(
-        #     str(MERGED_TRAINING_RESULTS).format(
-        #         dynamical_model=dynamical_model,
-        #         experiment_name=EXPERIMENT_NAME
-        #     ), index=False
-        # )
