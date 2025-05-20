@@ -99,15 +99,23 @@ WARMUP_FCTS = {
 }
 
 OPT_STEPS = {
+    0,  # -> defaults to a single schedule
     # 1,
     # 2,
-    10,
+    # 10,
 }
 
 OPT_MULT = {
+    0,  # -> defaults to a single schedule
     # 1,
-    2,
+    # 2,
     # 3,
+}
+
+OPT_SCHED_TYPES = {
+    "exp",
+    # "lin",
+    # "cos",  # default
 }
 
 # # Other optimisation hyperparams
@@ -143,8 +151,11 @@ MLP_REG_STRENGTHS = {
 
 OUTPUT_REG = {
     0,
-    1e-4,
-    1e-3,
+    # changed with 1e-6 premultiplier given issues with snakemake small wildcards
+    1e0, # corresponds to 1e-6
+    1e1,  # corresponds to 1e-5
+    1e2,  # corresponds to 1e-4
+    1e3,  # corresponds to 1e-3
     # 1e-2,
     # 1e-1,
     # 1e0,
