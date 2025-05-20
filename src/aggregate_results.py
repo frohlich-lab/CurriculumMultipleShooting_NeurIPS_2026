@@ -42,6 +42,9 @@ log_metrics = [
     # "min_sv",
 ]
 
+# Define experiment-specific plotting directory
+fig_dir = plots_dir / EXPERIMENT_NAME
+
 # Assemble result dataframe dictionary from training output CSVs
 df_dict = fetch_result_df_dict(
     dynamical_models=DYNAMICAL_MODEL,
@@ -62,6 +65,10 @@ for dynamical_model in DYNAMICAL_MODEL:
         # Add dynamical model specific parameters/metrics
         metrics_model = metrics + dynamic_param_labels[dynamical_model]
 
+        # Instantiate the model-specific plotting subdirectory
+        fig_subdir = fig_dir / dynamical_model
+        fig_subdir.mkdir(exist_ok=True, parents=True)
+
         # Exclude runs with validation loss exceeding group-wise 1.5*interquartile range
         results_df_filtered = exclude_loss_val_outside_iqr(
             df=results_df,
@@ -80,10 +87,6 @@ for dynamical_model in DYNAMICAL_MODEL:
         col_param = "multiple_shooting_penalty" if final_epoch_df.multiple_shooting_penalty.nunique() > 1 \
             else "shooting_window_length"
 
-        # Assign and check figure directory
-        fig_dir = plots_dir / dynamical_model
-        fig_dir.mkdir(exist_ok=True, parents=True)
-
         # Boxplot of final model metrics across settings
         for metric in metrics_model:
             if metric == "alpha":
@@ -100,7 +103,7 @@ for dynamical_model in DYNAMICAL_MODEL:
                 x_col="multistart_deviation",
                 y_col=metric,
                 hue_col="curriculum_learning",
-                fig_dir=plots_dir / "lotka_volterra",
+                fig_dir=fig_subdir,
                 plot_name=f"final_{metric}_boxplot",
                 # y_limits=(-5, 10),  # with plotnine, y_limits for log-scaled axes must be specified in log-space
                 yscale="log",
@@ -125,7 +128,7 @@ for dynamical_model in DYNAMICAL_MODEL:
                 x_col="multistart_deviation",
                 y_col=log_metric,
                 hue_col="curriculum_learning",
-                fig_dir=plots_dir / "lotka_volterra",
+                fig_dir=fig_subdir,
                 plot_name=f"final_{log_metric}_boxplot",
                 # y_limits=(-5, 10),  # with plotnine, y_limits for log-scaled axes must be specified in log-space
                 yscale="log",
@@ -155,7 +158,7 @@ for dynamical_model in DYNAMICAL_MODEL:
                 yscale='log',
                 xscale='log',
                 y_limits=(-5, 10) if model_metric == "loss_train" else None,
-                fig_dir=plots_dir / "lotka_volterra",
+                fig_dir=fig_subdir,
                 plot_name=f"{model_metric}_profile",
                 ref_line_y=ref_val,
             )
@@ -173,7 +176,7 @@ for dynamical_model in DYNAMICAL_MODEL:
                 style_col='multistart_deviation',
                 yscale='log',
                 xscale='log',
-                fig_dir=plots_dir / "lotka_volterra",
+                fig_dir=fig_subdir,
                 plot_name=f"{log_metric}_profile",
             )
 
@@ -188,7 +191,7 @@ for dynamical_model in DYNAMICAL_MODEL:
             x_col="multistart_deviation",
             y_col="fraction_below_0.001",
             hue_col="curriculum_learning",
-            fig_dir=fig_dir,
+            fig_dir=fig_subdir,
             plot_name="fraction_below_0.001",
             y_limits=(0, 1)
         )
@@ -226,7 +229,7 @@ for dynamical_model in DYNAMICAL_MODEL:
                 x_col="multistart_deviation",
                 y_col=y_col,
                 hue_col="curriculum_learning",
-                fig_dir=fig_dir,
+                fig_dir=fig_subdir,
                 plot_name=y_col,
                 y_limits=(-1, 1)
             )
@@ -249,6 +252,6 @@ for dynamical_model in DYNAMICAL_MODEL:
                 x_col="multistart_deviation",
                 y_col="fraction_within_tolerance",
                 hue_col="curriculum_learning",
-                fig_dir=plots_dir / "lotka_volterra",
+                fig_dir=fig_subdir,
                 plot_name=f"fraction_within_tolerance{tolerance}",
             )

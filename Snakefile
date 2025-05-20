@@ -146,6 +146,7 @@ rule aggregate_results:
     output:
         expand(
             AGGREGATION_PLOTS,
+            experiment_name=EXPERIMENT_NAME,
             dynamical_model=DYNAMICAL_MODEL,
             filename=[
                 f"{plot_type}_{shooting_mode}"
