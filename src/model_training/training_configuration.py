@@ -83,7 +83,8 @@ LEARNING_RATE_SPANS = {
 }
 
 LEARNING_RATE_DECAYS = {
-    0.9**0,
+    # 0.9**0,
+    0.999,
     # 0.9**1,
     # 0.9**2,
     # 0.9**3,
@@ -92,7 +93,8 @@ LEARNING_RATE_DECAYS = {
 WARMUP_FCTS = {
     # 0.4,
     # 0.2,
-    0.1,
+    # 0.1,
+    0.025,  # 100 warmup epochs for 4000 training epochs
     # 0.05,
     # 1e-2,
     # 1e-3,
