@@ -87,50 +87,6 @@ rule train_udes:
             )
         )
 
-# training_output = expand(
-#     TRAINING_RESULTS,
-#     dynamical_model = DYNAMICAL_MODEL,
-#     mlp_layer_width=MLP_WIDTHS, mlp_depth=MLP_DEPTHS,
-#     init_scale=INIT_SCALES,
-#     use_bias=USE_BIASES, use_final_bias=USE_FINAL_BIASES,
-#     activation_fn_name=MLP_ACTIVATIONS,
-#     optimiser=OPTIMISERS,
-#     max_lrate=MAX_LEARNING_RATES, lrate_span=LEARNING_RATE_SPANS, lrate_decay=LEARNING_RATE_DECAYS,
-#     warmup_fct=WARMUP_FCTS, opt_steps=OPT_STEPS, opt_mult=OPT_MULT,
-#     use_early_stop=USE_EARLY_STOP,
-#     mlp_reg_exp=MLP_REG_EXPS, mlp_reg_strength=MLP_REG_STRENGTHS,
-#     output_reg=OUTPUT_REG,
-#     shooting_mode=SHOOTING_MODES,
-#     shooting_window_length=SHOOTING_WINDOW_LENGTHS,
-#     shooting_iv_init=SHOOTING_IV_INITS,
-#     multiple_shooting_penalty=MULTIPLE_SHOOTING_PENALTIES,
-#     curriculum_learning=CURRICULUM_LEARNING,
-#     num_curriculum_steps=NUM_CURRICULUM_STEPS,
-#     max_curriculum_epochs=MAX_CURRICULUM_EPOCHS,
-#     dynamic_params_scale=DYNAMIC_PARAMS_SCALES,
-#     multistart_deviation=MULTISTART_DEVIATIONS,
-#     multistart_job=[str(i) for i in range(N_STARTS)],
-#     dynamic_params_perturb_method=DYNAMIC_PARAMS_PERTURB_METHODS,
-#     node_augmentation=NODE_AUGMENTATIONS,
-#     hessian_precondition=HESSIAN_PRECONDITION, compute_hessian_metrics=COMPUTE_HESSIAN_METRICS,
-#     second_opt=SECOND_OPTS,
-#     normalise_data=NORMALISE_DATA, normalise_timepoints=NORMALISE_TIMEPOINTS,
-#     training_setting=TRAINING_SETTINGS, mlpexp_target=MLPEXP_TARGETS,
-#     experiment_name=EXPERIMENT_NAME
-# )
-
-# print(f"Training output: {training_output}")
-#
-# new_training_output = [
-#     y
-#     for hyperparam_config in param_combos
-#     for y in expand(
-#         rules.train_udes.output.csv,
-#         **hyperparam_config,
-#         experiment_name=EXPERIMENT_NAME,
-#     )
-# ]
-# print(f"New training output: {new_training_output}")
 rule aggregate_results:
     input:
         script = 'src/aggregate_results.py',
