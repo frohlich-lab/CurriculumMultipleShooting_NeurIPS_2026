@@ -105,7 +105,7 @@ for dynamical_model in DYNAMICAL_MODEL:
                 hue_col="curriculum_learning",
                 fig_dir=fig_subdir,
                 plot_name=f"final_{metric}_boxplot",
-                # y_limits=(-5, 10),  # with plotnine, y_limits for log-scaled axes must be specified in log-space
+                y_limits=(-5, 10) if metric in ["loss_train", "loss_val"] else None,  # with plotnine, y_limits for log-scaled axes must be specified in log-space
                 yscale="log",
                 ref_line_y=ref_val,
             )
@@ -157,7 +157,7 @@ for dynamical_model in DYNAMICAL_MODEL:
                 style_col='multistart_deviation',
                 yscale='log',
                 xscale='log',
-                y_limits=(-5, 10) if model_metric == "loss_train" else None,
+                y_limits=(-5, 10) if model_metric in ["loss_train", "loss_val"] else None,
                 fig_dir=fig_subdir,
                 plot_name=f"{model_metric}_profile",
                 ref_line_y=ref_val,
