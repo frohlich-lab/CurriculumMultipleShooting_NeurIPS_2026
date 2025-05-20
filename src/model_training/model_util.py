@@ -54,7 +54,8 @@ def regularise_mlp_contribution(
     """
     # the l2_norm_nn_contrib is the integral of the 2-norm of the nn_contribution from t0 to t0, t1, ..., tf
     # we only need the integral up to tf, final timepoint
-    return reg_strength * (l2_norm_nn_contrib[-1]/timespan_length)**2
+    # Uses a 1e-6 pre-multiplier for the reg_strength to avoid wildcard issues in snakemake
+    return 1e-6 * reg_strength * (l2_norm_nn_contrib[-1]/timespan_length)**2
 
 
 def compute_discontinuity_penalty(
