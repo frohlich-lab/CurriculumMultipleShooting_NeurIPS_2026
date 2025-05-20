@@ -11,7 +11,7 @@ hyperparam_groups = [
     "init_scale",
     "use_bias", "use_final_bias",
     "activation_fn_name",
-    "optimiser", "max_lrate", "lrate_span", "lrate_decay", "warmup_fct", "opt_steps", "opt_mult",
+    "optimiser", "max_lrate", "lrate_span", "lrate_decay", "warmup_fct", "opt_steps", "opt_mult", "opt_sched_type",
     "use_early_stop",
     "mlp_reg_exp", "mlp_reg_strength", "output_reg",
     "shooting_mode", "shooting_window_length", "shooting_iv_init",

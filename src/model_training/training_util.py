@@ -41,25 +41,91 @@ def get_scheduler(
     optax.sgdr_schedule
         The learning rate scheduler.
     """
-    epochs_per_schedule = np.array([
-        conf.opt_steps * (conf.opt_mult ** i)
-        for i in range(int(n_epochs // conf.opt_steps))
-        if conf.opt_steps * (conf.opt_mult ** i) <= n_epochs
-    ])
-    schedules = [
-        {
-            'init_value': conf.max_lrate / conf.lrate_span * conf.lrate_decay ** i_schedule,
-            'peak_value': conf.max_lrate * conf.lrate_decay ** i_schedule,
-            'warmup_steps': int(
-                (conf.opt_steps * (conf.opt_mult ** i_schedule))
-                * conf.warmup_fct
-            ),
-            'decay_steps': int(conf.opt_steps * (conf.opt_mult ** i_schedule)),
-            'end_value': conf.max_lrate / conf.lrate_span * conf.lrate_decay ** (i_schedule + 1),
-        }
-        for i_schedule in range(len(epochs_per_schedule))
-    ]
-    return optax.sgdr_schedule(schedules)
+    if (conf.opt_steps > 0) and (conf.opt_mult > 1):
+        if conf.opt_sched_type != "cos":
+            raise ValueError(
+                f"Multiple cosine annealing schedules not supported with schedule type: {conf.opt_sched_type}!"
+            )
+        epochs_per_schedule = np.array([
+            conf.opt_steps * (conf.opt_mult ** i)
+            for i in range(int(n_epochs // conf.opt_steps))
+            if conf.opt_steps * (conf.opt_mult ** i) <= n_epochs
+        ])
+        schedules = [
+            {
+                'init_value': conf.max_lrate / conf.lrate_span * conf.lrate_decay ** i_schedule,
+                'peak_value': conf.max_lrate * conf.lrate_decay ** i_schedule,
+                'warmup_steps': int(
+                    (conf.opt_steps * (conf.opt_mult ** i_schedule))
+                    * conf.warmup_fct
+                ),
+                'decay_steps': int(conf.opt_steps * (conf.opt_mult ** i_schedule)),
+                'end_value': conf.max_lrate / conf.lrate_span * conf.lrate_decay ** (i_schedule + 1),
+            }
+            for i_schedule in range(len(epochs_per_schedule))
+        ]
+        return optax.sgdr_schedule(schedules)
+    elif (conf.opt_steps == 0) and (conf.opt_mult == 0):
+        if conf.opt_sched_type == "exp":
+            # Single schedule with warmup and exponential decay
+            schedule = {
+                "init_value": conf.max_lrate / conf.lrate_span,  # start of annealing
+                "peak_value": conf.max_lrate,  # end of annealing
+                "warmup_steps": int(n_epochs * conf.warmup_fct),
+                "transition_begin": 0,
+                "transition_steps": 1,  # rather than decay_rate ** n_epochs, decay_rate ** ((count - transition_begin) / transition_steps)
+                "decay_rate": conf.lrate_decay,
+                "end_value": conf.max_lrate * conf.lrate_decay ** n_epochs,  # lower bound when to stop
+            }
+            # plt.loglog(
+            #     range(n_epochs),
+            #     [optax.schedules.warmup_exponential_decay_schedule(**schedule)(i) for i in range(n_epochs)]
+            # )
+            # plt.show()
+            return optax.schedules.warmup_exponential_decay_schedule(**schedule)
+        elif conf.opt_sched_type == "lin":  # Single schedule with linear warmup and decay
+            # In this case, use conf.lrate_decay as a divider of the initial value to determine the end learning rate
+            if conf.lrate_decay < 1:
+                decay_factor = 1e2  # default to decaying to 1/100 of the starting value (pre-warmup)
+            else:
+                decay_factor = conf.lrate_decay
+
+            init_value = conf.max_lrate / conf.lrate_span
+            final_value = init_value / decay_factor
+
+            linear_schedule = {
+                "transition_steps": n_epochs,
+                "peak_value": conf.max_lrate,
+                "pct_start": conf.warmup_fct,
+                "pct_final": conf.warmup_fct + ((init_value - conf.max_lrate) / (final_value - conf.max_lrate)) * (
+                            1.0 - conf.warmup_fct),
+                "div_factor": conf.lrate_span,
+                "final_div_factor": decay_factor,
+            }
+            # plt.plot(
+            #     range(n_epochs),
+            #     [optax.schedules.linear_onecycle_schedule(**linear_schedule)(i) for i in range(n_epochs)]
+            # )
+            # plt.show()
+            return optax.schedules.linear_onecycle_schedule(**linear_schedule)
+        else:  # default: cosine annealing
+            schedule = {
+                "init_value": conf.max_lrate / conf.lrate_span,
+                "peak_value": conf.max_lrate,
+                "warmup_steps": int(n_epochs * conf.warmup_fct),
+                "decay_steps": n_epochs,
+                "end_value": conf.max_lrate * conf.lrate_decay ** n_epochs,
+            }
+            # plt.plot(
+            #     range(n_epochs),
+            #     [optax.sgdr_schedule([schedule])(i) for i in range(n_epochs)]
+            # )
+            # plt.show()
+            return optax.sgdr_schedule([schedule])
+    else:
+        raise ValueError(
+            f"Invalid configuration for LR schedule: opt_steps={conf.opt_steps}, opt_mult={conf.opt_mult}!"
+        )
 
 
 def get_opt_opt_state_params(
