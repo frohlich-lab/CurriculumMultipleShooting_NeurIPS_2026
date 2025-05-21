@@ -16,15 +16,15 @@ def load_training_validation_csv(
 
     Parameters
     ----------
-    folder : str
+    :param folder : str
         Folder under ``src/data_dir`` containing the CSV files.
-    train_file : str
+    :param train_file : str
         Name of the training CSV file.
-    validation_file : str
+    :param validation_file : str
         Name of the validation CSV file.
-    columns : List[str]
+    :param columns : List[str]
         Columns to extract from the CSV files as data.
-    time_col : str
+    :param time_col : str
         Column name containing the time points.
     """
     train_df = pd.read_csv(os.path.join("src", "data_dir", folder, train_file))
@@ -66,8 +66,7 @@ def get_result_plot_generic(
                 }
             )
             for i in range(pred_vals.shape[1])
-        ],
-        names=False,
+        ]
     )
 
     df_obs = pd.concat(
@@ -81,8 +80,7 @@ def get_result_plot_generic(
                 }
             )
             for i in range(obs_vals.shape[1])
-        ],
-        names=False,
+        ]
     )
 
     return df_pred, df_obs
