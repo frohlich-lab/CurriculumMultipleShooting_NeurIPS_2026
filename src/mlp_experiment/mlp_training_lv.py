@@ -11,7 +11,7 @@ from src.common import Conf, EarlyStoppingParams
 from src.model_training.model_util import regularise_mlp, get_mse
 from src.model_training.training import make_grads_finite
 from src.model_training.training_util import (configure_early_stopping, get_hessian_metrics, generate_log_epochs,
-                                              get_opt_opt_state_params, get_scheduler, initialise_wandb)
+                                              get_opt_opt_state_params, initialise_wandb)
 from typing import Union
 
 
@@ -48,11 +48,6 @@ def mlp_training_step(
         targets: Float[Array, '...'],
         conf: Conf,
 ):
-    # Disabled LookAhead
-    # if conf.use_lookahead:
-    #     opt_params = params.fast
-    # else:
-    #     opt_params = params
     opt_params = params
     loss_value, grads = compute_mlp_loss_grad(
         opt_params,
@@ -92,12 +87,11 @@ def mlp_train(
     # Initialise epoch counter
     epoch = 0
 
-    # Get schedule and partition model
-    schedule = get_scheduler(conf=conf, n_epochs=n_epochs)
+    # Partition model
     params, static = eqx.partition(model, eqx.is_array)
 
-    # Initialise optimiser, optimiser state + update params if using lookahead
-    opt, opt_state, params = get_opt_opt_state_params(conf, params, schedule)
+    # Initialise optimiser and optimiser state
+    opt, opt_state, params = get_opt_opt_state_params(conf, params)
 
     # Check Early-stopping parameters have been set correctly and instantiate early stopper
     early_stopper = configure_early_stopping(early_stopping_params)
@@ -116,11 +110,6 @@ def mlp_train(
             targets=training_targets,
             conf=conf,
         )
-        # Disabled LookAhead
-        # model = eqx.combine(
-        #     params.fast if conf.use_lookahead else params,
-        #     static,
-        # )
         model = eqx.combine(params, static)
 
         if conf.use_dropout:
@@ -152,7 +141,7 @@ def mlp_train(
                     {
                         "loss_train": loss_train,
                         "loss_val": loss_val,
-                        "learning_rate": schedule(epoch),
+                        "learning_rate": conf.lrate,
                     },
                     step=epoch
                 )

@@ -42,20 +42,9 @@ class Conf(dict):
     use_dropout: bool = False
     input_dropout_rate: float = 0.8
     hidden_dropout_rate: float = 0.5
-    # Optimiser and learning rate schedule
+    # Optimiser and learning rate
     optimiser: str = "adam"
-    max_lrate: float = 0.01  # absolute maximum learning rate (default max in UDE paper)
-    lrate_span: float = 1e0  # ratio between max and min learning rates in a given schedule (default=1, min=max)
-    lrate_decay: float = 0.99  # if < 1, the learning rate decays between schedules (default: no decay)
-    warmup_fct: float = 0.1  # fraction of schedule epochs to be used for warmup (default: 10% warmup)
-    opt_steps: int = 10  # Number of steps in the first schedule (they multiply each time in length by opt_mult)
-    opt_mult: int = 2  # Multiplier for the number of steps in each schedule
-    opt_sched_type: str = "cos"  # options: "cos", "lin", "exp"
-    # Niche optimiser choice - LookAhead, DISABLED
-    # use_lookahead: bool = False
-    # lookahead_sync: int = 10
-    # lookahead_step_size: float = 0.5
-    # lookahead_reset_state: bool = False
+    lrate: float = 0.01  # absolute maximum learning rate (default max in UDE paper)
     # Early-Stopping
     use_early_stop: bool = False  # default: False, not in use
     # Regularisation
@@ -178,12 +167,7 @@ default_attributes = [
 #     "use_final_bias",
 #     "activation_fn_name",
 #     "optimiser",
-#     "max_lrate",
-#     "lrate_span",
-#     "lrate_decay",
-#     "warmup_fct",
-#     "opt_steps",
-#     "opt_mult",
+#     "lrate",
 #     "use_early_stop",
 #     "mlp_reg_exp",
 #     "mlp_reg_strength",

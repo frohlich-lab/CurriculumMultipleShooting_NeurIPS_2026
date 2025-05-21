@@ -69,65 +69,11 @@ OPTIMISERS = {
     # "adamw",
 }
 
-MAX_LEARNING_RATES = {
+LEARNING_RATES = {
     # 1e-1,
     1e-2,
     # 1e-3,
 }
-
-LEARNING_RATE_SPANS = {
-    # 1e0,
-    1e1,
-    # 1e2,
-    # 1e3,
-}
-
-LEARNING_RATE_DECAYS = {
-    # 0.9**0,
-    0.999,
-    # 0.9**1,
-    # 0.9**2,
-    # 0.9**3,
-}
-
-WARMUP_FCTS = {
-    # 0.4,
-    # 0.2,
-    # 0.1,
-    0.025,  # 100 warmup epochs for 4000 training epochs
-    # 0.05,
-    # 1e-2,
-    # 1e-3,
-}
-
-OPT_STEPS = {
-    0,  # -> defaults to a single schedule
-    # 1,
-    # 2,
-    # 10,
-}
-
-OPT_MULT = {
-    0,  # -> defaults to a single schedule
-    # 1,
-    # 2,
-    # 3,
-}
-
-OPT_SCHED_TYPES = {
-    "exp",
-    # "lin",
-    # "cos",  # default
-}
-
-# # Other optimisation hyperparams
-# LookAhead disabled
-# USE_LOOKAHEAD = {
-#     "True",
-#     "False",
-# }
-#
-# LOOKAHEAD_SYNC = 5
 
 USE_EARLY_STOP = {
     # True,

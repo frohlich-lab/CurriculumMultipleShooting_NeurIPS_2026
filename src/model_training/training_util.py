@@ -24,150 +24,20 @@ from src.ude_problem.ude_problem import UDEProblem
 from typing import Any, Callable, List, Union
 
 
-# Scheduler from Fabian's NeuralCoarseGraining
-def get_scheduler(
-        conf: Conf,
-        n_epochs: int,
-):
-    """Get the learning rate scheduler.
-
-    Parameters
-    ----------
-    conf : configuration object
-    n_epochs : int - total number of training epochs
-
-    Returns
-    ----------
-    optax.sgdr_schedule
-        The learning rate scheduler.
-    """
-    if (conf.opt_steps > 0) and (conf.opt_mult > 1):
-        if conf.opt_sched_type != "cos":
-            raise ValueError(
-                f"Multiple cosine annealing schedules not supported with schedule type: {conf.opt_sched_type}!"
-            )
-        epochs_per_schedule = np.array([
-            conf.opt_steps * (conf.opt_mult ** i)
-            for i in range(int(n_epochs // conf.opt_steps))
-            if conf.opt_steps * (conf.opt_mult ** i) <= n_epochs
-        ])
-        schedules = [
-            {
-                'init_value': conf.max_lrate / conf.lrate_span * conf.lrate_decay ** i_schedule,
-                'peak_value': conf.max_lrate * conf.lrate_decay ** i_schedule,
-                'warmup_steps': int(
-                    (conf.opt_steps * (conf.opt_mult ** i_schedule))
-                    * conf.warmup_fct
-                ),
-                'decay_steps': int(conf.opt_steps * (conf.opt_mult ** i_schedule)),
-                'end_value': conf.max_lrate / conf.lrate_span * conf.lrate_decay ** (i_schedule + 1),
-            }
-            for i_schedule in range(len(epochs_per_schedule))
-        ]
-        return optax.sgdr_schedule(schedules)
-    elif (conf.opt_steps == 0) and (conf.opt_mult == 0):
-        if conf.opt_sched_type == "exp":
-            # Single schedule with warmup and exponential decay
-            schedule = {
-                "init_value": conf.max_lrate / conf.lrate_span,  # start of annealing
-                "peak_value": conf.max_lrate,  # end of annealing
-                "warmup_steps": int(n_epochs * conf.warmup_fct),
-                "transition_begin": 0,
-                "transition_steps": 1,  # rather than decay_rate ** n_epochs, decay_rate ** ((count - transition_begin) / transition_steps)
-                "decay_rate": conf.lrate_decay,
-                "end_value": conf.max_lrate * conf.lrate_decay ** n_epochs,  # lower bound when to stop
-            }
-            # plt.loglog(
-            #     range(n_epochs),
-            #     [optax.schedules.warmup_exponential_decay_schedule(**schedule)(i) for i in range(n_epochs)]
-            # )
-            # plt.show()
-            return optax.schedules.warmup_exponential_decay_schedule(**schedule)
-        elif conf.opt_sched_type == "lin":  # Single schedule with linear warmup and decay
-            if conf.lrate_decay == 1 and conf.lrate_span == 1 and conf.warmup_fct == 0:
-                return optax.constant_schedule(conf.max_lrate)
-            # In this case, use conf.lrate_decay as a divider of the initial value to determine the end learning rate
-            if conf.lrate_decay < 1:
-                decay_factor = 1e2  # default to decaying to 1/100 of the starting value (pre-warmup)
-            else:
-                decay_factor = conf.lrate_decay
-
-            init_value = conf.max_lrate / conf.lrate_span
-            final_value = init_value / decay_factor
-
-            linear_schedule = {
-                "transition_steps": n_epochs,
-                "peak_value": conf.max_lrate,
-                "pct_start": conf.warmup_fct,
-                "pct_final": conf.warmup_fct + ((init_value - conf.max_lrate) / (final_value - conf.max_lrate)) * (
-                            1.0 - conf.warmup_fct),
-                "div_factor": conf.lrate_span,
-                "final_div_factor": decay_factor,
-            }
-            # plt.plot(
-            #     range(n_epochs),
-            #     [optax.schedules.linear_onecycle_schedule(**linear_schedule)(i) for i in range(n_epochs)]
-            # )
-            # plt.show()
-            return optax.schedules.linear_onecycle_schedule(**linear_schedule)
-        else:  # default: cosine annealing
-            schedule = {
-                "init_value": conf.max_lrate / conf.lrate_span,
-                "peak_value": conf.max_lrate,
-                "warmup_steps": int(n_epochs * conf.warmup_fct),
-                "decay_steps": n_epochs,
-                "end_value": conf.max_lrate * conf.lrate_decay ** n_epochs,
-            }
-            # plt.plot(
-            #     range(n_epochs),
-            #     [optax.sgdr_schedule([schedule])(i) for i in range(n_epochs)]
-            # )
-            # plt.show()
-            return optax.sgdr_schedule([schedule])
-    else:
-        raise ValueError(
-            f"Invalid configuration for LR schedule: opt_steps={conf.opt_steps}, opt_mult={conf.opt_mult}!"
-        )
-
-
 def get_opt_opt_state_params(
         conf: Conf,
         params: Union[PyTree, UDEProblem],
-        schedule: optax.Schedule
 ):
     # Optimisers to choose from
     optimisers = {
-        "adam": optax.adam(schedule),
-        "adamw": optax.adamw(schedule),
-        "adagrad": optax.adagrad(schedule),
-        # "adam_lbfgs": optax.chain(
-        #     optax.adam(schedule),
-        #     optax.scale_by_lbfgs()
-        # ),
-        "sgd": optax.sgd(schedule),
-        # "sgd_lbfgs": optax.chain(
-        #    optax.sgd(schedule),
-        #    optax.scale_by_lbfgs()
-        # )
+        "adam": optax.adam(learning_rate=conf.lrate),
+        "adamw": optax.adamw(learning_rate=conf.lrate),
+        "adagrad": optax.adagrad(conf.lrate),
+        "sgd": optax.sgd(learning_rate=conf.lrate),
     }
 
     if conf.optimiser not in optimisers.keys():
         raise ValueError(f"Unknown optimiser: {conf.optimiser}!")
-
-    # Disabled LookAhead
-    # if not conf.use_lookahead:
-    #     opt = optimisers[conf.optimiser]
-    #     opt_state = opt.init(params)
-    # else:
-    #     opt = optax.lookahead(
-    #         fast_optimizer=optimisers[conf.optimiser],
-    #         sync_period=conf.lookahead_sync,
-    #         slow_step_size=conf.lookahead_step_size,
-    #         reset_state=conf.lookahead_reset_state,
-    #     )
-    #     # Initialise params for lookahead (now params has params.fast and params.slow)
-    #     params = optax.LookaheadParams.init_synced(params)
-    #     opt_state = opt.init(params)
 
     opt = optimisers[conf.optimiser]
     opt_state = opt.init(params)

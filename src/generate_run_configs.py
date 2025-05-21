@@ -9,7 +9,7 @@ from src.model_training.training_configuration import (
     # USE_SKIP_CONNECTIONS,
     # USE_DROPOUT, INPUT_DROPOUT_RATES, HIDDEN_DROPOUT_RATES,
     OPTIMISERS,
-    MAX_LEARNING_RATES, LEARNING_RATE_SPANS, LEARNING_RATE_DECAYS, WARMUP_FCTS, OPT_STEPS, OPT_MULT, OPT_SCHED_TYPES,
+    LEARNING_RATES,
     # USE_LOOKAHEAD, LOOKAHEAD_SYNC,
     USE_EARLY_STOP,
     MLP_REG_EXPS, MLP_REG_STRENGTHS,
@@ -50,13 +50,7 @@ def generate_param_combinations(n_starts: int) -> List[Dict]:
         # "hidden_dropout_rate": HIDDEN_DROPOUT_RATES,
         # Optimiser
         "optimiser": OPTIMISERS,
-        "max_lrate": MAX_LEARNING_RATES,
-        "lrate_span": LEARNING_RATE_SPANS,
-        "lrate_decay": LEARNING_RATE_DECAYS,
-        "warmup_fct": WARMUP_FCTS,
-        "opt_steps": OPT_STEPS,
-        "opt_mult": OPT_MULT,
-        "opt_sched_type": OPT_SCHED_TYPES,
+        "lrate": LEARNING_RATES,
         "use_early_stop": USE_EARLY_STOP,
         # Regularisation
         "mlp_reg_exp": MLP_REG_EXPS,
@@ -110,11 +104,6 @@ def generate_param_combinations(n_starts: int) -> List[Dict]:
         # if not params.get("use_dropout", False):
         #     params["input_dropout_rate"] = 0.0
         #     params["hidden_dropout_rate"] = 0.0
-
-        if params.get("opt_sched_type") != "cos":
-            # Only single schedules are supported for linear and exponential decays (+ warmup)
-            params["opt_mult"] = 0
-            params["opt_steps"] = 0
 
         if params.get("shooting_mode") == "single":
             params["shooting_iv_init"] = None

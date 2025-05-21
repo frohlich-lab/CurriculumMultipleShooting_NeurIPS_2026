@@ -20,7 +20,7 @@ from src.common import TRAINING_RESULTS
 from src.model_training.training_util import (check_and_progress_curriculum, configure_early_stopping,
                                               # generate_incremental_arrays,
                                               generate_log_epochs,
-                                              get_opt_opt_state_params, get_scheduler,
+                                              get_opt_opt_state_params,
                                               initialise_wandb, log_model_stats, log_plots,
                                               make_grads_finite, max_grad_norm, get_hessian_metrics,
                                               MetricHandler, transform_dynamic_params, augment_u0)
@@ -166,11 +166,6 @@ def make_step(
         compute_hessian_metrics: bool,
         base_loss_fn: Callable,
 ):
-    # # TODO @GiacomoFabrini - check whether LookAhead still works with newer changes! If not, discuss and decide whether to keep or remove
-    # if conf.use_lookahead:
-    #     opt_params = params.fast
-    # else:
-    #     opt_params = params
     opt_params = params
     (loss_value, reg_loss_dict), grads = loss_grad_fn(
         prob_params=opt_params,
@@ -548,10 +543,8 @@ def train(
             models_curriculum_stage_start = {}
             models_curriculum_stage_end = {}
 
-        # Get schedule
-        schedule = get_scheduler(conf=conf, n_epochs=n_epochs)
-        # Initialise optimiser, optimiser state + update params if using lookahead
-        opt, opt_state, params = get_opt_opt_state_params(conf, params, schedule)
+        # Initialise optimiser and optimiser state
+        opt, opt_state, params = get_opt_opt_state_params(conf, params)
 
 
         # Training loop
@@ -613,12 +606,6 @@ def train(
             if metric_handler.check_whether_should_break(loss_train):
                 break
 
-            # Recombine dynamic and static into full model
-            # Disabled LookAhead
-            # model = eqx.combine(
-            #     params.fast if conf.use_lookahead else params,
-            #     static,
-            # )
             model = eqx.combine(params, static)
 
             # Save model at the start/end of each curriculum learning stage
@@ -636,7 +623,7 @@ def train(
                     "loss_train": loss_train,
                     "loss_val": loss_val,
                     # Training metrics
-                    "learning_rate": schedule(nn_epoch),
+                    "learning_rate": conf.lrate,
                     "num_train_samples": curriculum_params[cl_stage]["length"] if conf.curriculum_learning \
                         else len(training_data),
                     "max_grad_norm": max_grad_norm(grads),
@@ -655,7 +642,7 @@ def train(
                     {
                         "loss_train": loss_train,
                         "loss_val": loss_val,
-                        "learning_rate": schedule(nn_epoch),
+                        "learning_rate": conf.lrate,
                         "num_train_samples": curriculum_params[cl_stage]["length"] if conf.curriculum_learning \
                             else len(training_data),
                         "max_grad_norm": max_grad_norm(grads),
