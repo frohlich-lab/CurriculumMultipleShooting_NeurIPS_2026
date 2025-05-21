@@ -84,6 +84,8 @@ def get_scheduler(
             # plt.show()
             return optax.schedules.warmup_exponential_decay_schedule(**schedule)
         elif conf.opt_sched_type == "lin":  # Single schedule with linear warmup and decay
+            if conf.lrate_decay == 1 and conf.lrate_span == 1 and conf.warmup_fct == 0:
+                return optax.constant_schedule(conf.max_lrate)
             # In this case, use conf.lrate_decay as a divider of the initial value to determine the end learning rate
             if conf.lrate_decay < 1:
                 decay_factor = 1e2  # default to decaying to 1/100 of the starting value (pre-warmup)
