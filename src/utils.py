@@ -190,6 +190,7 @@ def tiled_plot_plotnine(
     xscale: Optional[str] = None,
     yscale: Optional[str] = None,
     style_col: Optional[str] = None,
+    plot_fmt: Optional[str] = "pdf",
 ):
     for shooting_mode in sorted(df.shooting_mode.unique()):
         data = df[df.shooting_mode == shooting_mode].copy()
@@ -310,7 +311,7 @@ def tiled_plot_plotnine(
 
         # Save or show
         if save_plots:
-            path = fig_dir / f"{plot_name}_{shooting_mode}.pdf"
+            path = fig_dir / f"{plot_name}_{shooting_mode}.{plot_fmt}"
             p.save(str(path), dpi=300, verbose=False)
         else:
             p.show()
