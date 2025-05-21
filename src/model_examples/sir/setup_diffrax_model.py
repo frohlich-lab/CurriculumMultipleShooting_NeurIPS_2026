@@ -4,12 +4,21 @@ import jax.numpy as jnp
 import os
 import pandas as pd
 
-from src.model_training.model_util import get_mse, get_masked_mse, process_mechanistic_params
+from src.model_training.model_util import (
+    get_mse,
+    get_masked_mse,
+    process_mechanistic_params,
+)
+from src.model_examples.base import BaseUDEFunction
+from src.model_examples.utils import (
+    load_training_validation_csv,
+    get_result_plot_generic,
+)
 from jaxtyping import Array
 from typing import Optional, Union
 
 
-class UDEFunction(eqx.Module):
+class UDEFunction(BaseUDEFunction):
     """
     Class to evaluate right hand side (vector field) of an UDEModel
 
@@ -24,14 +33,6 @@ class UDEFunction(eqx.Module):
     options: dict[str, bool]
     state_dimension: int
     regularise_network: bool
-
-    def __init__(self, dynamic_parameters, mlp, options, state_dimension, regularise_network, **kwargs):
-        super().__init__(**kwargs)
-        self.dynamic_parameters = dynamic_parameters
-        self.mlp = mlp
-        self.options = options
-        self.state_dimension = state_dimension
-        self.regularise_network = regularise_network if regularise_network is not None else False
 
     def __call__(self, t, u, args):
         u0 = args
@@ -103,47 +104,47 @@ def sir_base_loss_masked(solution: jnp.ndarray, data, mask: jnp.ndarray):
 
 # UTILS - DATA AND PLOTTING
 def get_result_plot(prob, u0, t_save, t_span, data):
-    """
-    Transform observed and model prediction data into pd.DataFrames that 
-    easily can be plotted with plotnine
-    """
-    # Model prediction
-    sol = prob.solve(diffrax.Tsit5(), u0, t_save, t_span)
-    df_pred1 = pd.DataFrame({"time": sol.ts,
-                             "value": jnp.log(jnp.absolute(sol.ys[:, 1] + sol.ys[:, 3])),
-                             "id": "Infected",
-                             "datasource": "model"})
-    df_pred2 = pd.DataFrame({"time": sol.ts,
-                             "value": jnp.log(jnp.absolute(sol.ys[:, 2])),
-                             "id": "Recovered + dead",
-                             "datasource": "model"})
-    df_predict = pd.concat([df_pred1, df_pred2], names=False)
+    """Wrapper around :func:`get_result_plot_generic` for the SIR model."""
 
-    # Observed data
-    infected, dead, recovered = data[:, 0], data[:, 1], data[:, 2]
-    df_obs1 = pd.DataFrame({"time": sol.ts,
-                            "value": jnp.log(infected),
-                            "id": "Infected",
-                            "datasource": "observed"})
-    df_obs2 = pd.DataFrame({"time": sol.ts,
-                            "value": jnp.log(jnp.absolute(recovered + dead)),
-                            "id": "Recovered + dead",
-                            "datasource": "observed"})
-    df_obs = pd.concat([df_obs1, df_obs2], names=False)
+    def _pred_transform(ys):
+        return jnp.stack(
+            [
+                jnp.log(jnp.abs(ys[:, 1] + ys[:, 3])),
+                jnp.log(jnp.abs(ys[:, 2])),
+            ],
+            axis=1,
+        )
 
-    return df_predict, df_obs
+    def _data_transform(d):
+        infected, dead, recovered = d[:, 0], d[:, 1], d[:, 2]
+        return jnp.stack(
+            [
+                jnp.log(infected),
+                jnp.log(jnp.abs(recovered + dead)),
+            ],
+            axis=1,
+        )
+
+    labels = ["Infected", "Recovered + dead"]
+
+    return get_result_plot_generic(
+        prob,
+        u0,
+        t_save,
+        t_span,
+        data,
+        _pred_transform,
+        _data_transform,
+        labels,
+    )
 
 
 def get_training_validation_data():
-    # Read training and validation data
-    # Training
-    train_data_df = pd.read_csv(os.path.join("src", "data_dir", "sir", "Korea_data_train.csv"))
-    train_data = jnp.array(train_data_df[["infected", "dead", "recovered"]].values)
-    t_save_train = diffrax.SaveAt(ts=train_data_df["time"].values)
-    t_span_train = [0.0, max(train_data_df["time"])]
-    # Validation
-    validation_data_df = pd.read_csv(os.path.join("src", "data_dir", "sir", "Korea_data_validation.csv"))
-    validation_data = jnp.array(validation_data_df[["infected", "dead", "recovered"]].values)
-    t_save_validation = diffrax.SaveAt(ts=validation_data_df["time"].values)
-    t_span_validation = [0.0, max(validation_data_df["time"])]
-    return train_data, t_save_train, t_span_train, validation_data, t_save_validation, t_span_validation
+    """Load SIR training and validation data from CSV files."""
+    return load_training_validation_csv(
+        folder="sir",
+        train_file="Korea_data_train.csv",
+        validation_file="Korea_data_validation.csv",
+        columns=["infected", "dead", "recovered"],
+        time_col="time",
+    )
