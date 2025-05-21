@@ -190,7 +190,7 @@ def tiled_plot_plotnine(
     xscale: Optional[str] = None,
     yscale: Optional[str] = None,
     style_col: Optional[str] = None,
-    plot_fmt: Optional[str] = "pdf",
+    plot_fmt: Optional[str] = "png",
 ):
     for shooting_mode in sorted(df.shooting_mode.unique()):
         data = df[df.shooting_mode == shooting_mode].copy()
