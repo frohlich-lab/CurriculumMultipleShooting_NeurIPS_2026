@@ -4,7 +4,7 @@ import os
 import pandas as pd
 import seaborn as sns
 
-from src.common import TRAINING_RESULTS
+from src.common import TRAINING_RESULTS, true_dynamic_parameters
 from src.generate_run_configs import generate_param_combinations
 from plotnine import *
 from pathlib import Path
@@ -352,11 +352,18 @@ def fetch_result_df_dict(
                     and
                     (df[df.epoch == df.epoch.max()]["loss_train"].values < loss_train_threshold)
                 ):
+                    cleaned_df = clean_results(
+                        df=df,
+                        attributes_to_fix=attributes_to_fix,
+                    )
+                    # If timepoints have been normalised, rescale dynamic parameters
+                    if hyperparam_config["normalise_timepoints"]:
+                        for dynamic_param in true_dynamic_parameters[hyperparam_config["dynamical_model"]]:
+                            if (dynamic_param in cleaned_df.columns) and ("time_rescaling" in cleaned_df.columns):
+                                cleaned_df[dynamic_param] /= cleaned_df["time_rescaling"]
+
                     dfs[hyperparam_config["dynamical_model"]].append(
-                        clean_results(
-                            df=df,
-                            attributes_to_fix=attributes_to_fix,
-                        )
+                        cleaned_df
                     )
                 else:
                     continue

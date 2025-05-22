@@ -295,11 +295,16 @@ def normalise(
 ) -> tuple:
     """
     Normalise data or timepoint arrays by simply dividing by the max value in training set (in case of data, across all state
-    variables and timepoints).
+    variables and timepoints). Also return the normalisation scale.
     """
     # Cast to jnp.array
     train_array, val_array = jnp.array(train_array), jnp.array(val_array)
     if not provide_u0:
-        return train_array / jnp.max(train_array), val_array / jnp.max(train_array)
+        return (train_array / jnp.max(train_array),
+                val_array / jnp.max(train_array),
+                jnp.max(train_array))
     else:
-        return train_array / jnp.max(train_array), val_array / jnp.max(train_array), jnp.array(u0) / jnp.max(train_array)
+        return (train_array / jnp.max(train_array),
+                val_array / jnp.max(train_array),
+                jnp.array(u0) / jnp.max(train_array),
+                jnp.max(train_array))

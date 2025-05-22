@@ -79,7 +79,7 @@ mlp = setup_mlp(conf, u0, key_mlp, key_init)
 # ================================================================
 # Get data and functions for training
 (train_args, val_args,
- loss_dict, option_args, plot_args) = get_data_and_funcs_for_train(
+ loss_dict, option_args, plot_args, rescaling_args) = get_data_and_funcs_for_train(
         conf, true_dynamic_parameters[conf.dynamical_model].shape, u0
     )
 optx_config, options = option_args
@@ -140,6 +140,7 @@ training_output = train(
     max_iter_optx_finetune=MAX_ITER_OPTX_FINETUNE,
     model_save_dir=model_save_subdir,
     plot_args=plot_args,
+    rescaling_args=rescaling_args,
 )
 
 # ================================================================

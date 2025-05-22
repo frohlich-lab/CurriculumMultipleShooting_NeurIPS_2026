@@ -226,6 +226,7 @@ def train(
         max_iter_optx_finetune: int,
         model_save_dir: Path,
         plot_args: dict,
+        rescaling_args: dict,
 ) -> Union[UDEProblem, Tuple[UDEProblem, Dict[int, UDEProblem]]]:
     """
     Trains the UDEmodel (`model`).
@@ -262,6 +263,8 @@ def train(
         Filepath of directory to save the trained models.
     :param plot_args:
         Arguments for plotting train/val data.
+    :param rescaling_args:
+        Arguments for rescaling data/timepoints.
     """
 
     # Check training setting in configuration
@@ -489,7 +492,7 @@ def train(
         #     epoch,
         # )
 
-        # Log plots again after further training with optimistix/BFGS
+        # Log plots again after first training with optimistix/BFGS
         log_fit_plots(
             model=model, **plot_args,
             conf=conf,
@@ -647,6 +650,8 @@ def train(
                         )[i]
                         for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
                     },
+                    "data_rescaling": rescaling_args["data_rescaling"],
+                    "time_rescaling": rescaling_args["time_rescaling"],
                 }]
             )
             # log loss_train, loss_val, learning rate, param values and grads on log-spaced epochs
@@ -830,6 +835,9 @@ def train(
                 wandb_log=True,
                 wandb_log_final=True,
             )
+            # Add rescaling info
+            partial_results_df["data_rescaling"] = rescaling_args["data_rescaling"]
+            partial_results_df["time_rescaling"] = rescaling_args["time_rescaling"]
         else:
             model, sol, static, _, loss_val, epoch, partial_results_df = train_fides(
                 model=model,
@@ -851,6 +859,9 @@ def train(
                 zero_out_mlp=False,
                 wandb_log_final=wandb_log,
             )
+            # Add rescaling info
+            partial_results_df["data_rescaling"] = rescaling_args["data_rescaling"]
+            partial_results_df["time_rescaling"] = rescaling_args["time_rescaling"]
 
         if wandb_log: # if not, partial_results will be None
             results_dfs.append(partial_results_df.assign(**conf.__dict__))

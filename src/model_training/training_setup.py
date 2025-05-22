@@ -82,14 +82,18 @@ def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple, u0) ->
     }
     if conf.normalise_data:
         # Normalise initial condition u0 as well
-        train_data, validation_data, u0 = normalise(train_data, validation_data, provide_u0=True, u0=u0)
+        train_data, validation_data, u0, data_rescaling = normalise(train_data, validation_data, provide_u0=True, u0=u0)
+    else:
+        data_rescaling = 1
     if conf.normalise_timepoints:
         # SaveAt
-        t_save_train, t_save_validation = normalise(t_save_train.subs.ts, t_save_validation.subs.ts)
+        t_save_train, t_save_validation, time_rescaling = normalise(t_save_train.subs.ts, t_save_validation.subs.ts)
         t_save_train, t_save_validation = SaveAt(ts=t_save_train), SaveAt(ts=t_save_validation)
         # Span
         t_span_train = [t_save_train.subs.ts[0], t_save_train.subs.ts[-1]]
         t_span_validation = [t_save_train.subs.ts[0], t_save_validation.subs.ts[-1]]
+    else:
+        time_rescaling = 1
 
     u0_train, u0_val = u0, u0
 
@@ -102,6 +106,10 @@ def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple, u0) ->
         "t_save_val": t_save_validation,
         "t_span_val": t_span_validation,
         "validation_data": validation_data,
+    }
+    rescaling_args = {
+        "data_rescaling": data_rescaling,
+        "time_rescaling": time_rescaling,
     }
     # Handle batched windowing -- DISABLED
     # if conf.shooting_mode == "window_batch":
@@ -136,7 +144,7 @@ def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple, u0) ->
         "val_loss_optx": val_loss_optx,
     }
     option_args = optx_config, options
-    return train_args, val_args, loss_dict, option_args, plot_args
+    return train_args, val_args, loss_dict, option_args, plot_args, rescaling_args
 
 
 def broadcast_bounds(bounds, shape):
