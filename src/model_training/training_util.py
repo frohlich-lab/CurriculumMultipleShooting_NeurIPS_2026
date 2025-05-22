@@ -906,7 +906,7 @@ def get_sol_and_loss_validation(
         adjoint: diffrax.AbstractAdjoint,
         loss_fn: Callable,
         data: Array,
-        max_steps: int = 8192
+        max_steps: int = 40000  # 2x as long for 2x timecourse
 ):
     sol = prob.solve_single_shooting_validation(
         diffrax.Tsit5(),
@@ -930,7 +930,7 @@ def get_sol_and_loss_single_shooting(
         data: Array,
         t_save_windows: Array,
         masks: Array,
-        max_steps: int = 8192
+        max_steps: int = 20000
 ):
     sol = prob.solve_single_shooting(
         diffrax.Tsit5(),
@@ -954,7 +954,7 @@ def get_sol_and_loss_multiple_shooting(
         t_save_windows: Array,
         masks: Array,
         last_valid_index: int,
-        max_steps: int = 8192
+        max_steps: int = 20000
 ):
     sol = prob.solve_multiple_shooting(
         diffrax.Tsit5(),

@@ -34,7 +34,7 @@ def train_optimistix(
         zero_out_mlp: bool = False,
         wandb_log: bool = True,
         wandb_log_final: bool = True,
-        max_diffrax_steps: int = 8192
+        max_diffrax_steps: int = 20000
 ) -> tuple[UDEProblem, SimpleNamespace, UDEProblem, float, float, int, Optional[pd.DataFrame]]:
 
     # Define options and tags for BFGS solver

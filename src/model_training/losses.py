@@ -24,7 +24,7 @@ def compute_loss(
         shooting_mode: str,
         loss_fn: Callable,
         adjoint: diffrax.AbstractAdjoint = diffrax.RecursiveCheckpointAdjoint() , # default for everything apart from Hessian (DirectAdjoint)
-        max_steps: int = 4096,
+        max_steps: int = 20000,
 ):
     # Get full UDEProblem
     prob = eqx.combine(prob_params, prob_static)
@@ -106,7 +106,7 @@ def compute_loss_grad(
         shooting_mode,
         loss_fn: Callable,
         adjoint: diffrax.AbstractAdjoint = diffrax.RecursiveCheckpointAdjoint(),
-        max_steps: int = 4096,
+        max_steps: int = 20000,
 ):
     return eqx.filter_value_and_grad(compute_loss, has_aux=True)(
         prob_params, prob_static,
@@ -124,7 +124,7 @@ def compute_validation_loss(
         data,
         loss_fn: Callable,
         adjoint: diffrax.AbstractAdjoint = diffrax.RecursiveCheckpointAdjoint(),  # default for everything apart from Hessian (DirectAdjoint),
-        max_steps: int = 4096
+        max_steps: int = 40000  # 2x as long for 2x the timecourse
 ):
     # Get full UDEProblem
     prob = eqx.combine(prob_params, prob_static)
@@ -182,7 +182,7 @@ def compute_hess_array(
         multiple_shooting_penalty, shooting_mode,
         loss_fn,
         adjoint=diffrax.DirectAdjoint(),
-        max_steps: int = 4096
+        max_steps: int = 20000
 ):
     prob_params = unflatten_p(flat_p)
     loss, _ = compute_loss(

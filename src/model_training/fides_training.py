@@ -61,7 +61,7 @@ def train_fides(
         val_loss_fn: Callable,
         zero_out_mlp: bool = False,
         wandb_log_final: bool = False,
-        max_diffrax_steps: int = 16384
+        max_diffrax_steps: int = 20000
 ) -> tuple[UDEProblem, SimpleNamespace, UDEProblem, float, float, int, Optional[pd.DataFrame]]:
 
     model_fides = prep_bfgs_training(model, zero_out_mlp, bool(conf.output_reg or conf.mlp_reg_strength))

@@ -84,7 +84,7 @@ class UDEProblem(eqx.Module):
             u0: Array,
             t_save: Array,
             adjoint: diffrax.AbstractAdjoint = diffrax.RecursiveCheckpointAdjoint(),
-            max_steps: int = 4096,
+            max_steps: int = 20000,
             controller=diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8),
     ):
         """
@@ -123,7 +123,7 @@ class UDEProblem(eqx.Module):
             t_save: diffrax.SaveAt,
             t_span: List,
             adjoint: diffrax.AbstractAdjoint = diffrax.RecursiveCheckpointAdjoint(),
-            max_steps: int = 4096,
+            max_steps: int = 20000,
             controller=diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8),
     ):
         """
@@ -169,7 +169,7 @@ class UDEProblem(eqx.Module):
             u0: Array,
             t_save: Array,
             adjoint: diffrax.AbstractAdjoint = diffrax.RecursiveCheckpointAdjoint(),
-            max_steps: int = 4096,
+            max_steps: int = 20000,
             controller=diffrax.PIDController(pcoeff=0.4, icoeff=0.3, dcoeff=0, rtol=1e-8, atol=1e-8),
     ):
         """
