@@ -97,7 +97,7 @@ class UDEProblem(eqx.Module):
             solver,
             t0,
             t1,
-            None,
+            1e-6,
             y0=jnp.concatenate(
                 [
                     jax.lax.stop_gradient(u0[:self.func.state_dimension]),
@@ -138,7 +138,7 @@ class UDEProblem(eqx.Module):
             solver,
             t0,
             t1,
-            None,
+            1e-6,
             y0=jnp.concatenate(
                 [
                     u0[:self.func.state_dimension],
@@ -196,7 +196,7 @@ class UDEProblem(eqx.Module):
             solver=solver,
             t0=t_save[0],
             t1=t_save[-1],
-            dt0=None,
+            dt0=1e-6,
             y0=jnp.concatenate(
                 [
                     u0[:self.func.mlp.layers[0].in_features],  # state vars + potential augmentation - learnable
