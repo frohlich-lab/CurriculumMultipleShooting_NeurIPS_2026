@@ -152,11 +152,11 @@ def generate_param_combinations(n_starts: int) -> List[Dict]:
             for param_set_to_false in params_set_to_false:
                 params[param_set_to_false] = False
 
-        # Only allow both normalisation options to be True or False
-        if not params.get("normalise_data"):
-            params["normalise_timepoints"] = False
-        else:
-            params["normalise_timepoints"] = True
+        # # Only allow both normalisation options to be True or False -- removed, keep time/drop data normalisation
+        # if not params.get("normalise_data"):
+        #     params["normalise_timepoints"] = False
+        # else:
+        #     params["normalise_timepoints"] = True
 
         # --- Create a hashable representation ---
         frozen_items = frozenset(sorted(params.items()))
