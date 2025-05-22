@@ -56,8 +56,8 @@ rule train_udes:
         experiment_name = "[0-9a-zA-Z_]+"
     retries: 1
     resources:
-        mem="4GB",
-        runtime="24h",
+        mem="8GB",
+        runtime="6h",
         nodes=1,
         threads=2
     shell:
@@ -114,7 +114,7 @@ rule aggregate_results:
         )
     retries: 1
     resources:
-        mem="16GB",
+        mem="32GB",
         runtime="3h",
         nodes=1
     shell:
