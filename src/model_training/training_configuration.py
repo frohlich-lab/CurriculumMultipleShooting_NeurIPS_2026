@@ -71,20 +71,20 @@ OPTIMISERS = {
 
 MAX_LEARNING_RATES = {
     # 1e-1,
-    1e-2,
-    # 1e-3,
+    # 1e-2,
+    1e-3,
 }
 
 LEARNING_RATE_SPANS = {
-    # 1e0,
-    1e1,
+    1e0,
+    # 1e1,
     # 1e2,
     # 1e3,
 }
 
 LEARNING_RATE_DECAYS = {
-    # 0.9**0,
-    0.999,
+    0.9**0,  # 1.0
+    # 0.999,
     # 0.9**1,
     # 0.9**2,
     # 0.9**3,
@@ -94,10 +94,11 @@ WARMUP_FCTS = {
     # 0.4,
     # 0.2,
     # 0.1,
-    0.025,  # 100 warmup epochs for 4000 training epochs
+    # 0.025,  # 100 warmup epochs for 4000 training epochs
     # 0.05,
     # 1e-2,
     # 1e-3,
+    0,
 }
 
 OPT_STEPS = {
@@ -155,9 +156,9 @@ OUTPUT_REG = {
     0,
     # changed with 1e-6 premultiplier given issues with snakemake small wildcards
     1e0, # corresponds to 1e-6
-    1e1,  # corresponds to 1e-5
-    1e2,  # corresponds to 1e-4
-    1e3,  # corresponds to 1e-3
+    # 1e1,  # corresponds to 1e-5
+    # 1e2,  # corresponds to 1e-4
+    # 1e3,  # corresponds to 1e-3
     # 1e-2,
     # 1e-1,
     # 1e0,
@@ -292,10 +293,10 @@ MLPEXP_TARGETS = {
     # "interaction"
 }
 
-# Normalisation
+# Normalisation -- time: yes, data: no
 NORMALISE_DATA = {
-    True,
-    # False,
+    # True,
+    False,
 }
 
 NORMALISE_TIMEPOINTS = {
@@ -309,4 +310,4 @@ MECHANISTIC_FIT_EPOCHS = 0
 N_EPOCHS = 4000  # default from UDE paper: 2000 / SIR: 40000-100000
 MAX_ITER_OPTX_FINETUNE = 10000
 
-EXPERIMENT_NAME = "nemo_v3_wlexp"
+EXPERIMENT_NAME = "nemo_debug"
