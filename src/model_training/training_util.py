@@ -209,11 +209,6 @@ def initialise_wandb(
         if conf.output_reg > 0:
             metrics["output_regularisation_loss"] = "min"
 
-        # Add LV BFGS local minima experiment-specific metrics (loss on entire training set at each curriculum learning step)
-        if conf.dynamical_model == "lotka_volterra":
-            if conf.curriculum_loss_landscape_BFGS:
-                metrics["full_train_loss"] = "min"
-
         # End of training metrics (ADAM/BFGS)
         final_metrics = []
         for opt_num_epochs, opt_label in zip([N_EPOCHS, MAX_ITER_OPTX_FINETUNE], ["ADAM", "BFGS"]):
