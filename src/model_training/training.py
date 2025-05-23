@@ -888,10 +888,11 @@ def train(
             plot_subdir=conf.second_opt,
         )
 
+    # Ensure results directory is correctly set up
+    results_save_dir = results_dir / conf.experiment_name / conf.dynamical_model / "train"
+    results_save_dir.mkdir(exist_ok=True, parents=True)
     # Save results dataframe to CSV
     results_total = pd.concat(results_dfs)
-    results_save_dir = results_dir / conf.dynamical_model / "train"
-    results_save_dir.mkdir(exist_ok=True, parents=True)
     results_total.to_csv(TRAINING_RESULTS.format_map(conf.__dict__), index=False)
 
     # Get W&B run directory
