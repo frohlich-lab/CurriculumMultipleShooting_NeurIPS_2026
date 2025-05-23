@@ -13,7 +13,7 @@ from src.common import activation_functions
 from src.model_examples.lotka_volterra.setup_diffrax_model import UDEFunction as UDEFunction_lv
 from src.model_examples.sir.setup_diffrax_model import UDEFunction as UDEFunction_sir
 from src.ude_problem import CustomDropoutMLP, ResidualMLP
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Any, Callable, List, Optional, Union
 
 
 UDE_funcs = {
