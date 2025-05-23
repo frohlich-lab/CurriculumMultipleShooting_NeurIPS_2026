@@ -51,11 +51,6 @@ class Conf(dict):
     opt_steps: int = 10  # Number of steps in the first schedule (they multiply each time in length by opt_mult)
     opt_mult: int = 2  # Multiplier for the number of steps in each schedule
     opt_sched_type: str = "cos"  # options: "cos", "lin", "exp"
-    # Niche optimiser choice - LookAhead, DISABLED
-    # use_lookahead: bool = False
-    # lookahead_sync: int = 10
-    # lookahead_step_size: float = 0.5
-    # lookahead_reset_state: bool = False
     # Early-Stopping
     use_early_stop: bool = False  # default: False, not in use
     # Regularisation

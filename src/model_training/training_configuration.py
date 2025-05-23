@@ -121,14 +121,6 @@ OPT_SCHED_TYPES = {
     # "cos",  # default
 }
 
-# # Other optimisation hyperparams
-# LookAhead disabled
-# USE_LOOKAHEAD = {
-#     "True",
-#     "False",
-# }
-#
-# LOOKAHEAD_SYNC = 5
 
 USE_EARLY_STOP = {
     # True,

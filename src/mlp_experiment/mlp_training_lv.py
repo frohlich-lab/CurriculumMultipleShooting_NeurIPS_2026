@@ -48,14 +48,8 @@ def mlp_training_step(
         targets: Float[Array, '...'],
         conf: Conf,
 ):
-    # Disabled LookAhead
-    # if conf.use_lookahead:
-    #     opt_params = params.fast
-    # else:
-    #     opt_params = params
-    opt_params = params
     loss_value, grads = compute_mlp_loss_grad(
-        opt_params,
+        params,
         static,
         input_data,
         targets,
@@ -96,7 +90,7 @@ def mlp_train(
     schedule = get_scheduler(conf=conf, n_epochs=n_epochs)
     params, static = eqx.partition(model, eqx.is_array)
 
-    # Initialise optimiser, optimiser state + update params if using lookahead
+    # Initialise optimiser and optimiser state
     opt, opt_state, params = get_opt_opt_state_params(conf, params, schedule)
 
     # Check Early-stopping parameters have been set correctly and instantiate early stopper
@@ -116,11 +110,6 @@ def mlp_train(
             targets=training_targets,
             conf=conf,
         )
-        # Disabled LookAhead
-        # model = eqx.combine(
-        #     params.fast if conf.use_lookahead else params,
-        #     static,
-        # )
         model = eqx.combine(params, static)
 
         if conf.use_dropout:

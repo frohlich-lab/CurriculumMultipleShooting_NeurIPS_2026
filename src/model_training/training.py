@@ -166,14 +166,8 @@ def make_step(
         compute_hessian_metrics: bool,
         base_loss_fn: Callable,
 ):
-    # # TODO @GiacomoFabrini - check whether LookAhead still works with newer changes! If not, discuss and decide whether to keep or remove
-    # if conf.use_lookahead:
-    #     opt_params = params.fast
-    # else:
-    #     opt_params = params
-    opt_params = params
     (loss_value, reg_loss_dict), grads = loss_grad_fn(
-        prob_params=opt_params,
+        prob_params=params,
         prob_static=static,
         t_save_windows=t_save_windows,
         masks=masks,
@@ -196,12 +190,12 @@ def make_step(
     if conf.hessian_precondition:
         args = (t_save_windows, masks, input_data)
         grads, updated_hessian_metrics = apply_hessian_preconditioning_to_grads(
-            grads, opt_params, static, args, conf, base_loss_fn
+            grads, params, static, args, conf, base_loss_fn
         )
     elif compute_hessian_metrics:
         args = (t_save_windows, masks, input_data, last_valid_index)
         hessian_metrics = get_hessian_metrics(
-            get_hessian(opt_params, static, args, conf, base_loss_fn),
+            get_hessian(params, static, args, conf, base_loss_fn),
             return_eigs_svs=False,
         )
     updates, opt_state = opt.update(grads, opt_state, params)
@@ -553,7 +547,7 @@ def train(
 
         # Get schedule
         schedule = get_scheduler(conf=conf, n_epochs=n_epochs)
-        # Initialise optimiser, optimiser state + update params if using lookahead
+        # Initialise optimiser and optimiser state
         opt, opt_state, params = get_opt_opt_state_params(conf, params, schedule)
 
 
@@ -617,11 +611,6 @@ def train(
                 break
 
             # Recombine dynamic and static into full model
-            # Disabled LookAhead
-            # model = eqx.combine(
-            #     params.fast if conf.use_lookahead else params,
-            #     static,
-            # )
             model = eqx.combine(params, static)
 
             # Save model at the start/end of each curriculum learning stage

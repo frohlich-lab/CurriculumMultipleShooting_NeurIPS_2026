@@ -140,34 +140,11 @@ def get_opt_opt_state_params(
         "adam": optax.adam(schedule),
         "adamw": optax.adamw(schedule),
         "adagrad": optax.adagrad(schedule),
-        # "adam_lbfgs": optax.chain(
-        #     optax.adam(schedule),
-        #     optax.scale_by_lbfgs()
-        # ),
         "sgd": optax.sgd(schedule),
-        # "sgd_lbfgs": optax.chain(
-        #    optax.sgd(schedule),
-        #    optax.scale_by_lbfgs()
-        # )
     }
 
     if conf.optimiser not in optimisers.keys():
         raise ValueError(f"Unknown optimiser: {conf.optimiser}!")
-
-    # Disabled LookAhead
-    # if not conf.use_lookahead:
-    #     opt = optimisers[conf.optimiser]
-    #     opt_state = opt.init(params)
-    # else:
-    #     opt = optax.lookahead(
-    #         fast_optimizer=optimisers[conf.optimiser],
-    #         sync_period=conf.lookahead_sync,
-    #         slow_step_size=conf.lookahead_step_size,
-    #         reset_state=conf.lookahead_reset_state,
-    #     )
-    #     # Initialise params for lookahead (now params has params.fast and params.slow)
-    #     params = optax.LookaheadParams.init_synced(params)
-    #     opt_state = opt.init(params)
 
     opt = optimisers[conf.optimiser]
     opt_state = opt.init(params)
