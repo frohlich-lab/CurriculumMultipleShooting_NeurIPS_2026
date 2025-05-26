@@ -71,19 +71,19 @@ OPTIMISERS = {
 
 MAX_LEARNING_RATES = {
     # 1e-1,
-    # 1e-2,
+    1e-2,
     1e-3,
 }
 
 LEARNING_RATE_SPANS = {
-    1e0,
+    1e0,  # initial learning rate = max learning rate
     # 1e1,
     # 1e2,
     # 1e3,
 }
 
 LEARNING_RATE_DECAYS = {
-    0.9**0,  # 1.0
+    0.9**0,  # 1.0  -> no decay
     # 0.999,
     # 0.9**1,
     # 0.9**2,
@@ -98,7 +98,7 @@ WARMUP_FCTS = {
     # 0.05,
     # 1e-2,
     # 1e-3,
-    0,
+    0,  # -> no warmup; in combination with lrate_span=1 and decay=1 this results in a constant lr schedule
 }
 
 OPT_STEPS = {
@@ -148,8 +148,8 @@ OUTPUT_REG = {
     0,
     # changed with 1e-6 premultiplier given issues with snakemake small wildcards
     1e0, # corresponds to 1e-6
-    # 1e1,  # corresponds to 1e-5
-    # 1e2,  # corresponds to 1e-4
+    1e1,  # corresponds to 1e-5
+    1e2,  # corresponds to 1e-4
     # 1e3,  # corresponds to 1e-3
     # 1e-2,
     # 1e-1,
@@ -202,7 +202,7 @@ CURRICULUM_LEARNING = {
 }
 
 NUM_CURRICULUM_STEPS = {
-    10
+    9  # matches number of stages from mid point of shooting window range
 }
 
 MAX_CURRICULUM_EPOCHS = {
@@ -249,8 +249,8 @@ COMPUTE_HESSIAN_METRICS = {
 
 # Second optimiser (classical)
 SECOND_OPTS = {
-    "fides",
-    # "optx",
+    # "fides",
+    "optx",  # default to optimistix after latest meeting with Fabian + Sebastian
 }
 
 # Option to freeze the mechanistic parameters and only train the neural network component
@@ -296,9 +296,9 @@ NORMALISE_TIMEPOINTS = {
     # False,
 }
 
-N_STARTS = 50  # number of multi-starts
+N_STARTS = 100  # number of multi-starts
 
 N_EPOCHS = 4000  # default from UDE paper: 2000 / SIR: 40000-100000
 MAX_ITER_OPTX_FINETUNE = 10000
 
-EXPERIMENT_NAME = "nemo_debugnorm"
+EXPERIMENT_NAME = "nemo_100ms_lr"
