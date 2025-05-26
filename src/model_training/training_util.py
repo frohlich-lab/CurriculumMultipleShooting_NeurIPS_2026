@@ -407,6 +407,7 @@ def log_plots(
         df_obs: pd.DataFrame,
         dataset: str,
         shooting_mode: str,
+        curriculum_learning: bool,
         colors: List[str],
         epoch: int,
         plot_name: str,
@@ -435,9 +436,10 @@ def log_plots(
             marker='o',
             label=f'obs_{label}',
         )
-        if (shooting_mode != "single") and (dataset == "train"):
+        # For multiple-shooting (MS, without CL), plot simulations and delimiters for the individual shooting windows
+        if (shooting_mode == "multiple") and (dataset == "train") and not curriculum_learning:
             for window in sorted(df_predict_shooting_train.window.unique()):
-                # Only draw line between points corresponding to the same window/batch (unused)
+                # Only draw line between points corresponding to the same window
                 plt.plot(
                     df_predict_shooting_train[
                         df_predict_shooting_train.window == window
@@ -449,17 +451,14 @@ def log_plots(
                     ls='--',
                     alpha=0.5,
                 )
-            if shooting_mode == "multiple":
-                for window in sorted(df_predict_shooting_train.window.unique()):
-                    # mark start of each shooting window just for reference
-                    plt.axvline(
-                        x=df_predict_shooting_train[
-                            df_predict_shooting_train.window == window
-                        ]["time"].values[0],
-                        color='black',
-                        alpha=0.6,
-                        ls='dotted'
-                    )
+                plt.axvline(
+                    x=df_predict_shooting_train[
+                        df_predict_shooting_train.window == window
+                    ]["time"].values[0],
+                    color='black',
+                    alpha=0.6,
+                    ls='dotted'
+                )
 
         plt.legend(frameon=False)
         plt.xlabel('Time')

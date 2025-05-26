@@ -42,6 +42,7 @@ def get_fit_dfs(
         t_save_windows,
         data: jnp.ndarray,
         shooting_mode: str,
+        curriculum_learning: bool,
         dataset: str,
 ) -> Tuple[pd.DataFrame, Optional[pd.DataFrame], pd.DataFrame]:
     # Model prediction
@@ -74,7 +75,7 @@ def get_fit_dfs(
                                })
     else:
         raise ValueError(f"Undefined dynamical model {prob.dynamical_model}.")
-    if (shooting_mode == "single") or (dataset != "train"):
+    if (shooting_mode == "single") or (dataset != "train") or curriculum_learning:
         return df_pred, None, df_obs
     else:
         if shooting_mode == "multiple":  # TODO need to fix this for MS and MS+CL
@@ -132,7 +133,7 @@ def log_fit_plots(
             assert model.func.regularise_network == True, ("Regularisation of the network is required, u0 has more "
                                                            "elements than state dimension.")
         df_predict, df_predict_train, df_obs = get_fit_dfs(
-            model, u0, t_save, t_span, t_save_windows, data, conf.shooting_mode, dataset,
+            model, u0, t_save, t_span, t_save_windows, data, conf.shooting_mode, conf.curriculum_learning, dataset,
         )
         plot_dir = plots_dir / conf.dynamical_model / plot_subdir
         plot_dir.mkdir(exist_ok=True, parents=True)
@@ -141,6 +142,7 @@ def log_fit_plots(
             df_obs,
             dataset,
             conf.shooting_mode,
+            conf.curriculum_learning,
             colors,
             epoch,
             f"{dataset}_{plot_name}",
