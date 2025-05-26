@@ -249,8 +249,8 @@ COMPUTE_HESSIAN_METRICS = {
 
 # Second optimiser (classical)
 SECOND_OPTS = {
-    # "fides",
-    "optx",  # default to optimistix after latest meeting with Fabian + Sebastian
+    "fides",
+    # "optx",
 }
 
 # Option to freeze the mechanistic parameters and only train the neural network component
