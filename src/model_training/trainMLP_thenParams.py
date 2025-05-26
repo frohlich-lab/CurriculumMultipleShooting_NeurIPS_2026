@@ -14,7 +14,7 @@ from src.model_training.training_util import sample_dynamical_params, get_sindy_
 from src.model_training.landscape_plotting_util import analyse_lv_loss_landscape_dynparams, get_ude_param_landscape
 from src.ude_problem import UDEProblem
 from training import train
-from training_configuration import MECHANISTIC_FIT_EPOCHS, N_EPOCHS, MAX_ITER_OPTX_FINETUNE
+from training_configuration import N_EPOCHS, MAX_ITER_OPTX_FINETUNE
 from tqdm.contrib.itertools import product  # directly using itertools.product progress bar wrapper
 
 conf = fire.Fire(Conf)
@@ -147,7 +147,6 @@ for job, second_curriculum_learning in product(range(10), [True, False], positio
             loss_grad_fn=loss_grad_fn,
             loss_optx=loss_optx,
             optx_config=optx_config,
-            max_iter_optx_mechanistic=0,
             n_epochs=N_EPOCHS,  # only train using ADAM
             max_iter_optx_finetune=0,
             model_save_dir=model_save_dir,
@@ -228,7 +227,6 @@ for job, second_curriculum_learning in product(range(10), [True, False], positio
             loss_grad_fn=loss_grad_fn,
             loss_optx=loss_optx,
             optx_config=optx_config,
-            max_iter_optx_mechanistic=MECHANISTIC_FIT_EPOCHS,
             n_epochs=N_EPOCHS,
             max_iter_optx_finetune=MAX_ITER_OPTX_FINETUNE,
             model_save_dir=model_save_dir,

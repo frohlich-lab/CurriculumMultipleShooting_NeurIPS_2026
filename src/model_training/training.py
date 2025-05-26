@@ -217,7 +217,6 @@ def train(
         early_stopping_params: EarlyStoppingParams,
         loss_dict: Dict[str, Callable],
         optx_config: Dict,
-        max_iter_optx_mechanistic: int,
         n_epochs: int,
         max_iter_optx_finetune: int,
         model_save_dir: Path,
@@ -249,8 +248,6 @@ def train(
         Dictionary of loss functions.
     :param optx_config:
         Configuration for optimistix solver (rtol, atol).
-    :param max_iter_optx_mechanistic:
-        Maximum number of iterations for initial fitting of mechanistic parameters (dynamical parameters).
     :param n_epochs:
         Number of training iterations (epochs).
     :param max_iter_optx_finetune:
@@ -322,87 +319,7 @@ def train(
     else:
         last_valid_index = 1
 
-    # STAGE 1: fit mechanistic model parameters -- zero-out and freeze neural network
-    if max_iter_optx_mechanistic > 0:
-        wandb_log = True
-        if conf.second_opt == "optx":
-            model, sol, static, _, loss_val, epoch, partial_results_df = train_optimistix(
-                model=model,
-                filter_spec=filter_spec_freeze_nn,
-                conf=conf,
-                optx_config=optx_config,
-                base_loss=loss_dict["base_loss_fn"],
-                loss_optx=loss_dict["loss_optx"],
-                val_base_loss=loss_dict["val_base_loss_fn"],
-                val_loss_optx=loss_dict["val_loss_optx"],
-                epoch=epoch,
-                num_epochs=max_iter_optx_mechanistic,
-                u0_val=u0_val,
-                t_save_windows=t_save_windows,
-                masks=masks,
-                training_data=training_data,
-                t_save_val=t_save_val,
-                t_span_val=t_span_val,
-                validation_data=validation_data,
-                last_valid_index=last_valid_index,
-                frozen_mechanistic=False,
-                frozen_nn=True,
-                zero_out_mlp=True,
-                wandb_log=wandb_log,
-                wandb_log_final=False,
-            )
-        else:
-            model, sol, static, _, loss_val, epoch, partial_results_df = train_fides(
-                model=model,
-                filter_spec=filter_spec_freeze_nn,
-                conf=conf,
-                loss_grad_fn=loss_dict["loss_grad_fn"],
-                epoch=epoch,
-                max_iter=max_iter_optx_mechanistic,
-                u0_val=u0_val,
-                t_save_windows=t_save_windows,
-                masks=masks,
-                training_data=training_data,
-                t_save_val=t_save_val,
-                t_span_val=t_span_val,
-                validation_data=validation_data,
-                last_valid_index=last_valid_index,
-                loss_fn=loss_dict["loss_fn"],
-                val_loss_fn=loss_dict["val_loss_fn"],
-                zero_out_mlp=True,
-                wandb_log_final=wandb_log,
-            )
-        if wandb_log:  # if not, partial_results will be None
-            # Add conf/hyperparameters details
-            results_dfs.append(partial_results_df.assign(**conf.__dict__))
-
-        # Update best_model
-        if loss_val < loss_val_min:
-            best_model = model
-
-        # Plot eigenvalue and singular value spectrum
-        # hessian = get_hessian(sol.value, static, (u0, t_save_train, t_span_train, training_data), conf)
-        # hessian_metrics, eigs, svs = get_hessian_metrics(hessian, return_eigs_svs=True)
-        # eig_sv_plot(
-        #     eigs, svs,
-        #     conf,
-        #     epoch,
-        # )
-
-        # Log plots again after first training with optimistix/BFGS
-        log_fit_plots(
-            model=model, **plot_args,
-            conf=conf,
-            colors=colors, epoch=epoch,
-            plot_name=f"mechanistic_{conf.second_opt}",
-            plot_subdir=f"mechanistic_{conf.second_opt}",
-        )
-
-        # Increment epoch before moving to next stage
-        epoch +=1
-
-
-    # STAGE 2: Train with ADAM/ADAM-W -- freeze mechanistic model parameters
+    # STAGE 1: Train with ADAM/ADAM-W -- freeze mechanistic model parameters
     if n_epochs > 0:
         # Restore the previously initialised MLP + enable network contribution regularisation
         model = model.replace_mlp(
@@ -690,7 +607,7 @@ def train(
         # Serialise the best ADAM model
         best_model.save(model_save_dir / (conf.__str__(serialise_model=True) + "_best_ADAM.eqx"))
 
-    # Train with BFGS via optimistix/fides
+    # Stage 2 - train with BFGS via optimistix/fides
     if max_iter_optx_finetune > 0:  # otherwise end training and return trained model
         # Setup filter spec
         if conf.freeze_mechanistic_params_optx:

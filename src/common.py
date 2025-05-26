@@ -84,8 +84,7 @@ class Conf(dict):
     compute_hessian_metrics: bool = False
     get_sindy_formula: bool = False
     sindy_use_derivatives: bool = False
-    # Mechanistic fitting settings (1st, 3rd stage)
-    # mechanistic_fit_epochs: int = 0
+    # Mechanistic fit optimisation
     second_opt: str = "optx"  # alternative: "fides"
     # Freeze parts of the UDE model - TODO @GiacomoFabrini -- consider reducing to two params
     freeze_mechanistic_params_adam: bool = False

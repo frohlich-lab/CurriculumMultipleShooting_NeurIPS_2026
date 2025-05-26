@@ -12,7 +12,7 @@ from src.model_training.training_setup import (broadcast_bounds, get_data_and_fu
 from src.model_training.training_util import sample_dynamical_params, get_sindy_formula
 from src.ude_problem import UDEProblem
 from training import train
-from training_configuration import MECHANISTIC_FIT_EPOCHS, N_EPOCHS, MAX_ITER_OPTX_FINETUNE
+from training_configuration import N_EPOCHS, MAX_ITER_OPTX_FINETUNE
 
 
 # ================================================================
@@ -135,7 +135,6 @@ training_output = train(
     early_stopping_params=early_stopping_params,
     loss_dict=loss_dict,
     optx_config=optx_config,
-    max_iter_optx_mechanistic=MECHANISTIC_FIT_EPOCHS,
     n_epochs=N_EPOCHS,
     max_iter_optx_finetune=MAX_ITER_OPTX_FINETUNE,
     model_save_dir=model_save_subdir,
