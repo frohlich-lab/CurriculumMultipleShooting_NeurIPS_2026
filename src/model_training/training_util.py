@@ -163,7 +163,7 @@ def initialise_wandb(
     # Initialise run
     wandb.init(
         project=f"TestUDE.snakemake.{conf.dynamical_model}.{conf.experiment_name}",
-        group=f"{conf.dynamical_model}.{conf.training_setting}",
+        group=f"{conf.training_setting}.{conf.shooting_mode}.{conf.curriculum_learning}",
         config={
             **conf.__dict__,
             "patience": early_stopping_params.patience
