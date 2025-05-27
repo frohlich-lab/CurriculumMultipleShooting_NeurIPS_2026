@@ -210,7 +210,7 @@ defaults = {
 basic_template = "__".join(defaults.values())
 TRAINING_RESULTS = str(results_dir / "{experiment_name}" / "{dynamical_model}" / "train" / (basic_template + ".csv"))
 MERGED_TRAINING_RESULTS = str(results_dir / "{dynamical_model}" / "merged_results__{experiment_name}.csv")
-AGGREGATION_PLOTS = str(plots_dir / "{experiment_name}" / "{dynamical_model}" / "{filename}.pdf")
+AGGREGATION_PLOTS = str(plots_dir / "{experiment_name}" / "{dynamical_model}" / "{filename}.png")
 PLOT_TYPES = [
     "final_loss_train_boxplot",
     "final_loss_val_boxplot",
