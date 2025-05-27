@@ -1,3 +1,4 @@
+import itertools as itt
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -192,8 +193,16 @@ def tiled_plot_plotnine(
     style_col: Optional[str] = None,
     plot_fmt: Optional[str] = "png",
 ):
-    for shooting_mode in sorted(df.shooting_mode.unique()):
-        data = df[df.shooting_mode == shooting_mode].copy()
+    for activation_fn_name, max_lrate, shooting_mode in itt.product(
+        sorted(df.activation_fn_name.unique()),
+        sorted(df.max_lrate.unique()),
+        sorted(df.shooting_mode.unique())
+    ):
+        data = df[
+            (df.activation_fn_name == activation_fn_name) &
+            (df.max_lrate == max_lrate) &
+            (df.shooting_mode == shooting_mode)
+        ].copy()
 
         # Preprocessing
         if kind == "line":
@@ -311,7 +320,7 @@ def tiled_plot_plotnine(
 
         # Save or show
         if save_plots:
-            path = fig_dir / f"{plot_name}_{shooting_mode}.{plot_fmt}"
+            path = fig_dir / f"{plot_name}__{activation_fn_name}__{max_lrate}__{shooting_mode}.{plot_fmt}"
             p.save(str(path), dpi=300, verbose=False)
         else:
             p.show()
