@@ -142,7 +142,7 @@ for dynamical_model in DYNAMICAL_MODEL:
             elif model_metric == "delta":
                 ref_val = true_dynamic_parameters["lotka_volterra"].tolist()[1]
             elif model_metric in ["loss_train", "loss_val"]:
-                ref_val = 1e-3
+                ref_val = 1e-2
             else:
                 ref_val = None
 
@@ -181,18 +181,18 @@ for dynamical_model in DYNAMICAL_MODEL:
             )
 
 
-        # Compute the fraction of runs that achieve a final validation loss below a given threshold (here 1e-3)
-        fractions = compute_success_fraction(df=final_epoch_df, threshold=1e-3, group_cols=hyperparam_groups)
+        # Compute the fraction of runs that achieve a final validation loss below a given threshold (here 1e-2)
+        fractions = compute_success_fraction(df=final_epoch_df, threshold=1e-2, group_cols=hyperparam_groups)
         tiled_plot_plotnine(
             df=fractions,
             row_col="output_reg",
             col_col=col_param,
             kind="bar",
             x_col="multistart_deviation",
-            y_col="fraction_below_0.001",
+            y_col="fraction_below_0.01",
             hue_col="curriculum_learning",
             fig_dir=fig_subdir,
-            plot_name="fraction_below_0.001",
+            plot_name="fraction_below_0.01",
             y_limits=(0, 1)
         )
 
