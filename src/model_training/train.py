@@ -102,7 +102,8 @@ ude_problem = UDEProblem(
     mlp=mlp,
     options=options,
     state_dimension=state_dims[conf.dynamical_model],
-    initial_values=initial_values
+    initial_values=initial_values,
+    regularise_network=True,  # TODO: consider making this more general / not hardcoded
 )
 
 # # Linear schedule Fabian set up for the DMM -- DISABLED WITH NEW SCHEDULER

@@ -284,6 +284,10 @@ def train(
     u0, training_data, t_save_train, t_span_train = train_args.u0, train_args.data, train_args.t_save, train_args.t_span
     u0_val, validation_data, t_save_val, t_span_val = val_args.u0, val_args.data, val_args.t_save, val_args.t_span
 
+    # Add initial zero as starting condition for the 2-norm of the neural network contribution
+    u0_val = augment_u0(u0_val)
+    plot_args["u0"] = augment_u0(plot_args["u0"])
+
     # Create filter_spec allowing for training of mechanistic params only or neural network only
     filter_spec_freeze_mechanistic = jtu.tree_map(lambda x: eqx.is_array(x), model)
     # filter_spec which freezes dynamic (mechanistic) parameters
@@ -308,9 +312,6 @@ def train(
     else:
         raise ValueError(f"Undefined dynamical model {conf.dynamical_model}.")
 
-    # Save the initialised MLP from model
-    initialised_mlp = model.func.mlp
-
     # Initialise list of result dataframes and define last_valid_index based on shooting mode
     results_dfs = []
     if conf.shooting_mode == "multiple":
@@ -321,19 +322,6 @@ def train(
 
     # STAGE 1: Train with ADAM/ADAM-W -- freeze mechanistic model parameters
     if n_epochs > 0:
-        # Restore the previously initialised MLP + enable network contribution regularisation
-        model = model.replace_mlp(
-            new_mlp=initialised_mlp,
-            regularise_network=True,
-        )
-        best_model = best_model.replace_mlp(
-            new_mlp=initialised_mlp,
-            regularise_network=True,
-        )
-        # Add initial zero as starting condition for the 2-norm of the neural network contribution
-        u0_val = augment_u0(u0_val)
-        plot_args["u0"] = augment_u0(plot_args["u0"])
-
         # Initialise CL stage variable
         cl_stage = 1  # initialise CL stage
 
@@ -344,9 +332,10 @@ def train(
             adam_filter_spec = filter_spec_freeze_nn
         else:
             adam_filter_spec = eqx.is_array
+        # Partition model into learnable / static parameters
         params, static = eqx.partition(model, adam_filter_spec)
 
-        # Check Early-stopping parameters have been set correctly and instantiate early stopper
+        # Instantiate early stopper (if needed)
         early_stopper = configure_early_stopping(early_stopping_params)
 
         # Generate regularly log-spaced epochs for early-stopping evaluation + model stat logging - from DMMs
@@ -369,7 +358,6 @@ def train(
         schedule = get_scheduler(conf=conf, n_epochs=n_epochs)
         # Initialise optimiser and optimiser state
         opt, opt_state, params = get_opt_opt_state_params(conf, params, schedule)
-
 
         # Training loop
         metric_handler = MetricHandler(patience=5)
@@ -400,7 +388,6 @@ def train(
             if loss_val < loss_val_min:
                 best_model = inference_model
                 loss_val_min = loss_val
-
 
             if conf.shooting_mode == "multiple":
                 ivs.append(params.initial_values)
