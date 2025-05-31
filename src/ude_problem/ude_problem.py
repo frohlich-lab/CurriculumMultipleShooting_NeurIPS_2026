@@ -68,7 +68,14 @@ class UDEProblem(eqx.Module):
         self.func = UDE_funcs[dynamical_model](
             dynamic_parameters, mlp, options, state_dimension, regularise_network
         )
-        self.initial_values = initial_values
+        if not regularise_network:
+            self.initial_values = initial_values
+        else:
+            # Add zero initial value for neural network contribution regularisation
+            self.initial_values = jnp.concatenate(
+                [initial_values, jnp.zeros((initial_values.shape[0], 1))],
+                axis=1
+            )
 
 
     def get_augmented_state_variables(self):
