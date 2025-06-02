@@ -71,11 +71,15 @@ class UDEProblem(eqx.Module):
         if not regularise_network:
             self.initial_values = initial_values
         else:
-            # Add zero initial value for neural network contribution regularisation
-            self.initial_values = jnp.concatenate(
-                [initial_values, jnp.zeros((initial_values.shape[0], 1))],
-                axis=1
-            )
+            if initial_values.shape[1] == self.func.mlp.layers[0].in_features:
+                # Add zero initial value for neural network contribution regularisation
+                self.initial_values = jnp.concatenate(
+                    [initial_values, jnp.zeros((initial_values.shape[0], 1))],
+                    axis=1
+                )
+            else:
+                # Loading from serialised model with regularisation IV already present
+                self.initial_values = initial_values
 
 
     def get_augmented_state_variables(self):
