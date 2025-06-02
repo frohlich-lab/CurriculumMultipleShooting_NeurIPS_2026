@@ -44,13 +44,14 @@ class Conf(dict):
     hidden_dropout_rate: float = 0.5
     # Optimiser and learning rate schedule
     optimiser: str = "adam"
+    # default: constant learning rate (no schedule)
     max_lrate: float = 0.01  # absolute maximum learning rate (default max in UDE paper)
-    lrate_span: float = 1e0  # ratio between max and min learning rates in a given schedule (default=1, min=max)
-    lrate_decay: float = 0.99  # if < 1, the learning rate decays between schedules (default: no decay)
-    warmup_fct: float = 0.1  # fraction of schedule epochs to be used for warmup (default: 10% warmup)
-    opt_steps: int = 10  # Number of steps in the first schedule (they multiply each time in length by opt_mult)
-    opt_mult: int = 2  # Multiplier for the number of steps in each schedule
-    opt_sched_type: str = "cos"  # options: "cos", "lin", "exp"
+    lrate_span: float = 1  # ratio between max and min learning rates in a given schedule (default=1, min=max)
+    lrate_decay: float = 1  # if < 1, the learning rate decays between schedules (default: no decay)
+    warmup_fct: float = 0  # fraction of schedule epochs to be used for warmup (None for constant learning rate)
+    opt_steps: int = 0  # Number of steps in the first schedule (they multiply each time in length by opt_mult)
+    opt_mult: int = 0  # Multiplier for the number of steps in each schedule
+    opt_sched_type: str = "lin"  # options: "cos", "lin", "exp"
     # Early-Stopping
     use_early_stop: bool = False  # default: False, not in use
     # Regularisation
