@@ -33,6 +33,7 @@ metrics = [
 # Hessian-derived metrics
 log_metrics = [
     # "condition_number",
+    "hessian_trace",
     "frobenius_norm_diagonal", "frobenius_norm_off_diagonal",
     "ratio_frobenius_norm_offdiag_to_diag",
     "max_abs_diagonal_element", "max_abs_off_diagonal_element",

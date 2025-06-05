@@ -664,6 +664,7 @@ def generate_log_epochs(n_epochs: int, num_samples: int, min_dist: int) -> np.nd
 
 
 def get_hessian_metrics(hessian: Array, return_eigs_svs: bool=False) -> Union[tuple[dict, Array, Array], dict]:
+    hessian_trace = jnp.trace(hessian)
     hessian_diag = hessian * jnp.eye(hessian.shape[0])
     max_abs_diag = jnp.max(jnp.abs(hessian_diag))
     frob_diag = jnp.linalg.norm(hessian_diag)
@@ -679,6 +680,7 @@ def get_hessian_metrics(hessian: Array, return_eigs_svs: bool=False) -> Union[tu
     )
     eigenvalues, _ = jnp.linalg.eigh(hessian)
     hessian_metrics = {
+        "hessian_trace": hessian_trace,
         "max_abs_diagonal_element": max_abs_diag,
         "max_abs_off_diagonal_element": max_abs_off_diag,
         "frobenius_norm_diagonal": frob_diag,
