@@ -33,6 +33,14 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 # Some FutureWarning with unhashable DynamicJaxprTracer object in the diffeq solve/call
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
+def get_save_epochs(num_epochs, num_models):
+    if num_models <= 0 or num_epochs <= 0:
+        return []
+    if num_models == 1:
+        return [num_epochs - 1]
+
+    return [round(i * (num_epochs - 1) / (num_models - 1)) for i in range(num_models)]
+
 
 def get_fit_dfs(
         prob: UDEProblem,
@@ -280,6 +288,17 @@ def train(
     epoch, nn_epoch = 0, 0
     best_model, loss_val_min = model, jnp.inf
 
+    if not conf.curriculum_learning:
+        num_save_models = 10
+        save_epochs = get_save_epochs(n_epochs, num_save_models)
+    else:
+        # Curriculum save points: start and end of each stage
+        model_save_steps_start = [curriculum_params[stage]["start"] for stage in curriculum_params]
+        model_save_steps_end = [curriculum_params[stage]["end"]-1 for stage in curriculum_params]
+        save_epochs = model_save_steps_start + model_save_steps_end
+        models_curriculum_stage_start = {}
+        models_curriculum_stage_end = {}
+
     # Unpack training and validation args
     u0, training_data, t_save_train, t_span_train = train_args.u0, train_args.data, train_args.t_save, train_args.t_span
     u0_val, validation_data, t_save_val, t_span_val = val_args.u0, val_args.data, val_args.t_save, val_args.t_span
@@ -341,19 +360,6 @@ def train(
         # Generate regularly log-spaced epochs for early-stopping evaluation + model stat logging - from DMMs
         log_epochs = generate_log_epochs(n_epochs=n_epochs, num_samples=100, min_dist=5)
 
-        # Define epochs at which to save curriculum-step models: just before increasing number of datapoints or last epoch
-        if conf.curriculum_learning:
-            model_save_steps_start = [
-                curriculum_params[stage]["start"]
-                for stage in curriculum_params.keys()
-            ]  # start of CL stages
-            model_save_steps_end = [
-                curriculum_params[stage]["end"]
-                for stage in curriculum_params.keys()
-            ]  # end of CL stages
-            models_curriculum_stage_start = {}
-            models_curriculum_stage_end = {}
-
         # Get schedule
         schedule = get_scheduler(conf=conf, n_epochs=n_epochs)
         # Initialise optimiser and optimiser state
@@ -399,6 +405,24 @@ def train(
                 # Update last valid window index
                 last_valid_index = curriculum_params[cl_stage]["last_valid_index"]
 
+            if nn_epoch in save_epochs:
+                # Save model at the end of the epoch
+                model_pca_traj_dir = model_save_dir / "pca_traj"
+                model_pca_traj_dir.mkdir(exist_ok=True, parents=True)
+                epoch_save_path = (
+                    model_pca_traj_dir /
+                    (conf.__str__(serialise_model=True) + f"_PCA_{nn_epoch}_CL{cl_stage}.eqx")
+                )
+                print(f"Saving model at epoch {nn_epoch}, CL stage {cl_stage} to {epoch_save_path}")
+                inference_model.save(epoch_save_path)
+
+                # Save model at the start/end of each curriculum learning stage
+                if conf.curriculum_learning:
+                    if nn_epoch in model_save_steps_start:
+                        models_curriculum_stage_start[nn_epoch] = inference_model
+                    elif nn_epoch in model_save_steps_end:
+                        models_curriculum_stage_end[nn_epoch] = inference_model
+
             params, opt_state, loss_train, reg_loss_dict, grads, hessian_metrics = make_step(
                 params=params,
                 static=static,
@@ -420,17 +444,12 @@ def train(
             # Recombine dynamic and static into full model
             model = eqx.combine(params, static)
 
-            # Save model at the start/end of each curriculum learning stage
-            if conf.serialise_curriculum_models:
-                if nn_epoch in model_save_steps_start:
-                    models_curriculum_stage_start[nn_epoch] = inference_model
-                elif nn_epoch in model_save_steps_end:
-                    models_curriculum_stage_end[nn_epoch] = inference_model
-
             partial_results_df = pd.DataFrame(
                 [{
                     "optimiser": conf.optimiser,
                     "epoch": epoch+nn_epoch,
+                    # Curriculum stage
+                    "curriculum_stage": cl_stage,
                     # Losses
                     "loss_train": loss_train,
                     "loss_val": loss_val,
@@ -631,9 +650,6 @@ def train(
                 wandb_log=True,
                 wandb_log_final=True,
             )
-            # Add rescaling info
-            partial_results_df["data_rescaling"] = rescaling_args["data_rescaling"]
-            partial_results_df["time_rescaling"] = rescaling_args["time_rescaling"]
         else:
             model, sol, static, _, loss_val, epoch, partial_results_df = train_fides(
                 model=model,
@@ -655,9 +671,11 @@ def train(
                 zero_out_mlp=False,
                 wandb_log_final=wandb_log,
             )
-            # Add rescaling info
-            partial_results_df["data_rescaling"] = rescaling_args["data_rescaling"]
-            partial_results_df["time_rescaling"] = rescaling_args["time_rescaling"]
+
+        # Add rescaling info & curriculum stage
+        partial_results_df["data_rescaling"] = rescaling_args["data_rescaling"]
+        partial_results_df["time_rescaling"] = rescaling_args["time_rescaling"]
+        partial_results_df["curriculum_stage"] = -1  # to distinguish from valid values
 
         if wandb_log: # if not, partial_results will be None
             results_dfs.append(partial_results_df.assign(**conf.__dict__))
@@ -709,10 +727,10 @@ def train(
     else:
         for cl_ind, epoch in enumerate(model_save_steps_start):
             models_curriculum_stage_start[epoch].save(
-                model_save_dir / (conf.__str__(serialise_model=True) + f"_ADAM_CL{cl_ind}_start.eqx")
+                model_save_dir / (conf.__str__(serialise_model=True) + f"_CL{cl_ind}_start.eqx")
             )
         for cl_ind, epoch in enumerate(model_save_steps_end):
             models_curriculum_stage_end[epoch].save(
-                model_save_dir / (conf.__str__(serialise_model=True) + f"_ADAM_CL{cl_ind}_end.eqx")
+                model_save_dir / (conf.__str__(serialise_model=True) + f"_CL{cl_ind}_end.eqx")
             )
         return best_model, {**models_curriculum_stage_start, **models_curriculum_stage_end}
