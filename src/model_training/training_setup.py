@@ -149,7 +149,7 @@ def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple, u0) ->
 
 def broadcast_bounds(bounds, shape):
     return {
-        key: jnp.broadcast_to(value, shape)
+        key: tuple(jnp.broadcast_to(value, shape).tolist())
         for key, value in bounds.items()
     }
 

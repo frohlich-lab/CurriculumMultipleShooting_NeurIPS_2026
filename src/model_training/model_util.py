@@ -142,8 +142,8 @@ def bounded_tanh_transform_params(
 
 def bounded_tanh_recover_params(
         params: Union[Array, jnp.ndarray],
-        lb: np.ndarray,
-        ub: np.ndarray,
+        lb: tuple,
+        ub: tuple,
         loc: float = 1.73,  # same as in Philipps et al. 2024
 ) -> jnp.ndarray:
     """
@@ -151,8 +151,8 @@ def bounded_tanh_recover_params(
     `loc` shifts the center of the tanh function.
     """
     # For numerical stability, shift the bounds slightly // https://www.biorxiv.org/content/10.1101/2024.11.29.626122v1
-    lb = lb * (1 - 1e-6)
-    ub = ub * (1 + 1e-6)
+    lb = jnp.array(lb) * (1 - 1e-6)
+    ub = jnp.array(ub) * (1 + 1e-6)
     return lb + (np.tanh(params - loc) + 1) * (ub - lb) / 2
 
 

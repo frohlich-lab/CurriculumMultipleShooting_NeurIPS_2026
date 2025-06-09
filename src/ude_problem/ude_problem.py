@@ -425,7 +425,7 @@ class UDEProblem(eqx.Module):
                 options={
                     "dynamic_params_scale": hyperparams["options"]["dynamic_params_scale"],
                     "bounded_tanh_params": {
-                        key: jnp.array(item)
+                        key: tuple(item)
                         for key, item in hyperparams["options"]["bounded_tanh_params"].items()
                     }
                 },
