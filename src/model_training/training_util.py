@@ -971,3 +971,12 @@ def check_and_progress_curriculum(
         t_save_windows = curriculum_params[cl_stage]["time"]
         masks = curriculum_params[cl_stage]["mask"]
     return t_save_windows, masks, cl_stage
+
+
+def get_save_epochs(num_epochs, num_models):
+    if num_models <= 0 or num_epochs <= 0:
+        return []
+    if num_models == 1:
+        return [num_epochs - 1]
+
+    return [round(i * (num_epochs - 1) / (num_models - 1)) for i in range(num_models)]

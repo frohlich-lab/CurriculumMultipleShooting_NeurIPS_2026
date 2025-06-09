@@ -17,30 +17,25 @@ from diffrax import SaveAt
 from jaxtyping import Array, Float, PyTree
 from pathlib import Path
 from src.common import TRAINING_RESULTS
-from src.model_training.training_util import (check_and_progress_curriculum, configure_early_stopping,
-                                              # generate_incremental_arrays,
-                                              generate_log_epochs,
-                                              get_opt_opt_state_params, get_scheduler,
-                                              initialise_wandb, log_model_stats, log_plots,
-                                              make_grads_finite, max_grad_norm, get_hessian_metrics,
-                                              MetricHandler, transform_dynamic_params, augment_u0)
+from src.model_training.training_util import (
+    check_and_progress_curriculum, configure_early_stopping,
+    get_save_epochs,
+    # generate_incremental_arrays,
+    generate_log_epochs,
+    get_opt_opt_state_params, get_scheduler,
+    initialise_wandb, log_model_stats, log_plots,
+    make_grads_finite, max_grad_norm, get_hessian_metrics,
+    MetricHandler, transform_dynamic_params, augment_u0
+)
 from src.model_training.optimistix_training import train_optimistix
 from src.model_training.fides_training import train_fides
 from src.model_training.hessian import get_hessian, apply_hessian_preconditioning_to_grads
 from src.ude_problem import UDEProblem
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+
 # Some FutureWarning with unhashable DynamicJaxprTracer object in the diffeq solve/call
 warnings.simplefilter(action='ignore', category=FutureWarning)
-
-def get_save_epochs(num_epochs, num_models):
-    if num_models <= 0 or num_epochs <= 0:
-        return []
-    if num_models == 1:
-        return [num_epochs - 1]
-
-    return [round(i * (num_epochs - 1) / (num_models - 1)) for i in range(num_models)]
-
 
 def get_fit_dfs(
         prob: UDEProblem,
