@@ -444,7 +444,6 @@ def initialize_multiple_shooting(
         t_save: Union[Array, SaveAt],
         strategy: str,
         u0_guess: Optional[Tuple],
-        network_regularisation: bool,
         curriculum_learning: bool = False,
         curriculum_params: Optional[dict[str, tuple]] = None,
         random_seed: int = 0,
@@ -467,8 +466,6 @@ def initialize_multiple_shooting(
         Initialization strategy for initial conditions.
     u0_guess: Tuple
         Initial guess for the initial conditions.
-    network_regularisation: bool
-        If True, the network contribution to the dynamics will be regularised.
     curriculum_learning: bool
         If True, the model will be trained using curriculum learning.
     curriculum_params: dict
@@ -490,22 +487,13 @@ def initialize_multiple_shooting(
         )
 
     if strategy == 'z':
-        # Augment initial conditions to include network regularisation
-        if network_regularisation:
-            effective_state_dimension += 1
         return t_save_windows, masks, jnp.zeros((num_windows, effective_state_dimension))
     # TODO @GiacomoFabrini add an option to initialise with observed initial conditions
     elif strategy == 'g':
-        if network_regularisation:
-            u0_guess = jnp.concatenate([jnp.array(u0_guess), jnp.zeros(1)])
         return t_save_windows, masks, jnp.tile(u0_guess, (num_windows, 1))
     elif strategy == 'ru':
         # Sample uniformly state_dimension variables
         u0 = jr.uniform(jr.PRNGKey(random_seed), (num_windows, effective_state_dimension))
-        # Concatenate a 0 across all num_windows if using network regularisation
-        if network_regularisation:
-            u0 = jnp.concatenate([u0, jnp.zeros((num_windows, 1))], axis=1)
-        # return u0
         return t_save_windows, masks, u0
     else:
         raise ValueError(f"Invalid shooting_iv_init strategy: {strategy}")
@@ -517,7 +505,6 @@ def setup_time_masks_u0_curriculum(
         train_args: TrainValArgs,
         u0_guess: Union[tuple, jnp.ndarray],
         effective_state_dimension: int,
-        network_regularisation: bool = False  # disabled at the start of training
 ) -> Tuple[Array, Array, Array, dict]:
     # Setup curriculum learning (if enabled)
     # TODO this crashes the run - might want to think about a different approach or is this fine?
@@ -549,7 +536,6 @@ def setup_time_masks_u0_curriculum(
             t_save=train_args.t_save,
             strategy=conf.shooting_iv_init,
             u0_guess=u0_guess,
-            network_regularisation=network_regularisation,
             curriculum_learning=conf.curriculum_learning,
             curriculum_params=curriculum_stage_dict[1] if conf.curriculum_learning else None,
             random_seed=conf.multistart_job,

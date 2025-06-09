@@ -91,7 +91,6 @@ t_save_windows, masks, initial_values, curriculum_stage_dict = setup_time_masks_
     train_args=train_args,
     u0_guess=train_args.u0,
     effective_state_dimension=mlp.layers[0].in_features,
-    network_regularisation=False,
 )
 # Update plot args
 plot_args["t_save_windows"] = t_save_windows
