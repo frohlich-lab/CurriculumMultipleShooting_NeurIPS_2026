@@ -5,6 +5,18 @@ import jax.numpy as jnp
 from typing import Callable, List, Tuple
 
 
+def _load_csv_data(
+        path: str,
+        columns: List[str],
+        time_col: str
+) -> Tuple[jnp.ndarray, diffrax.SaveAt, List[float]]:
+    df = pd.read_csv(path)
+    data = jnp.array(df[columns].values)
+    t_save = diffrax.SaveAt(ts=df[time_col].values)
+    t_span = [0.0, float(df[time_col].max())]
+    return data, t_save, t_span
+
+
 def load_training_validation_csv(
     folder: str,
     train_file: str,
@@ -12,30 +24,15 @@ def load_training_validation_csv(
     columns: List[str],
     time_col: str,
 ) -> Tuple[jnp.ndarray, diffrax.SaveAt, List[float], jnp.ndarray, diffrax.SaveAt, List[float]]:
-    """Load training and validation data from CSV files.
+    """Load training and validation data from CSV files."""
+    base_path = os.path.join("src", "data_dir", folder)
 
-    Parameters
-    ----------
-    :param folder : str
-        Folder under ``src/data_dir`` containing the CSV files.
-    :param train_file : str
-        Name of the training CSV file.
-    :param validation_file : str
-        Name of the validation CSV file.
-    :param columns : List[str]
-        Columns to extract from the CSV files as data.
-    :param time_col : str
-        Column name containing the time points.
-    """
-    train_df = pd.read_csv(os.path.join("src", "data_dir", folder, train_file))
-    train_data = jnp.array(train_df[columns].values)
-    t_save_train = diffrax.SaveAt(ts=train_df[time_col].values)
-    t_span_train = [0.0, float(train_df[time_col].max())]
-
-    val_df = pd.read_csv(os.path.join("src", "data_dir", folder, validation_file))
-    val_data = jnp.array(val_df[columns].values)
-    t_save_val = diffrax.SaveAt(ts=val_df[time_col].values)
-    t_span_val = [0.0, float(val_df[time_col].max())]
+    train_data, t_save_train, t_span_train = _load_csv_data(
+        os.path.join(base_path, train_file), columns, time_col
+    )
+    val_data, t_save_val, t_span_val = _load_csv_data(
+        os.path.join(base_path, validation_file), columns, time_col
+    )
 
     return train_data, t_save_train, t_span_train, val_data, t_save_val, t_span_val
 
