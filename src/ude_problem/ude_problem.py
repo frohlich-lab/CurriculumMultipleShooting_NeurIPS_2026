@@ -229,6 +229,7 @@ class UDEProblem(eqx.Module):
                 ],
                 axis=0
             ),
+            args=u0,
             saveat=diffrax.SaveAt(ts=t_save),
             stepsize_controller=controller,
             adjoint=adjoint,
