@@ -289,8 +289,13 @@ def train(
     else:
         # Curriculum save points: start and end of each stage
         model_save_steps_start = [curriculum_params[stage]["start"] for stage in curriculum_params]
+        midpoints = [
+            curriculum_params[stage]["start"] +
+            (curriculum_params[stage]["end"] - curriculum_params[stage]["start"]) // 2
+            for stage in curriculum_params
+        ]
         model_save_steps_end = [curriculum_params[stage]["end"]-1 for stage in curriculum_params]
-        save_epochs = model_save_steps_start + model_save_steps_end
+        save_epochs = model_save_steps_start + midpoints + model_save_steps_end
         models_curriculum_stage_start = {}
         models_curriculum_stage_end = {}
 
