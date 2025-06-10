@@ -923,6 +923,7 @@ def get_sol_and_loss_single_shooting(
 def get_sol_and_loss_multiple_shooting(
         prob: UDEProblem,
         adjoint: diffrax.AbstractAdjoint,
+        loss_fn: Callable,
         data: Array,
         t_save_windows: Array,
         masks: Array,
@@ -941,8 +942,8 @@ def get_sol_and_loss_multiple_shooting(
     #     else jnp.array(prob.masks)[:-(prob.curriculum_stage - 1), :]
     # using vmap, shape of sol is: (batch/window, timepoint, state var)
     losses = jnp.array([
-        get_masked_mse(
-            pred=sol.ys[i, :, :prob.func.state_dimension],
+        loss_fn(
+            solution=sol.ys[i, :, :prob.func.state_dimension],
             data=data,
             mask=masks[i]
         )
