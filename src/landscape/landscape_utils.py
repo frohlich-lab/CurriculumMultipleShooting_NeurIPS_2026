@@ -2,6 +2,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -280,8 +281,8 @@ def evaluate_loss_random_directions(
         d2 = d2 * (jnp.linalg.norm(f1) / (jnp.linalg.norm(d2) + 1e-10))
 
     proj_x, proj_y = project_2d(f2 - f1, d1, d2)
-    xvals = jnp.linspace(-1, 1, num_points)
-    yvals = jnp.linspace(-1, 1, num_points)
+    xvals = jnp.linspace(-2, 2, num_points)
+    yvals = jnp.linspace(-2, 2, num_points)
     xmesh, ymesh = jnp.meshgrid(xvals, yvals)
 
     losses = evaluate_loss_on_mesh_grid(
@@ -319,8 +320,8 @@ def evaluate_loss_on_hessian_grid(
 ):
     flat_params, metadata = flatten_tensor_list(get_params_conditional(model, which))
     xmesh, ymesh = jnp.meshgrid(
-        jnp.linspace(-1, 1, num_points),
-        jnp.linspace(-1, 1, num_points)
+        jnp.linspace(-2, 2, num_points),
+        jnp.linspace(-2, 2, num_points)
     )
     losses = evaluate_loss_on_mesh_grid(
         xmesh,
@@ -347,11 +348,13 @@ def plot_loss_landscape(
         losses,
         mode: str,
         levels: int = 30,
-        xcoords=None,
-        ycoords=None,
+        xcoords: list=None,
+        ycoords: list=None,
         proj_model_x=None,
         proj_model_y=None,
-        title="Loss Landscape"
+        title="Loss Landscape",
+        color_labels: list=None,
+        cmap: str ='tab10'
 ):
     fig, ax = plt.subplots(figsize=(6, 5))
     contour = ax.contourf(
@@ -361,26 +364,36 @@ def plot_loss_landscape(
         levels=levels,
         cmap='viridis'
     )
-    if mode == "PCA" and xcoords is not None and ycoords is not None:
-        ax.plot(xcoords, ycoords, 'ro-', markersize=5, label='PCA Points')
-        xlabel = "PC1"
-        ylabel = "PC2"
-    elif mode == "random":
+
+    if mode == "random":
         if proj_model_x is not None and proj_model_y is not None:
             ax.plot(0, 0, 'r*', markersize=10, label="Model 1 (center)")
             ax.plot(proj_model_x, proj_model_y, 'bo-', markersize=5, label='Model 2')
         xlabel = "Random Direction 1"
         ylabel = "Random Direction 2"
-    elif mode == "hessian":
-        xlabel = "Hessian Eigenvector 1"
-        ylabel = "Hessian Eigenvector 2"
-        if xcoords is not None and ycoords is not None:
-            ax.plot(xcoords, ycoords, 'bo-', markersize=5, label='Projected Models')
-        ax.plot(0, 0, 'r*', markersize=10, label="Final Model")
     else:
-        xlabel = "Direction 1"
-        ylabel = "Direction 2"
-        # TODO consider adding a raise ValueError for unsupported modes ?!
+        if xcoords is not None and ycoords is not None:
+            if color_labels is not None:
+                unique_labels = sorted(set(color_labels))
+                color_map = cm.get_cmap(cmap, len(unique_labels))
+                label_to_color = {label: color_map(i) for i, label in enumerate(unique_labels)}
+
+                df = pd.DataFrame({"x": xcoords, "y": ycoords, "cl_stage": color_labels})
+                for label in unique_labels:
+                    group = df[df["cl_stage"] == label]
+                    ax.plot(group["x"], group["y"], '-', color=label_to_color[label], label=f"CL Stage {label}")
+                    ax.plot(group["x"], group["y"], 'o', color=label_to_color[label], markersize=4)
+            else:
+                ax.plot(xcoords, ycoords, 'bo-', markersize=5, label='Projected Models')
+        if mode == "PCA":
+            xlabel = "PC1"
+            ylabel = "PC2"
+        elif mode == "hessian":
+            xlabel = "Hessian Direction 1"
+            ylabel = "Hessian Direction 2"
+            ax.plot(0, 0, 'r*', markersize=10, label="Final Model")
+        else:
+            raise ValueError(f"Unknown mode: {mode}")
 
     cbar = plt.colorbar(contour, ax=ax)
     cbar.set_label("Log Loss")
@@ -483,19 +496,23 @@ def visualize_landscape(
                 title=f"Loss Landscape (Model Checkpoints) - CL Stage {cl_stage}"
             )
 
-    # Sort by training epoch and get final model
-    model_dict_flattened = {
-        epoch: model_dict[cl_stage][epoch]
-        for cl_stage in model_dict.keys()
-        for epoch in model_dict[cl_stage].keys()
-    }
-    sorted_epochs = sorted(model_dict_flattened)
+    # last_valid_index = 1
+    # final_model = model_dict[max(model_dict)][sorted(model_dict[max(model_dict)])[-1]]
 
-    # === Project all checkpoints on optimisation PCA Landscape ===
-    df_coords, (xcoords, ycoords), (pc1, pc2) = project_trajectory(
-        model_dict_flattened,
-        which=which
-    )
+    # Sort by training epoch and get final model
+    model_dict_flattened = {}
+    stage_labels = []
+    for cl_stage in model_dict:
+        for epoch in model_dict[cl_stage]:
+            model_dict_flattened[(cl_stage, epoch)] = model_dict[cl_stage][epoch]
+            stage_labels.append(cl_stage)
+
+    sorted_keys = sorted(model_dict_flattened, key=lambda x: (x[0], x[1]))  # sort by cl_stage then epoch
+    flat_models = {k: model_dict_flattened[k] for k in sorted_keys}
+
+    df_coords, (xcoords, ycoords), (pc1, pc2) = project_trajectory(flat_models, which=which)
+    df_coords["cl_stage"] = [key[0] for key in sorted_keys[:-1]]  # align stage labels, skipping the last model
+
     losses_pca = evaluate_loss_on_pca_grid(
         final_model,
         pc1,
@@ -520,20 +537,30 @@ def visualize_landscape(
         ymesh_pca,
         losses_pca,
         mode="PCA",
-        xcoords=xcoords,
-        ycoords=ycoords,
-        title=f"Loss Landscape (PCA Directions) - CL Stage {cl_stage}"
+        xcoords=df_coords["x"].tolist(),
+        ycoords=df_coords["y"].tolist(),
+        color_labels=df_coords["cl_stage"].tolist(),
+        title="Loss Landscape (PCA Directions by CL Stage)"
     )
 
     # === Project all checkpoints onto final Hessian landscape ===
-    final_params, _ = flatten_tensor_list(get_params_conditional(final_model, "full"))
     coord_dfs = []
-    for epoch in sorted_epochs:
-        model_i = model_dict_flattened[epoch]
-        params_i = get_params_conditional(model_i, "full")
-        flat_i, _ = flatten_tensor_list(params_i)
-        dx, dy = project_2d(flat_i - final_params, dir1, dir2)
-        coord_dfs.append(pd.DataFrame({"x": [dx], "y": [dy], "stage": [epoch]}))
+    for cl_stage in model_dict.keys():
+        final_model = model_dict[cl_stage][sorted(model_dict[cl_stage])[-1]]
+        final_params, _ = flatten_tensor_list(get_params_conditional(final_model, "full"))
+
+        for epoch, model in model_dict[cl_stage].items():
+            params = get_params_conditional(model, "full")
+            flat_params, _ = flatten_tensor_list(params)
+            dx, dy = project_2d(flat_params - final_params, dir1, dir2)
+            coord_dfs.append(
+                pd.DataFrame({
+                    "x": [dx],
+                    "y": [dy],
+                    "stage": [epoch],
+                    "cl_stage": [cl_stage]
+                })
+            )
 
     df_proj = pd.concat(coord_dfs, ignore_index=True)
     plot_loss_landscape(
@@ -543,5 +570,6 @@ def visualize_landscape(
         mode="hessian",
         xcoords=df_proj["x"].tolist(),
         ycoords=df_proj["y"].tolist(),
-        title="Loss Landscape (Model Checkpoints in Hessian Directions)"
+        color_labels=df_proj["cl_stage"].tolist(),
+        title="Loss Landscape (Model Checkpoints by CL Stage)"
     )
