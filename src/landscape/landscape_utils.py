@@ -327,8 +327,8 @@ def evaluate_loss_on_hessian_grid(
 ):
     flat_params, metadata = flatten_tensor_list(get_params_conditional(model, which))
     xmesh, ymesh = jnp.meshgrid(
-        jnp.linspace(-2, 2, num_points),
-        jnp.linspace(-2, 2, num_points)
+        jnp.linspace(-1, 1, num_points),
+        jnp.linspace(-1, 1, num_points)
     )
     losses = evaluate_loss_on_mesh_grid(
         xmesh,
