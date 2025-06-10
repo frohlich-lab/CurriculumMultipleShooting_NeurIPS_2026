@@ -66,7 +66,7 @@ class UDEFunction(BaseUDEFunction):
 
 # TODO @GiacomoFabrini no magic numbers - add conf.node_augmentation and derive number of components for loss.
 # LOSS AND GRAD FUNCTIONS
-def sir_base_loss(solution: jnp.ndarray, data, mask: Optional[jnp.ndarray]):
+def sir_base_loss(solution: jnp.ndarray, data):
     infected, dead, recovered = data[:, 0], data[:, 1], data[:, 2]
     # loss is sum of MSE on Infected and Recovered+Dead
     loss1 = get_mse(
