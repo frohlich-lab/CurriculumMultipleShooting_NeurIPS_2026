@@ -255,7 +255,6 @@ def evaluate_loss_on_pca_grid(
 
 def evaluate_loss_random_directions(
         model1,
-        model2,
         loss_fn,
         conf,
         data,
@@ -269,7 +268,6 @@ def evaluate_loss_random_directions(
         model2=None
 ):
     f1, meta = flatten_tensor_list(get_params_conditional(model1, which))
-    f2, _ = flatten_tensor_list(get_params_conditional(model2, which))
 
     k1, k2 = jr.split(key)
     d1, d2 = jr.normal(k1, f1.shape), jr.normal(k2, f1.shape)
@@ -281,7 +279,6 @@ def evaluate_loss_random_directions(
         d1 = d1 * (jnp.linalg.norm(f1) / (jnp.linalg.norm(d1) + 1e-10))
         d2 = d2 * (jnp.linalg.norm(f1) / (jnp.linalg.norm(d2) + 1e-10))
 
-    proj_x, proj_y = project_2d(f2 - f1, d1, d2)
     xvals = jnp.linspace(-2, 2, num_points)
     yvals = jnp.linspace(-2, 2, num_points)
     xmesh, ymesh = jnp.meshgrid(xvals, yvals)
