@@ -1,0 +1,547 @@
+import equinox as eqx
+import jax
+import jax.numpy as jnp
+import jax.random as jr
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+from jaxtyping import Array
+from sklearn.decomposition import PCA
+from src.ude_problem import UDEProblem, CustomDropoutMLP
+from typing import Union
+
+
+def flatten_tensor_list(tensor_list: list[Array]) -> tuple[Array, list[tuple]]:
+    flat_list, metadata = [], []
+    for array in tensor_list:
+        flat_list.append(array.ravel())
+        metadata.append((array.shape, array.size))
+    return jnp.concatenate(flat_list), metadata
+
+
+def unflatten_tensor_list(flat_vector: Array, metadata: list[tuple]) -> list[Array]:
+    tensor_list, idx = [], 0
+    for shape, size in metadata:
+        tensor = flat_vector[idx:idx + size].reshape(shape)
+        tensor_list.append(tensor)
+        idx += size
+    return tensor_list
+
+
+def get_params(model: Union[eqx.nn.MLP, CustomDropoutMLP, UDEProblem]) -> list[Array]:
+    """Extract parameters from an equinox.nn.MLP model and return a list of tensors."""
+    params = jax.tree_util.tree_flatten(model)[0]
+    return [param for param in params if isinstance(param, Array)]
+
+
+def get_params_conditional(model: UDEProblem, which: str = "MLP") -> list[Array]:
+    if which == "MLP":
+        return get_params(model.func.mlp)
+    elif which == "dynamic":
+        return model.func.dynamic_parameters.tolist()
+    else:
+        return [model.func.dynamic_parameters, *get_params(model.func.mlp)]
+
+
+def get_diff_weights(weights1: list[Array], weights2: list[Array]) -> list[Array]:
+    return [w2 - w1 for w1, w2 in zip(weights1, weights2)]
+
+
+def project_1d(w: Array, d: Array) -> float:
+    return (jnp.dot(w, d) / jnp.linalg.norm(d)).item()
+
+
+def project_2d(w: Array, dx: Array, dy: Array) -> tuple[float, float]:
+    return project_1d(w, dx), project_1d(w, dy)
+
+
+def setup_weight_pca_directions(
+        model_dict,
+        last_stage,
+        last_weights,
+        last_dynamic,
+        which="MLP"
+):
+    diff_matrix = []
+    for stage in sorted(model_dict):
+        if stage == last_stage:
+            continue
+        model = model_dict[stage]
+        current = get_params_conditional(model, which)
+        last = last_dynamic if which == "dynamic" \
+            else last_weights if which == "MLP" \
+            else [last_dynamic, *last_weights]
+        diff_vector = get_diff_weights(last, current)
+        flat_diff, _ = flatten_tensor_list(diff_vector)
+        diff_matrix.append(flat_diff)
+
+    pca = PCA(n_components=2)
+    pca.fit(np.array(diff_matrix))
+    pc1, pc2 = map(np.array, pca.components_[:2])
+
+    print(f"PCA cosine angle: {jnp.dot(pc1, pc2) / (jnp.linalg.norm(pc1) * jnp.linalg.norm(pc2))}")
+    print(f"Explained Variance Ratio: {pca.explained_variance_ratio_}")
+
+    return diff_matrix, pc1, pc2
+
+
+def project_trajectory(model_dict, which="MLP"):
+    last_stage = max(model_dict)
+    last_model = model_dict[last_stage]
+    last_weights = get_params(last_model.func.mlp)
+    last_dynamic = last_model.func.dynamic_parameters
+
+    matrix, pc1, pc2 = setup_weight_pca_directions(
+        model_dict, last_stage, last_weights, last_dynamic, which=which
+    )
+
+    coord_dfs = []
+    for stage, vec in zip(sorted(model_dict), matrix):
+        if stage == last_stage:
+            continue
+        x, y = project_2d(vec, pc1, pc2)
+        coord_dfs.append(pd.DataFrame({'x': [x], 'y': [y], 'stage': [stage]}))
+
+    return pd.concat(coord_dfs, ignore_index=True), ([df['x'][0] for df in coord_dfs], [df['y'][0] for df in coord_dfs]), (pc1, pc2)
+
+
+def rebuild_mlp_from_weights(
+        template: eqx.nn.MLP,
+        weights: list[Array]
+) -> eqx.nn.MLP:
+    new_layers, idx = [], 0
+    for layer in template.layers:
+        if hasattr(layer, 'bias'):
+            new_layer = eqx.tree_at(
+                lambda l: (l.weight, l.bias),
+                layer, (weights[idx], weights[idx + 1])
+            )
+            idx += 2
+        else:
+            new_layer = eqx.tree_at(
+                lambda l: l.weight,
+                layer, weights[idx]
+            )
+            idx += 1
+        new_layers.append(new_layer)
+
+    return eqx.tree_at(lambda m: m.layers, template, tuple(new_layers))
+
+
+def update_model_from_params(model, new_params, which: str):
+    if which == "MLP":
+        return eqx.tree_at(lambda m: m.func.mlp, model,
+                           rebuild_mlp_from_weights(model.func.mlp, new_params))
+    elif which == "dynamic":
+        return eqx.tree_at(lambda m: m.func.dynamic_parameters, model, jnp.array(new_params))
+    else:
+        dyn, mlp_weights = new_params[0], new_params[1:]
+        updated = eqx.tree_at(lambda m: m.func.dynamic_parameters, model, dyn)
+        return eqx.tree_at(lambda m: m.func.mlp, updated,
+                           rebuild_mlp_from_weights(model.func.mlp, mlp_weights))
+
+
+def compute_hessian_directions(
+        model,
+        conf,
+        t_save,
+        t_span,
+        data,
+        last_valid_index,
+        base_loss_fn,
+        loss_hessian_fn,
+) -> tuple[Array, Array]:
+    params, static = eqx.partition(model, eqx.is_array)
+    flat_p, unflatten_p = jax.flatten_util.ravel_pytree(params)
+    # Compute hessian
+    hessian = loss_hessian_fn(
+        flat_p, unflatten_p, static,
+        t_save, t_span, data, last_valid_index,
+        conf.mlp_reg_exp, conf.mlp_reg_strength,
+        conf.output_reg,
+        conf.multiple_shooting_penalty,
+        conf.shooting_mode,
+        base_loss_fn
+    )
+    eigvals, eigvecs = jnp.linalg.eigh(hessian)
+    # Select the two dominant eigenvalues and the corresponding eigenvectors
+    top_indices = jnp.argsort(jnp.abs(eigvals))[-2:]
+    dir1, dir2 = eigvecs[:, top_indices[0]], eigvecs[:, top_indices[1]]
+    # Exclude directions corresponding to initial_values
+    num_excluded = model.initial_values.shape[0] * model.initial_values.shape[1]
+    return dir1[:-num_excluded], dir2[:-num_excluded]
+
+
+def evaluate_loss_on_mesh_grid(
+        xmesh,
+        ymesh,
+        base_flat_params,
+        metadata,
+        model,
+        loss_fn,
+        conf,
+        data,
+        t_save,
+        masks,
+        last_valid_index,
+        dir1,
+        dir2,
+        which
+):
+    losses = []
+    for x, y in zip(xmesh.ravel(), ymesh.ravel()):
+        offset = x * dir1 + y * dir2
+        new_flat = base_flat_params + offset
+        new_params = unflatten_tensor_list(new_flat, metadata)
+        new_model = update_model_from_params(model, new_params, which)
+        params, static = eqx.partition(new_model, eqx.is_array)
+
+        loss, _ = loss_fn(
+            params,
+            static,
+            t_save,
+            masks,
+            data,
+            last_valid_index,
+            conf.mlp_reg_exp,
+            conf.mlp_reg_strength,
+            conf.output_reg,
+            conf.multiple_shooting_penalty,
+            conf.shooting_mode
+        )
+        losses.append(loss)
+    return np.array(losses)
+
+
+def evaluate_loss_on_pca_grid(
+        model,
+        pc1,
+        pc2,
+        xcoords,
+        ycoords,
+        loss_fn,
+        conf,
+        data,
+        t_save,
+        masks,
+        last_valid_index,
+        which="MLP",
+        num_points=20
+):
+    flat_params, metadata = flatten_tensor_list(get_params_conditional(model, which))
+    xmesh, ymesh = np.meshgrid(
+        np.linspace(min(xcoords), max(xcoords), num_points),
+        np.linspace(min(ycoords), max(ycoords), num_points)
+    )
+    return evaluate_loss_on_mesh_grid(
+        xmesh,
+        ymesh,
+        flat_params,
+        metadata,
+        model,
+        loss_fn,
+        conf,
+        data,
+        t_save,
+        masks,
+        last_valid_index,
+        pc1,
+        pc2,
+        which
+    )
+
+
+def evaluate_loss_random_directions(
+        model1,
+        model2,
+        loss_fn,
+        conf,
+        data,
+        t_save,
+        masks,
+        last_valid_index,
+        which="MLP",
+        num_points=20,
+        key=jr.PRNGKey(0),
+        normalise=True
+):
+    f1, meta = flatten_tensor_list(get_params_conditional(model1, which))
+    f2, _ = flatten_tensor_list(get_params_conditional(model2, which))
+
+    k1, k2 = jr.split(key)
+    d1, d2 = jr.normal(k1, f1.shape), jr.normal(k2, f1.shape)
+    d1 /= jnp.linalg.norm(d1)
+    d2 -= jnp.dot(d2, d1) * d1
+    d2 /= jnp.linalg.norm(d2)
+
+    if normalise:
+        d1 = d1 * (jnp.linalg.norm(f1) / (jnp.linalg.norm(d1) + 1e-10))
+        d2 = d2 * (jnp.linalg.norm(f1) / (jnp.linalg.norm(d2) + 1e-10))
+
+    proj_x, proj_y = project_2d(f2 - f1, d1, d2)
+    xvals = jnp.linspace(-1, 1, num_points)
+    yvals = jnp.linspace(-1, 1, num_points)
+    xmesh, ymesh = jnp.meshgrid(xvals, yvals)
+
+    losses = evaluate_loss_on_mesh_grid(
+        xmesh,
+        ymesh,
+        f1,
+        meta,
+        model1,
+        loss_fn,
+        conf,
+        data,
+        t_save,
+        masks,
+        last_valid_index,
+        d1,
+        d2,
+        which
+    )
+    return losses, xmesh, ymesh, proj_x, proj_y
+
+
+
+def evaluate_loss_on_hessian_grid(
+        model,
+        dir1,
+        dir2,
+        loss_fn,
+        conf,
+        data,
+        t_save,
+        masks,
+        last_valid_index,
+        num_points=20,
+        which: str = "full",
+):
+    flat_params, metadata = flatten_tensor_list(get_params_conditional(model, which))
+    xmesh, ymesh = jnp.meshgrid(
+        jnp.linspace(-1, 1, num_points),
+        jnp.linspace(-1, 1, num_points)
+    )
+    losses = evaluate_loss_on_mesh_grid(
+        xmesh,
+        ymesh,
+        flat_params,
+        metadata,
+        model,
+        loss_fn,
+        conf,
+        data,
+        t_save,
+        masks,
+        last_valid_index,
+        dir1,
+        dir2,
+        which
+    )
+    return losses, xmesh, ymesh
+
+
+def plot_loss_landscape(
+        xmesh,
+        ymesh,
+        losses,
+        mode: str,
+        levels: int = 30,
+        xcoords=None,
+        ycoords=None,
+        proj_model_x=None,
+        proj_model_y=None,
+        title="Loss Landscape"
+):
+    fig, ax = plt.subplots(figsize=(6, 5))
+    contour = ax.contourf(
+        xmesh,
+        ymesh,
+        np.log(losses.reshape(xmesh.shape)),
+        levels=levels,
+        cmap='viridis'
+    )
+    if mode == "PCA" and xcoords is not None and ycoords is not None:
+        ax.plot(xcoords, ycoords, 'ro-', markersize=5, label='PCA Points')
+        xlabel = "PC1"
+        ylabel = "PC2"
+    elif mode == "random":
+        if proj_model_x is not None and proj_model_y is not None:
+            ax.plot(0, 0, 'r*', markersize=10, label="Model 1 (center)")
+            ax.plot(proj_model_x, proj_model_y, 'bo-', markersize=5, label='Model 2')
+        xlabel = "Random Direction 1"
+        ylabel = "Random Direction 2"
+    elif mode == "hessian":
+        xlabel = "Hessian Eigenvector 1"
+        ylabel = "Hessian Eigenvector 2"
+        if xcoords is not None and ycoords is not None:
+            ax.plot(xcoords, ycoords, 'bo-', markersize=5, label='Projected Models')
+        ax.plot(0, 0, 'r*', markersize=10, label="Final Model")
+    else:
+        xlabel = "Direction 1"
+        ylabel = "Direction 2"
+        # TODO consider adding a raise ValueError for unsupported modes ?!
+
+    cbar = plt.colorbar(contour, ax=ax)
+    cbar.set_label("Log Loss")
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+
+    if mode == "PCA":
+        if xcoords is not None:
+            x_margin = 0.1 * (max(xcoords) - min(xcoords))
+            ax.set_xlim(min(xcoords) - x_margin, max(xcoords) + x_margin)
+        if ycoords is not None:
+            y_margin = 0.1 * (max(ycoords) - min(ycoords))
+            ax.set_ylim(min(ycoords) - y_margin, max(ycoords) + y_margin)
+
+    ax.legend()
+    plt.tight_layout()
+    plt.show()
+
+
+def visualize_landscape(
+        model_dict,
+        conf,
+        t_save_windows,
+        masks,
+        data,
+        curriculum_stage_dict,
+        base_loss_fn,
+        loss_fn,
+        hessian_fn,
+        which="full",
+        num_points=20,
+        plot_pairs: bool = True
+):
+    for cl_stage in model_dict.keys():
+        # Get last valid index, save windows and masks for the current curriculum stage (if any)
+        if conf.shooting_mode == "single":
+            last_valid_index = 1
+        else:
+            last_valid_index = curriculum_stage_dict[cl_stage]["last_valid_index"]
+            t_save_windows = curriculum_stage_dict[cl_stage]["time"]
+            masks = curriculum_stage_dict[cl_stage]["mask"]
+
+        # Sort by training epoch and get final model
+        sorted_epochs = sorted(model_dict[cl_stage])
+        final_epoch = sorted_epochs[-1]
+        final_model = model_dict[cl_stage][final_epoch]
+
+        # === Hessian Landscape ===
+        dir1, dir2 = compute_hessian_directions(
+            final_model,
+            conf,
+            t_save_windows,
+            masks,
+            data,
+            last_valid_index=last_valid_index,
+            base_loss_fn=base_loss_fn,
+            loss_hessian_fn=hessian_fn
+        )
+        losses_hess, xmesh_hess, ymesh_hess = evaluate_loss_on_hessian_grid(
+            final_model,
+            dir1,
+            dir2,
+            loss_fn,
+            conf,
+            data,
+            t_save_windows,
+            masks,
+            last_valid_index,
+            which=which,
+            num_points=num_points
+        )
+        plot_loss_landscape(
+            xmesh_hess,
+            ymesh_hess,
+            losses_hess,
+            mode="hessian",
+            title=f"Loss Landscape (Hessian Directions) - CL Stage {cl_stage}",
+        )
+
+        if plot_pairs:
+            # === Project all checkpoints onto final Hessian landscape ===
+            final_params, _ = flatten_tensor_list(get_params_conditional(final_model, "full"))
+            coord_dfs = []
+            for epoch in sorted_epochs:
+                model_i = model_dict[cl_stage][epoch]
+                params_i = get_params_conditional(model_i, "full")
+                flat_i, _ = flatten_tensor_list(params_i)
+                dx, dy = project_2d(flat_i - final_params, dir1, dir2)
+                coord_dfs.append(pd.DataFrame({"x": [dx], "y": [dy], "stage": [epoch]}))
+
+            df_proj = pd.concat(coord_dfs, ignore_index=True)
+            plot_loss_landscape(
+                xmesh_hess,
+                ymesh_hess,
+                losses_hess,
+                mode="hessian",
+                xcoords=df_proj["x"].tolist(),
+                ycoords=df_proj["y"].tolist(),
+                title=f"Loss Landscape (Model Checkpoints) - CL Stage {cl_stage}"
+            )
+
+    # Sort by training epoch and get final model
+    model_dict_flattened = {
+        epoch: model_dict[cl_stage][epoch]
+        for cl_stage in model_dict.keys()
+        for epoch in model_dict[cl_stage].keys()
+    }
+    sorted_epochs = sorted(model_dict_flattened)
+
+    # === Project all checkpoints on optimisation PCA Landscape ===
+    df_coords, (xcoords, ycoords), (pc1, pc2) = project_trajectory(
+        model_dict_flattened,
+        which=which
+    )
+    losses_pca = evaluate_loss_on_pca_grid(
+        final_model,
+        pc1,
+        pc2,
+        xcoords,
+        ycoords,
+        loss_fn,
+        conf,
+        data,
+        t_save_windows,
+        masks,
+        last_valid_index,
+        which=which,
+        num_points=num_points
+    )
+    xmesh_pca, ymesh_pca = np.meshgrid(
+        np.linspace(min(xcoords), max(xcoords), num_points),
+        np.linspace(min(ycoords), max(ycoords), num_points)
+    )
+    plot_loss_landscape(
+        xmesh_pca,
+        ymesh_pca,
+        losses_pca,
+        mode="PCA",
+        xcoords=xcoords,
+        ycoords=ycoords,
+        title=f"Loss Landscape (PCA Directions) - CL Stage {cl_stage}"
+    )
+
+    # === Project all checkpoints onto final Hessian landscape ===
+    final_params, _ = flatten_tensor_list(get_params_conditional(final_model, "full"))
+    coord_dfs = []
+    for epoch in sorted_epochs:
+        model_i = model_dict_flattened[epoch]
+        params_i = get_params_conditional(model_i, "full")
+        flat_i, _ = flatten_tensor_list(params_i)
+        dx, dy = project_2d(flat_i - final_params, dir1, dir2)
+        coord_dfs.append(pd.DataFrame({"x": [dx], "y": [dy], "stage": [epoch]}))
+
+    df_proj = pd.concat(coord_dfs, ignore_index=True)
+    plot_loss_landscape(
+        xmesh_hess,
+        ymesh_hess,
+        losses_hess,
+        mode="hessian",
+        xcoords=df_proj["x"].tolist(),
+        ycoords=df_proj["y"].tolist(),
+        title="Loss Landscape (Model Checkpoints in Hessian Directions)"
+    )
