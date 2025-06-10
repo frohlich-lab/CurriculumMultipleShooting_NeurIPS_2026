@@ -20,7 +20,6 @@ unwanted_fields = [
     "get_sindy_formula", "sindy_use_derivatives",
     "freeze_mechanistic_params_adam", "freeze_mechanistic_params_optx",  # might need
     "freeze_nn_adam", "freeze_nn_optx",  # might need
-    "second_curriculum_learning",
     "save_plots",
 ]
 
@@ -92,8 +91,6 @@ class Conf(dict):
     freeze_mechanistic_params_optx: bool = False
     freeze_nn_adam: bool = False
     freeze_nn_optx: bool = False
-    # Niche scenario settings: 2 curriculum learning stages (fit MLP, fit dynamic params)
-    second_curriculum_learning: bool = False
     # Data pre-processing
     normalise_data: bool = False
     normalise_timepoints: bool = False
