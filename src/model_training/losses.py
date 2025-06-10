@@ -44,6 +44,7 @@ def compute_loss(
         sol, loss = get_sol_and_loss_multiple_shooting(
             prob,
             adjoint,
+            loss_fn,
             data,
             t_save_windows,
             masks,
