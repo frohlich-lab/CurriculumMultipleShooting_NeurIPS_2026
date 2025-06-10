@@ -64,9 +64,9 @@ else:
     }
     conf = replace(
         conf,
-       dynamic_params_scale="linear",
-       freeze_mechanistic_params_adam=True,
-       freeze_mechanistic_params_optx=True
+        dynamic_params_scale="linear",
+        freeze_mechanistic_params_adam=True,
+        freeze_mechanistic_params_optx=True
     )
 
 # ================================================================
@@ -90,7 +90,7 @@ t_save_windows, masks, initial_values, curriculum_stage_dict = setup_time_masks_
     nn_num_epochs=N_EPOCHS,
     train_args=train_args,
     u0_guess=train_args.u0,
-    effective_state_dimension=mlp.layers[0].in_features,
+    effective_state_dimension=state_dims[conf.dynamical_model] + conf.node_augmentation,
 )
 # Update plot args
 plot_args["t_save_windows"] = t_save_windows
