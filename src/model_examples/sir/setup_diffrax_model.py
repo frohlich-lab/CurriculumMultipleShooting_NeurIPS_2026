@@ -29,6 +29,7 @@ class UDEFunction(BaseUDEFunction):
     mlp: Union[eqx.nn.MLP, eqx.Module]
     options: dict[str, bool]
     state_dimension: int
+    state_delimiter: int
     regularise_network: bool
 
     def __call__(self, t, u, args):
@@ -37,7 +38,7 @@ class UDEFunction(BaseUDEFunction):
         beta, gamma, delta = process_mechanistic_params(self.dynamic_parameters, self.options)
         s, i, r, t_ = u[:self.state_dimension]
 
-        if self.mlp.layers[0].in_features > self.state_dimension:
+        if self.state_delimiter > self.state_dimension:
             augmented_vars = u[self.state_dimension : self.mlp.layers[0].in_features]
             nn_q = self.mlp(jnp.array([s, i, r, *augmented_vars]))
         else:
@@ -51,7 +52,7 @@ class UDEFunction(BaseUDEFunction):
         dt_ = nn_q[0] * i / u0[0]  - delta * t_
         derivatives = jnp.array([ds, di, dr, dt_])
 
-        if self.mlp.layers[0].in_features > self.state_dimension:
+        if self.state_delimiter > self.state_dimension:
             # Add augmented variables
             derivatives = jnp.concatenate([derivatives, nn_q[1:]])  # default single output - Q: quarantine strength
         if self.regularise_network:

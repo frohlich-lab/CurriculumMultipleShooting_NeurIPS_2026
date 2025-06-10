@@ -30,6 +30,7 @@ class UDEFunction(BaseUDEFunction):
     mlp: Union[eqx.nn.MLP, eqx.Module]
     options: dict[str, Union[bool, dict[str, Tuple]]]
     state_dimension: int
+    state_delimiter: int
     regularise_network: bool
 
     def __call__(self, t, u, args):
@@ -38,7 +39,7 @@ class UDEFunction(BaseUDEFunction):
 
         # u contains: state variables, node augmentation variables and regularisation term - latter is not NN input
         prey, predator = u[:self.state_dimension]
-        nn_input = u[:self.mlp.layers[0].in_features]
+        nn_input = u[:self.state_delimiter]
         nn_out = self.mlp(nn_input)
 
         # Lotka-Volterra model
@@ -46,7 +47,7 @@ class UDEFunction(BaseUDEFunction):
         d_predator = nn_out[1] - delta * predator
         derivatives = jnp.array([d_prey, d_predator])
 
-        if self.mlp.layers[0].in_features > self.state_dimension:
+        if self.state_delimiter > self.state_dimension:
             # Add augmented variables
             derivatives = jnp.concatenate([derivatives, nn_out[self.state_dimension:]])
         if self.regularise_network:

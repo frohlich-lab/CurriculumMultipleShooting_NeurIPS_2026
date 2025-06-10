@@ -10,12 +10,23 @@ class BaseUDEFunction(eqx.Module):
     mlp: Union[eqx.nn.MLP, eqx.Module]
     options: dict
     state_dimension: int
+    state_delimiter: int
     regularise_network: bool
 
-    def __init__(self, dynamic_parameters, mlp, options, state_dimension, regularise_network, **kwargs):
+    def __init__(
+            self,
+            dynamic_parameters,
+            mlp,
+            options,
+            state_dimension,
+            state_delimiter,
+            regularise_network,
+            **kwargs
+    ):
         super().__init__(**kwargs)
         self.dynamic_parameters = dynamic_parameters
         self.mlp = mlp
         self.options = options
         self.state_dimension = state_dimension
+        self.state_delimiter = state_delimiter
         self.regularise_network = regularise_network if regularise_network is not None else False

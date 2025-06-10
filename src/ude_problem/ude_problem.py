@@ -65,13 +65,26 @@ class UDEProblem(eqx.Module):
         self.dynamical_model = dynamical_model
         if self.dynamical_model not in UDE_funcs.keys():
             raise ValueError(f"Unknown dynamical model: {dynamical_model}!")
+        if self.dynamical_model == "lotka_volterra":
+            state_delimiter = mlp.layers[0].in_features
+        elif self.dynamical_model == "sir":
+            state_delimiter = mlp.layers[0].in_features + 1
+        else:
+            # TODO find better way - two raise ValueError for the same check, different messages?!
+            raise ValueError(f"Unsupported dynamical model: {dynamical_model} - add state delimiter value!")
         self.func = UDE_funcs[dynamical_model](
-            dynamic_parameters, mlp, options, state_dimension, regularise_network
+            dynamic_parameters, mlp, options, state_dimension, state_delimiter, regularise_network
         )
         if not regularise_network:
             self.initial_values = initial_values
         else:
-            if initial_values.shape[1] == self.func.mlp.layers[0].in_features:
+            if (
+                    (dynamical_model == "lotka_volterra")
+                    and (initial_values.shape[1] == self.func.mlp.layers[0].in_features)
+            ) or (
+                    (dynamical_model == "sir")
+                    and (initial_values.shape[1] == self.func.mlp.layers[0].in_features + 1)
+            ):
                 # Add zero initial value for neural network contribution regularisation
                 self.initial_values = jnp.concatenate(
                     [initial_values, jnp.zeros((initial_values.shape[0], 1))],
@@ -83,10 +96,10 @@ class UDEProblem(eqx.Module):
 
 
     def get_augmented_state_variables(self):
-        return self.initial_values[:, self.func.state_dimension:self.func.mlp.layers[0].in_features][0]
+        return self.initial_values[:, self.func.state_dimension:self.func.state_delimiter][0]
 
     def get_auxiliary_output_variable(self):
-        return self.initial_values[:, self.func.mlp.layers[0].in_features:jnp.newaxis][0]
+        return self.initial_values[:, self.func.state_delimiter:jnp.newaxis][0]
 
 
     def solve_single_shooting(
@@ -210,7 +223,7 @@ class UDEProblem(eqx.Module):
             dt0=1e-6,
             y0=jnp.concatenate(
                 [
-                    u0[:self.func.mlp.layers[0].in_features],  # state vars + potential augmentation - learnable
+                    u0[:self.func.state_delimiter],  # state vars + potential augmentation - learnable
                     jax.lax.stop_gradient(u0[-1:jnp.newaxis]),  # do NOT update network regularisation IV
                     # u0[-1:jnp.newaxis],  # alternative, NOT USED: update network regularisation initial value
                 ],
