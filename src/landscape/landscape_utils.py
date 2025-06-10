@@ -430,7 +430,7 @@ def visualize_landscape(
 ):
     for cl_stage in model_dict.keys():
         # Get last valid index, save windows and masks for the current curriculum stage (if any)
-        if conf.shooting_mode == "single":
+        if not conf.curriculum_learning:
             last_valid_index = 1
         else:
             last_valid_index = curriculum_stage_dict[cl_stage]["last_valid_index"]
