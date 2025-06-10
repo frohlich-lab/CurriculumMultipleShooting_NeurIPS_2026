@@ -265,7 +265,8 @@ def evaluate_loss_random_directions(
         which="MLP",
         num_points=20,
         key=jr.PRNGKey(0),
-        normalise=True
+        normalise=True,
+        model2=None
 ):
     f1, meta = flatten_tensor_list(get_params_conditional(model1, which))
     f2, _ = flatten_tensor_list(get_params_conditional(model2, which))
@@ -301,6 +302,12 @@ def evaluate_loss_random_directions(
         d2,
         which
     )
+
+    if model2 is not None:
+        f2, _ = flatten_tensor_list(get_params_conditional(model2, which))
+        proj_x, proj_y = project_2d(f2 - f1, d1, d2)
+    else:
+        proj_x, proj_y = None, None
     return losses, xmesh, ymesh, proj_x, proj_y
 
 
