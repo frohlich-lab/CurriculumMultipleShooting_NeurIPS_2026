@@ -293,8 +293,6 @@ def train(
         ]
         model_save_steps_end = [curriculum_params[stage]["end"]-1 for stage in curriculum_params]
         save_epochs = model_save_steps_start + midpoints + model_save_steps_end
-        models_curriculum_stage_start = {}
-        models_curriculum_stage_end = {}
 
     # Unpack training and validation args
     u0, training_data, t_save_train, t_span_train = train_args.u0, train_args.data, train_args.t_save, train_args.t_span
@@ -419,13 +417,6 @@ def train(
                 )
                 print(f"Saving model at epoch {nn_epoch}, CL stage {cl_stage} to {epoch_save_path}")
                 inference_model.save(epoch_save_path)
-
-                # Save model at the start/end of each curriculum learning stage
-                if conf.curriculum_learning:
-                    if nn_epoch in model_save_steps_start:
-                        models_curriculum_stage_start[nn_epoch] = inference_model
-                    elif nn_epoch in model_save_steps_end:
-                        models_curriculum_stage_end[nn_epoch] = inference_model
 
             params, opt_state, loss_train, reg_loss_dict, grads, hessian_metrics = make_step(
                 params=params,
