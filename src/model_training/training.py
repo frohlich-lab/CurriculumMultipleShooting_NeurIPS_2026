@@ -280,8 +280,9 @@ def train(
     best_model, loss_val_min = model, jnp.inf
 
     if not conf.curriculum_learning:
-        num_save_models = 10
-        save_epochs = get_save_epochs(n_epochs, num_save_models)
+        if n_epochs > 0:
+            num_save_models = 10
+            save_epochs = get_save_epochs(n_epochs, num_save_models)
     else:
         # Curriculum save points: start and end of each stage
         model_save_steps_start = [curriculum_params[stage]["start"] for stage in curriculum_params]

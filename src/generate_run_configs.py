@@ -134,6 +134,12 @@ def generate_param_combinations(n_starts: int) -> List[Dict]:
             params["optimiser"] = "adam"
             params["second_opt"] = "None"
 
+        # Handle pure BFGS case
+        if ((params.get("shooting_mode", None) == "single")
+            and not params.get("curriculum_learning", False)
+            and (params.get("optimiser", None) == "None")):
+            params["num_epochs_adam"] = 0
+
         if params.get("curriculum_learning", False) and params.get("shooting_mode", None) == "multiple":
             params["num_curriculum_steps"] = 5  # set to default value, will be overwritten by number of windows
 
