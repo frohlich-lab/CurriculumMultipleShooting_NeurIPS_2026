@@ -12,7 +12,6 @@ from src.model_training.training_setup import (broadcast_bounds, get_data_and_fu
 from src.model_training.training_util import sample_dynamical_params, get_sindy_formula
 from src.ude_problem import UDEProblem
 from training import train
-from training_configuration import N_EPOCHS, MAX_ITER_OPTX_FINETUNE
 
 
 # ================================================================
@@ -87,7 +86,6 @@ optx_config, options = option_args
 # Set up SaveAt windows, binary masks and initial values
 t_save_windows, masks, initial_values, curriculum_stage_dict = setup_time_masks_u0_curriculum(
     conf=conf,
-    nn_num_epochs=N_EPOCHS,
     train_args=train_args,
     u0_guess=train_args.u0,
     effective_state_dimension=state_dims[conf.dynamical_model] + conf.node_augmentation,
@@ -135,8 +133,8 @@ best_model = train(
     early_stopping_params=early_stopping_params,
     loss_dict=loss_dict,
     optx_config=optx_config,
-    n_epochs=N_EPOCHS,
-    max_iter_optx_finetune=MAX_ITER_OPTX_FINETUNE,
+    n_epochs=conf.num_epochs_adam,
+    max_iter_optx_finetune=conf.num_epochs_bfgs,
     model_save_dir=model_save_subdir,
     plot_args=plot_args,
     rescaling_args=rescaling_args,

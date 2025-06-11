@@ -24,7 +24,8 @@ from src.model_training.training_configuration import (
     # FREEZE_MECHANISTIC_PARAMS_ADAM, FREEZE_MECHANISTIC_PARAMS_OPTX, FREEZE_NN_ADAM, FREEZE_NN_OPTX,
     TRAINING_SETTINGS, MLPEXP_TARGETS,
     NORMALISE_DATA, NORMALISE_TIMEPOINTS,
-    N_STARTS
+    N_STARTS,
+    N_EPOCHS_ADAM, N_EPOCHS_BFGS
 )
 from typing import List, Dict
 
@@ -49,6 +50,7 @@ def generate_param_combinations(n_starts: int) -> List[Dict]:
         # "hidden_dropout_rate": HIDDEN_DROPOUT_RATES,
         # Optimiser
         "optimiser": OPTIMISERS,
+        "num_epochs_adam": N_EPOCHS_ADAM,
         "max_lrate": MAX_LEARNING_RATES,
         "lrate_span": LEARNING_RATE_SPANS,
         "lrate_decay": LEARNING_RATE_DECAYS,
@@ -83,6 +85,7 @@ def generate_param_combinations(n_starts: int) -> List[Dict]:
         "compute_hessian_metrics": COMPUTE_HESSIAN_METRICS,
         # Second optimiser
         "second_opt": SECOND_OPTS,
+        "num_epochs_bfgs": N_EPOCHS_BFGS,
         # Freeze params
         # "freeze_mechanistic_params_adam": FREEZE_MECHANISTIC_PARAMS_ADAM,
         # "freeze_mechanistic_params_optx": FREEZE_MECHANISTIC_PARAMS_OPTX,
@@ -125,8 +128,14 @@ def generate_param_combinations(n_starts: int) -> List[Dict]:
             params["max_curriculum_epochs"] = 0
             params["restart_opt_curriculum"] = False
 
+        if params.get("curriculum_learning", False) or (params.get("shooting_mode", None) != "single"):
+            # With multiple shooting or curriculum learning, default to Adam and drop BFGS
+            params["num_epochs_bfgs"] = 0
+            params["optimiser"] = "adam"
+            params["second_opt"] = "None"
+
         if params.get("curriculum_learning", False) and params.get("shooting_mode", None) == "multiple":
-            params["num_curriculum_steps"] = 5  # set to default value (won't matter if curriculum is not used)
+            params["num_curriculum_steps"] = 5  # set to default value, will be overwritten by number of windows
 
         if params.get("training_setting") == "UDE":
             params["mlpexp_target"] = "None"

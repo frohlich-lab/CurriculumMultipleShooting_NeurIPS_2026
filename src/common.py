@@ -43,6 +43,7 @@ class Conf(dict):
     hidden_dropout_rate: float = 0.5
     # Optimiser and learning rate schedule
     optimiser: str = "adam"
+    num_epochs_adam: int = 4000  # number of epochs for Adam optimiser
     # default: constant learning rate (no schedule)
     max_lrate: float = 0.01  # absolute maximum learning rate (default max in UDE paper)
     lrate_span: float = 1  # ratio between max and min learning rates in a given schedule (default=1, min=max)
@@ -86,6 +87,7 @@ class Conf(dict):
     sindy_use_derivatives: bool = False
     # Mechanistic fit optimisation
     second_opt: str = "optx"  # alternative: "fides"
+    num_epochs_bfgs : int = 0  # number of epochs for second optimiser (BFGS, fides/optimistix)
     # Freeze parts of the UDE model - TODO @GiacomoFabrini -- consider reducing to two params
     freeze_mechanistic_params_adam: bool = False
     freeze_mechanistic_params_optx: bool = False

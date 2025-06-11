@@ -501,19 +501,20 @@ def initialize_multiple_shooting(
 
 def setup_time_masks_u0_curriculum(
         conf: Conf,
-        nn_num_epochs: int,
         train_args: TrainValArgs,
         u0_guess: Union[tuple, jnp.ndarray],
         effective_state_dimension: int,
 ) -> Tuple[Array, Array, Array, dict]:
     # Setup curriculum learning (if enabled)
     # TODO this crashes the run - might want to think about a different approach or is this fine?
-    if conf.curriculum_learning and nn_num_epochs == 0:
-        raise ValueError(f"Number of NN training epochs must be > 0 to use curriculum learning - found {nn_num_epochs}!")
+    if conf.curriculum_learning and conf.num_epochs_adam == 0:
+        raise ValueError(
+            f"Number of NN training epochs must be > 0 to use curriculum learning - found {conf.num_epochs_adam}!"
+        )
     curriculum_stage_dict = setup_curriculum_learning(
         data=train_args.data,
         t_save=train_args.t_save,
-        n_epoch=nn_num_epochs,
+        n_epoch=conf.num_epochs_adam,
         shooting_mode=conf.shooting_mode,
         shooting_window_length=conf.shooting_window_length,
         curriculum_learning=conf.curriculum_learning,

@@ -8,7 +8,6 @@ from src.common import activation_functions, Conf, EarlyStoppingParams
 from src.mlp_experiment.mlp_training_lv import mlp_train
 from src.model_training.model_util import set_weight_bias
 from src.ude_problem import build_mlp
-from src.model_training.training_configuration import N_EPOCHS
 
 
 """
@@ -99,6 +98,6 @@ trained_mlp = mlp_train(
     validation_data=validation_data,
     validation_targets=targets["val"],
     conf=conf,
-    n_epochs=N_EPOCHS,
+    n_epochs=conf.num_epochs_adam,
     early_stopping_params=early_stopping_params,
 )

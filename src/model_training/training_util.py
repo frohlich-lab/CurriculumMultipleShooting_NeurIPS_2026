@@ -20,7 +20,6 @@ from pathlib import Path
 from scipy.stats import qmc
 from src.common import Conf, dynamic_param_labels, EarlyStoppingParams, hessian_metrics_wandb, plots_dir
 from src.model_training.model_util import bounded_tanh_transform_params, get_masked_mse, set_weight_bias
-from src.model_training.training_configuration import N_EPOCHS, MAX_ITER_OPTX_FINETUNE
 from src.ude_problem.ude_problem import UDEProblem
 from typing import Any, Callable, List, Union
 
@@ -212,7 +211,7 @@ def initialise_wandb(
 
         # End of training metrics (ADAM/BFGS)
         final_metrics = []
-        for opt_num_epochs, opt_label in zip([N_EPOCHS, MAX_ITER_OPTX_FINETUNE], ["ADAM", "BFGS"]):
+        for opt_num_epochs, opt_label in zip([conf.num_epochs_adam, conf.num_epochs_bfgs], ["ADAM", "BFGS"]):
             if opt_num_epochs > 0:
                 final_metrics.extend(
                     [
@@ -600,7 +599,7 @@ def eig_sv_plot(
     plt.savefig(
         plots_dir /
         conf.dynamical_model /
-        f"sv+eig_plot_{conf.curriculum_learning}_{N_EPOCHS}_{MAX_ITER_OPTX_FINETUNE}_{epoch}.pdf"
+        f"sv+eig_plot_{conf.curriculum_learning}_{conf.num_epochs_adam}_{conf.num_epochs_bfgs}_{epoch}.pdf"
     )
     plt.show()
 

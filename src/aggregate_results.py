@@ -2,7 +2,7 @@ import numpy as np
 # import pandas as pd
 
 from src.common import dynamic_param_labels, plots_dir, true_dynamic_parameters
-from src.model_training.training_configuration import DYNAMICAL_MODEL, EXPERIMENT_NAME, N_EPOCHS, N_STARTS
+from src.model_training.training_configuration import DYNAMICAL_MODEL, EXPERIMENT_NAME, N_EPOCHS_ADAM, N_STARTS
 from src.utils import *
 
 
@@ -82,7 +82,7 @@ for dynamical_model in DYNAMICAL_MODEL:
             df=results_df_filtered,
             metrics=metrics_model,
             group_cols=hyperparam_groups,
-            max_epochs=N_EPOCHS
+            max_epochs=N_EPOCHS_ADAM
         )
 
         col_param = "multiple_shooting_penalty" if final_epoch_df.multiple_shooting_penalty.nunique() > 1 \

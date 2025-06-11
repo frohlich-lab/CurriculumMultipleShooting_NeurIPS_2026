@@ -13,7 +13,6 @@ from src.model_training.training_setup import (
 )
 from src.model_training.training_util import get_save_epochs
 from src.ude_problem import UDEProblem
-from src.model_training.training_configuration import N_EPOCHS
 
 
 # ================================================================
@@ -55,7 +54,6 @@ mlp = setup_mlp(conf, u0, key_mlp, key_init)
     curriculum_stage_dict
  ) = setup_time_masks_u0_curriculum(
     conf=conf,
-    nn_num_epochs=N_EPOCHS,
     train_args=train_args,
     u0_guess=train_args.u0,
     effective_state_dimension=mlp.layers[0].in_features,
@@ -68,7 +66,7 @@ mlp = setup_mlp(conf, u0, key_mlp, key_init)
 # Compute dict with curriculum stages as keys and corresponding save epochs as values
 if not conf.curriculum_learning:
     num_save_models = 10
-    save_epochs = {1: get_save_epochs(N_EPOCHS, num_save_models)}
+    save_epochs = {1: get_save_epochs(conf.num_epochs_adam, num_save_models)}
 else:
     # Curriculum save points: start and end of each stage
     save_epochs = {
