@@ -268,10 +268,6 @@ def train(
         # if not properly set, set to default value of UDE
         conf = replace(conf, training_setting="UDE")
 
-    # Check curriculum learning (CL) settings
-    if not conf.curriculum_learning:
-        conf = replace(conf, serialise_curriculum_models=False)  # cannot serialise CL models if not using CL
-
     # Initialise wandb and define metrics
     initialise_wandb(
         conf=conf,
@@ -727,6 +723,5 @@ def train(
     # except subprocess.CalledProcessError as e:
     #     raise ValueError(f"Error syncing wandb directory: {e}")
     # Serialise best model overall
-    best_model.save(model_save_dir / (conf.__str__(serialise_model=True) + "_best_final.eqx"))
     best_model.save(model_save_dir / (conf.__str__() + "_best_final.eqx"))
     return best_model

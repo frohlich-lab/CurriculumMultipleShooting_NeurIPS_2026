@@ -93,7 +93,7 @@ model_dict = {
         epoch: UDEProblem.load(
             model_save_subdir /
             "pca_traj" /
-            (conf.__str__(serialise_model=True) + f"_PCA_{epoch}_CL{cl_stage}.eqx")
+            (conf.__str__() + f"_PCA_{epoch}_CL{cl_stage}.eqx")
         )
         for epoch in save_epochs[cl_stage]
     }
