@@ -98,6 +98,19 @@ model_dict = {
     for cl_stage in save_epochs.keys()
 }
 
+convexity_results = test_curriculum_stage_convexity(
+    model_dict,
+    conf,
+    curriculum_stage_dict,
+    train_args.data,
+    t_save_windows,
+    masks,
+    loss_dict["loss_fn"],
+    which="full",
+    num_dirs=1000,
+)
+
+plot_convexity_fractions(convexity_results)
 
 visualize_landscape(
     model_dict,

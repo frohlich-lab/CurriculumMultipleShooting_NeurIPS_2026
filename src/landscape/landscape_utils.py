@@ -10,7 +10,8 @@ import pandas as pd
 from jaxtyping import Array
 from sklearn.decomposition import PCA
 from src.ude_problem import UDEProblem, CustomDropoutMLP
-from typing import Union
+from tqdm import tqdm
+from typing import Callable, Union
 
 
 def flatten_tensor_list(tensor_list: list[Array]) -> tuple[Array, list[tuple]]:
@@ -577,3 +578,121 @@ def visualize_landscape(
         color_labels=df_proj["cl_stage"].tolist(),
         title="Loss Landscape (Model Checkpoints by CL Stage)"
     )
+
+
+def test_curriculum_stage_convexity(
+        model_dict,
+        conf,
+        curriculum_stage_dict,
+        data,
+        t_save_windows,
+        masks,
+        loss_fn: Callable,
+        which: str = "full",
+        num_dirs: int = 1000,
+):
+    # Get shape of flattened params from any final model
+    example_stage = next(iter(model_dict))
+    example_epoch = sorted(model_dict[example_stage])[-1]
+    example_model = model_dict[example_stage][example_epoch]
+    flat_example_params, _ = flatten_tensor_list(get_params_conditional(example_model, which))
+    param_shape = flat_example_params.shape
+
+    # Seed PRNG from multistart_job and get master key for directions and alphas
+    key = jr.PRNGKey(conf.multistart_job)
+    key_dirs, key_alphas = jr.split(key)
+
+    # Precompute random directions and make them unit vectors
+    direction_keys = jr.split(key_dirs, num_dirs)
+    directions = [jr.normal(k, param_shape) for k in direction_keys]
+    directions = [d / jnp.linalg.norm(d) for d in directions]
+
+    # Precompute corrsponding alphas ∈ (0, 1)
+    alphas = jr.uniform(key_alphas, shape=(num_dirs,), minval=0.01, maxval=0.99)
+
+    results = {}
+    for cl_stage in model_dict:
+        sorted_epochs = sorted(model_dict[cl_stage])
+        final_model = model_dict[cl_stage][sorted_epochs[-1]]
+
+        if conf.curriculum_learning:
+            last_valid_index = curriculum_stage_dict[cl_stage]["last_valid_index"]
+            t_save = curriculum_stage_dict[cl_stage]["time"]
+            stage_masks = curriculum_stage_dict[cl_stage]["mask"]
+        else:
+            last_valid_index = 1
+            t_save = t_save_windows
+            stage_masks = masks
+
+        flat_ref, metadata = flatten_tensor_list(get_params_conditional(final_model, which))
+
+        count_convex = 0
+        pbar = tqdm(zip(directions, alphas), total=num_dirs,
+                    desc=f"CL Stage {cl_stage}", unit="dir")
+        for i, (direction, alpha) in enumerate(pbar, 1):
+            # θ₂ = θ₁ + d
+            flat_shift = flat_ref + direction
+            shifted_params = unflatten_tensor_list(flat_shift, metadata)
+            shifted_model = update_model_from_params(final_model, shifted_params, which)
+
+            # θ_mix = αθ₁ + (1 - α)θ₂
+            flat_mix = alpha * flat_ref + (1 - alpha) * flat_shift
+            mixed_params = unflatten_tensor_list(flat_mix, metadata)
+            mixed_model = update_model_from_params(final_model, mixed_params, which)
+
+            def get_loss(model):
+                params, static = eqx.partition(model, eqx.is_array)
+                loss, _ = loss_fn(
+                    params,
+                    static,
+                    t_save,
+                    stage_masks,
+                    data,
+                    last_valid_index,
+                    conf.mlp_reg_exp,
+                    conf.mlp_reg_strength,
+                    conf.output_reg,
+                    conf.multiple_shooting_penalty,
+                    conf.shooting_mode
+                )
+                return loss
+
+            # Evaluate losses
+            loss_ref = get_loss(final_model)
+            loss_shift = get_loss(shifted_model)
+            loss_mix = get_loss(mixed_model)
+
+            # Convexity condition check
+            if loss_mix <= alpha * loss_ref + (1 - alpha) * loss_shift:
+                count_convex += 1
+
+            pbar.set_postfix_str(f"Convex {count_convex}/{i}")
+
+        results[cl_stage] = count_convex / num_dirs
+
+    return results
+
+
+def plot_convexity_fractions(results_dict, title="Convexity Check per Curriculum Stage"):
+    cl_stages = list(results_dict.keys())
+    fractions = list(results_dict.values())
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    bars = ax.bar(cl_stages, fractions, color='skyblue', edgecolor='black')
+
+    # Annotate each bar with its value
+    for bar, fraction in zip(bars, fractions):
+        height = bar.get_height()
+        ax.annotate(f"{fraction:.2f}",
+                    xy=(bar.get_x() + bar.get_width() / 2, height),
+                    xytext=(0, 5),
+                    textcoords="offset points",
+                    ha='center', va='bottom', fontsize=10)
+
+    ax.set_ylim(0, 1.05)
+    ax.set_ylabel("Fraction of Convex Directions")
+    ax.set_xlabel("Curriculum Stage")
+    ax.set_title(title)
+    ax.grid(True, axis='y', linestyle='--', alpha=0.6)
+    plt.tight_layout()
+    plt.show()
