@@ -942,17 +942,12 @@ def get_sol_and_loss_multiple_shooting(
         adjoint,
         max_steps
     )
-    # # TODO @GiacomoFabrini can this be simplified?
-    # valid_masks = jnp.array(prob.masks) if prob.curriculum_stage < 2 \
-    #     else jnp.array(prob.masks)[:-(prob.curriculum_stage - 1), :]
-    # using vmap, shape of sol is: (batch/window, timepoint, state var)
     losses = jnp.array([
         loss_fn(
             solution=sol.ys[i, :, :prob.func.state_dimension],
             data=data,
             mask=masks[i]
         )
-        # for i, mask in enumerate(valid_masks)
         for i in range(last_valid_index)
     ])
     return sol, jnp.mean(losses)
