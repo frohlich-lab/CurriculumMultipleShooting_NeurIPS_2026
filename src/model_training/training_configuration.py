@@ -6,7 +6,7 @@ DYNAMICAL_MODEL = {
 # MLP
 MLP_WIDTHS = {
     # 1,
-    # 5,
+    # 5,  # UDE paper -> activation changed to RBF, max_lrate to 1e-1
     10,
     # 50
 }
@@ -65,6 +65,7 @@ HIDDEN_DROPOUT_RATES = {
 
 # Optimiser
 OPTIMISERS = {
+    "None",  # no NN optimiser, pure BFGS
     "adam",
     # "adamw",
 }
@@ -72,7 +73,7 @@ OPTIMISERS = {
 MAX_LEARNING_RATES = {
     # 1e-1,
     1e-2,
-    1e-3,
+    # 1e-3,
 }
 
 LEARNING_RATE_SPANS = {
@@ -147,9 +148,9 @@ MLP_REG_STRENGTHS = {
 OUTPUT_REG = {
     0,
     # changed with 1e-6 premultiplier given issues with snakemake small wildcards
-    1e0, # corresponds to 1e-6
-    1e1,  # corresponds to 1e-5
-    1e2,  # corresponds to 1e-4
+    # 1e0, # corresponds to 1e-6
+    # 1e1,  # corresponds to 1e-5
+    # 1e2,  # corresponds to 1e-4
     # 1e3,  # corresponds to 1e-3
     # 1e-2,
     # 1e-1,
@@ -166,7 +167,7 @@ OUTPUT_REG = {
 # Shooting modes
 SHOOTING_MODES = {
     "single",
-    "multiple",
+    # "multiple",
 }
 
 SHOOTING_WINDOW_LENGTHS = {
@@ -202,7 +203,7 @@ CURRICULUM_LEARNING = {
 }
 
 NUM_CURRICULUM_STEPS = {
-    9  # matches number of stages from mid point of shooting window range
+    9  # matches number of stages from mid-point of shooting window range
 }
 
 MAX_CURRICULUM_EPOCHS = {
@@ -227,7 +228,8 @@ MULTISTART_DEVIATIONS = {
 }
 
 DYNAMIC_PARAMS_PERTURB_METHODS = {
-    "su",  # sample_uniform
+    "lh",  # latin_hypercube
+    # "su",  # sample_uniform
     # "agn",  # add_gaussian_noise
 }
 
@@ -250,8 +252,8 @@ COMPUTE_HESSIAN_METRICS = {
 
 # Second optimiser (classical)
 SECOND_OPTS = {
-    "fides",
-    # "optx",
+    # "fides",
+    "optx",
 }
 
 # Option to freeze the mechanistic parameters and only train the neural network component
