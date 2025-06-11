@@ -17,6 +17,7 @@ from diffrax import SaveAt
 from flax.training.early_stopping import EarlyStopping
 from jaxtyping import Array, PyTree
 from pathlib import Path
+from scipy.stats import qmc
 from src.common import Conf, dynamic_param_labels, EarlyStoppingParams, hessian_metrics_wandb, plots_dir
 from src.model_training.model_util import bounded_tanh_transform_params, get_masked_mse, set_weight_bias
 from src.model_training.training_configuration import N_EPOCHS, MAX_ITER_OPTX_FINETUNE
@@ -615,7 +616,12 @@ def max_grad_norm(grads: PyTree) -> Array:
 
 def sample_dynamical_params(true_params, deviation, seed, scale="log10", method="sample_uniform", **kwargs):
     # Perturbation/sampling is always performed in log10-space
-    if method == "su": # su=sample_uniform
+    if method == "lh":  # lh=latin_hypercube
+        sampler = qmc.LatinHypercube(d=true_params.shape[0], seed=seed)
+        sampled_deviation = 2*(sampler.random(n=1).flatten() - 0.5)  # shift from [0, 1) to [-1, 1) range
+        sampled_deviation *= deviation
+        starting_params_log10 = jnp.log10(true_params) + sampled_deviation
+    elif method == "su": # su=sample_uniform
         starting_params_log10 = jax.random.uniform(
             key=jr.PRNGKey(seed),
             shape=true_params.shape,
