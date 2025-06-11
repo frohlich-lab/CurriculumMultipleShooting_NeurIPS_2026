@@ -74,7 +74,7 @@ class Conf(dict):
     dynamic_params_scale: str = "log10"  # can be linear, log10 or bounded tanh
     multistart_deviation: float = 0.0  # default: ground truth parameters
     multistart_job: int = 0
-    dynamic_params_perturb_method: str = "su" # su=sample_uniform, agn=add_gaussian_noise
+    dynamic_params_perturb_method: str = "lh" # lh=latin_hypercube, su=sample_uniform, agn=add_gaussian_noise
     dynamic_params_lb: float = 1e-3  # default lower bound
     dynamic_params_ub: float = 1e3  # default upper bound
     # UDE Augmentation
