@@ -18,7 +18,7 @@ unwanted_fields = [
     "use_early_stop",
     "dynamic_params_lb", "dynamic_params_ub",
     "get_sindy_formula", "sindy_use_derivatives",
-    # "freeze_mechanistic_params_adam", "freeze_mechanistic_params_optx",  # might need
+    "freeze_mechanistic_params_adam", "freeze_mechanistic_params_optx",  # might need
     "freeze_nn_adam", "freeze_nn_optx",  # might need
     "save_plots",
 ]
