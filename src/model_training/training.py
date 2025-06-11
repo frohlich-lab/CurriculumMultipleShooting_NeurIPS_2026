@@ -225,7 +225,7 @@ def train(
         model_save_dir: Path,
         plot_args: dict,
         rescaling_args: dict,
-) -> Union[UDEProblem, Tuple[UDEProblem, Dict[int, UDEProblem]]]:
+) -> UDEProblem:
     """
     Trains the UDEmodel (`model`).
 
@@ -418,7 +418,7 @@ def train(
                 model_pca_traj_dir.mkdir(exist_ok=True, parents=True)
                 epoch_save_path = (
                     model_pca_traj_dir /
-                    (conf.__str__(serialise_model=True) + f"_PCA_{nn_epoch}_CL{cl_stage}.eqx")
+                    (conf.__str__() + f"_PCA_{nn_epoch}_CL{cl_stage}.eqx")
                 )
                 print(f"Saving model at epoch {nn_epoch}, CL stage {cl_stage} to {epoch_save_path}")
                 inference_model.save(epoch_save_path)
@@ -618,7 +618,7 @@ def train(
         # Update epoch
         epoch += 1
         # Serialise the best ADAM model
-        best_model.save(model_save_dir / (conf.__str__(serialise_model=True) + "_best_ADAM.eqx"))
+        best_model.save(model_save_dir / (conf.__str__() + "_best_ADAM.eqx"))
 
     # Stage 2 - train with BFGS via optimistix/fides
     if max_iter_optx_finetune > 0:  # otherwise end training and return trained model
@@ -710,7 +710,7 @@ def train(
         )
 
     # Ensure results directory is correctly set up
-    results_save_dir = results_dir / conf.experiment_name / conf.dynamical_model / "train"
+    results_save_dir = results_dir / str(conf.experiment_name) / conf.dynamical_model / "train"
     results_save_dir.mkdir(exist_ok=True, parents=True)
     # Save results dataframe to CSV
     results_total = pd.concat(results_dfs)
@@ -728,16 +728,5 @@ def train(
     #     raise ValueError(f"Error syncing wandb directory: {e}")
     # Serialise best model overall
     best_model.save(model_save_dir / (conf.__str__(serialise_model=True) + "_best_final.eqx"))
-    if not conf.serialise_curriculum_models:
-        # Return best_model on validation dataset
-        return best_model
-    else:
-        for cl_ind, epoch in enumerate(model_save_steps_start):
-            models_curriculum_stage_start[epoch].save(
-                model_save_dir / (conf.__str__(serialise_model=True) + f"_CL{cl_ind}_start.eqx")
-            )
-        for cl_ind, epoch in enumerate(model_save_steps_end):
-            models_curriculum_stage_end[epoch].save(
-                model_save_dir / (conf.__str__(serialise_model=True) + f"_CL{cl_ind}_end.eqx")
-            )
-        return best_model, {**models_curriculum_stage_start, **models_curriculum_stage_end}
+    best_model.save(model_save_dir / (conf.__str__() + "_best_final.eqx"))
+    return best_model

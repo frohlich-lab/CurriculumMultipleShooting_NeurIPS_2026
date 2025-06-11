@@ -15,7 +15,6 @@ unwanted_fields = [
     "final_activation_fn_name",
     "use_skip_connections",  # might need
     "use_dropout", "input_dropout_rate", "hidden_dropout_rate",  # might need
-    "serialise_curriculum_models",
     "dynamic_params_lb", "dynamic_params_ub",
     "get_sindy_formula", "sindy_use_derivatives",
     "freeze_mechanistic_params_adam", "freeze_mechanistic_params_optx",  # might need
@@ -69,7 +68,6 @@ class Conf(dict):
     curriculum_learning: bool = False
     num_curriculum_steps: int = 5
     max_curriculum_epochs: Optional[int] = 2000
-    serialise_curriculum_models: bool = False
     restart_opt_curriculum: bool = False  # restart optimiser at each curriculum step
     # Dynamic parameters: estimation scale, sampling, bounds
     dynamic_params_scale: str = "log10"  # can be linear, log10 or bounded tanh
@@ -102,15 +100,12 @@ class Conf(dict):
     mlpexp_target: str = "RHS"  # options: "RHS", "interaction"
     experiment_name: str = None
 
-    def __str__(self, serialise_model: bool = False) -> str:
+    def __str__(self) -> str:
         """
         Return string representation of the configuration. Removes unwanted fields.
 
         Note: enables printing of Conf objects in fire
         """
-
-        # TODO @GiacomoFabrini - need to handle niche settings (loss landscape BFGS, second curriculum)
-
         values = (
             getattr(self, field.name)
             for field in dataclasses.fields(self)

@@ -17,7 +17,6 @@ from src.model_training.training_configuration import (
     SHOOTING_MODES, SHOOTING_WINDOW_LENGTHS, SHOOTING_IV_INITS, MULTIPLE_SHOOTING_PENALTIES,
     # BATCH_SIZES,
     CURRICULUM_LEARNING, NUM_CURRICULUM_STEPS, MAX_CURRICULUM_EPOCHS,
-    # SERIALISE_CURRICULUM_MODELS,
     DYNAMIC_PARAMS_SCALES, MULTISTART_DEVIATIONS, DYNAMIC_PARAMS_PERTURB_METHODS,
     NODE_AUGMENTATIONS,
     HESSIAN_PRECONDITION, COMPUTE_HESSIAN_METRICS,
@@ -71,7 +70,6 @@ def generate_param_combinations(n_starts: int) -> List[Dict]:
         "curriculum_learning": CURRICULUM_LEARNING,
         "num_curriculum_steps": NUM_CURRICULUM_STEPS,
         "max_curriculum_epochs": MAX_CURRICULUM_EPOCHS,
-        # "serialise_curriculum_models": SERIALISE_CURRICULUM_MODELS,
         # Dynamic param settings
         "dynamic_params_scale": DYNAMIC_PARAMS_SCALES,
         "multistart_deviation": MULTISTART_DEVIATIONS,
@@ -124,7 +122,6 @@ def generate_param_combinations(n_starts: int) -> List[Dict]:
         if not params.get("curriculum_learning", False):
             params["num_curriculum_steps"] = 0
             params["max_curriculum_epochs"] = 0
-            params["serialise_curriculum_models"] = False
 
         if params.get("curriculum_learning", False) and params.get("shooting_mode", None) == "multiple":
             params["num_curriculum_steps"] = 5  # set to default value (won't matter if curriculum is not used)

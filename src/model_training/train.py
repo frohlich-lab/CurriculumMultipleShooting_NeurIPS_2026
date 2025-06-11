@@ -124,7 +124,7 @@ early_stopping_params = EarlyStoppingParams(
 model_save_subdir = model_save_dir / conf.dynamical_model
 model_save_subdir.mkdir(parents=True, exist_ok=True)
 
-training_output = train(
+best_model = train(
     model=ude_problem,
     train_args=train_args,
     val_args=val_args,
@@ -145,20 +145,15 @@ training_output = train(
 # ================================================================
 #                  GET SYMBOLIC EXPRESSION (SINDy)
 # ================================================================
-# SINDy on final CL model (if enabled)
-if conf.serialise_curriculum_models:
-    best_model, curriculum_models = training_output
-    if conf.get_sindy_formula:
-        # Final CL step (complete dataset fit) -> evaluate on validation dataset
-        # TODO @GiacomoFabrini - do we want train or val?
-        sindy_model = curriculum_models[list(curriculum_models.keys())[-1]]
-        get_sindy_formula(
-            model=sindy_model,
-            u0=val_args["u0"],
-            t_save=val_args["t_save"],
-            t_span=val_args["t_span"],
-            settings=["MLP", "UDE"],
-            use_derivatives=conf.sindy_use_derivatives,
-        )
-else:
-    best_model = training_output
+# SINDy on final model (if enabled)
+if conf.get_sindy_formula:
+    # Final model -> evaluate on validation dataset
+    # TODO @GiacomoFabrini - do we want train or val?
+    get_sindy_formula(
+        model=best_model,
+        u0=val_args["u0"],
+        t_save=val_args["t_save"],
+        t_span=val_args["t_span"],
+        settings=["MLP", "UDE"],
+        use_derivatives=conf.sindy_use_derivatives,
+    )
