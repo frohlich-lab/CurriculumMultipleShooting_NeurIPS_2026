@@ -10,8 +10,15 @@ import pandas as pd
 import wandb
 import warnings
 
-from src.common import (Conf, dynamic_param_labels, EarlyStoppingParams, hessian_metrics_wandb,
-                        plots_dir, results_dir, TrainValArgs)
+from src.common import (
+    Conf,
+    dynamic_param_labels,
+    EarlyStoppingParams,
+    hessian_metrics_wandb,
+    plots_dir,
+    results_dir,
+    TrainValArgs
+)
 from dataclasses import replace
 from diffrax import SaveAt
 from jaxtyping import Array, Float, PyTree
@@ -22,14 +29,24 @@ from src.model_training.training_util import (
     get_save_epochs,
     # generate_incremental_arrays,
     generate_log_epochs,
-    get_opt_opt_state_params, get_scheduler,
-    initialise_wandb, log_model_stats, log_plots,
-    make_grads_finite, max_grad_norm, get_hessian_metrics,
-    MetricHandler, transform_dynamic_params, augment_u0
+    get_opt_opt_state_params,
+    get_scheduler,
+    initialise_wandb,
+    # log_model_stats,
+    log_plots,
+    make_grads_finite,
+    max_grad_norm,
+    get_hessian_metrics,
+    MetricHandler,
+    transform_dynamic_params,
+    augment_u0
 )
 from src.model_training.optimistix_training import train_optimistix
 from src.model_training.fides_training import train_fides
-from src.model_training.hessian import get_hessian, apply_hessian_preconditioning_to_grads
+from src.model_training.hessian import (
+    get_hessian,
+    apply_hessian_preconditioning_to_grads
+)
 from src.ude_problem import UDEProblem
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -460,6 +477,12 @@ def train(
                         )[i]
                         for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
                     },
+                    # Initial values
+                    **{
+                        f"iv_{i}_{j}": inference_model.initial_values[i][j]
+                        for i in range(len(inference_model.initial_values))
+                        for j in range(inference_model.func.state_dimension)
+                    },
                     "data_rescaling": rescaling_args["data_rescaling"],
                     "time_rescaling": rescaling_args["time_rescaling"],
                 }]
@@ -477,15 +500,16 @@ def train(
                     },
                     step=epoch+nn_epoch
                 )
-                if jnp.isfinite(loss_train):
-                    wandb.log(
-                        log_model_stats(
-                            model, grads, conf,
-                            frozen_mechanistic=conf.freeze_mechanistic_params_adam,
-                            frozen_nn=conf.freeze_nn_adam
-                        ),
-                        step=epoch+nn_epoch
-                    )
+                # Disabled logging of values and gradients for weights & biases / dynamic parameters / initial values
+                # if jnp.isfinite(loss_train):
+                #     wandb.log(
+                #         log_model_stats(
+                #             model, grads, conf,
+                #             frozen_mechanistic=conf.freeze_mechanistic_params_adam,
+                #             frozen_nn=conf.freeze_nn_adam
+                #         ),
+                #         step=epoch+nn_epoch
+                #     )
 
                 if conf.compute_hessian_metrics:
                     # Log Hessian metrics
