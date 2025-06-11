@@ -967,6 +967,7 @@ def check_and_progress_curriculum(
         model_save_steps_start: List,
         curriculum_params: dict
 ):
+    advancing_cl_stage = False
     # If the epoch matches, update CL stage, inner timepoints and masks, and zero last set of initial values (window)
     if (nn_epoch != 0) and (nn_epoch in model_save_steps_start):
         print("----------------------------------")
@@ -977,7 +978,8 @@ def check_and_progress_curriculum(
         ) + 1  # 1-counting
         t_save_windows = curriculum_params[cl_stage]["time"]
         masks = curriculum_params[cl_stage]["mask"]
-    return t_save_windows, masks, cl_stage
+        advancing_cl_stage = True
+    return t_save_windows, masks, cl_stage, advancing_cl_stage
 
 
 def get_save_epochs(num_epochs, num_models):

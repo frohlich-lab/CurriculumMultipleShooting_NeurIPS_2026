@@ -70,6 +70,7 @@ class Conf(dict):
     num_curriculum_steps: int = 5
     max_curriculum_epochs: Optional[int] = 2000
     serialise_curriculum_models: bool = False
+    restart_opt_curriculum: bool = False  # restart optimiser at each curriculum step
     # Dynamic parameters: estimation scale, sampling, bounds
     dynamic_params_scale: str = "log10"  # can be linear, log10 or bounded tanh
     multistart_deviation: float = 0.0  # default: ground truth parameters

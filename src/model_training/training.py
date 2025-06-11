@@ -399,9 +399,16 @@ def train(
                 ivs.append(params.initial_values)
 
             if conf.curriculum_learning:
-                t_save_windows, masks, cl_stage = check_and_progress_curriculum(
+                t_save_windows, masks, cl_stage, advancing_cl_stage = check_and_progress_curriculum(
                     t_save_windows, masks, nn_epoch, cl_stage, model_save_steps_start, curriculum_params
                 )
+                if advancing_cl_stage and conf.restart_opt_curriculum:
+                    # Reset optimiser and opt_state for new curriculum stage, including lr schedule and early stopper
+                    print(f"Restarting optimiser at epoch {nn_epoch} for CL stage {cl_stage}")
+                    schedule = get_scheduler(conf=conf, n_epochs=n_epochs)
+                    opt, opt_state, params = get_opt_opt_state_params(conf, params, schedule)
+                    early_stopper = configure_early_stopping(early_stopping_params)
+
                 # Update last valid window index
                 last_valid_index = curriculum_params[cl_stage]["last_valid_index"]
 

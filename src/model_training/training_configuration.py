@@ -209,8 +209,9 @@ MAX_CURRICULUM_EPOCHS = {
     2000,
 }
 
-SERIALISE_CURRICULUM_MODELS = {
-    False,
+RESTART_OPT_CURRICULUM = {
+    # True,  # restart optimiser at each curriculum stage
+    False,  # continue training with the same optimiser
 }
 
 # Dynamic Parameters estimation settings
