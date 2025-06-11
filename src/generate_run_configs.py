@@ -143,6 +143,11 @@ def generate_param_combinations(n_starts: int) -> List[Dict]:
         if params.get("curriculum_learning", False) and params.get("shooting_mode", None) == "multiple":
             params["num_curriculum_steps"] = 5  # set to default value, will be overwritten by number of windows
 
+        # Replicate setup of UDE paper (arXiv link: https://arxiv.org/pdf/2001.04385, see page 40)
+        if (params.get("mlp_layer_width") == 5) and (params.get("mlp_depth") == 2):
+            params["activation_fn_name"] = "rbf"
+            params["max_lrate"] = 1e-1
+
         if params.get("training_setting") == "UDE":
             params["mlpexp_target"] = "None"
         elif params.get("training_setting") == "MLP":
