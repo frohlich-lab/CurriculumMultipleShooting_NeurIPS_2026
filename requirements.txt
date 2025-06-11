@@ -18,4 +18,5 @@ pysindy==1.7.5
 scikit-learn==1.5.2
 setuptools~=75.1.0
 seaborn~=0.13.2
+tqdm==4.66.5
 wandb==0.18.1
