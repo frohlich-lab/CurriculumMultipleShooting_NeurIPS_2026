@@ -610,13 +610,10 @@ def test_curriculum_stage_convexity(
         # For global convexity, generate random θ₁ and θ₂ (defined as θ₁ + d where d is unit vector)
         if sampling == "lh":
             # Sample using Latin Hypercube [0, 1) and rescale to [-1, 1)
-            theta1_list = [
-                2 * qmc.LatinHypercube(
-                    d=param_shape[0],
-                    seed=int(k[0]) << 32 | int(k[1])  # turn JAX key into int seed
-                ).random(1).flatten() - 1
-                for k in jr.split(key_theta1, num_dirs)
-            ]
+            theta1_list = 2 * qmc.LatinHypercube(
+                d=param_shape[0],
+                seed=int(key_theta1[0]) << 32 | int(key_theta1[1])  # turn JAX key into int seed
+            ).random(num_dirs) - 1
         else:
             # Sample using normal distribution
             theta1_list = [jr.normal(k, param_shape) for k in jr.split(key_theta1, num_dirs)]
