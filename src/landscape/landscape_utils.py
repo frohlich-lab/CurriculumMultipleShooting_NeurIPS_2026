@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from jaxtyping import Array
+from scipy.stats import qmc
 from sklearn.decomposition import PCA
 from src.ude_problem import UDEProblem, CustomDropoutMLP
 from tqdm import tqdm
@@ -591,6 +592,7 @@ def test_curriculum_stage_convexity(
         which: str = "full",
         num_dirs: int = 1000,
         mode: str = "local",
+        sampling: Optional[str] = "lh",
         filter_normalise: Optional[bool] = True
 ):
     # Get shape of flattened params from any model
@@ -606,7 +608,18 @@ def test_curriculum_stage_convexity(
     if mode == "global":
         key_theta1, key_dirs, key_alpha = jr.split(key, 3)
         # For global convexity, generate random θ₁ and θ₂ (defined as θ₁ + d where d is unit vector)
-        theta1_list = [jr.normal(k, param_shape) for k in jr.split(key_theta1, num_dirs)]
+        if sampling == "lh":
+            # Sample using Latin Hypercube [0, 1) and rescale to [-1, 1)
+            theta1_list = [
+                2 * qmc.LatinHypercube(
+                    d=param_shape[0],
+                    seed=int(k[0]) << 32 | int(k[1])  # turn JAX key into int seed
+                ).random(1).flatten() - 1
+                for k in jr.split(key_theta1, num_dirs)
+            ]
+        else:
+            # Sample using normal distribution
+            theta1_list = [jr.normal(k, param_shape) for k in jr.split(key_theta1, num_dirs)]
         if filter_normalise:
             # Filter-normalise θ₁ to have the same norm as the example model -> model manifold
             norm_target = jnp.linalg.norm(flat_example_params)
