@@ -590,27 +590,40 @@ def test_curriculum_stage_convexity(
         loss_fn: Callable,
         which: str = "full",
         num_dirs: int = 1000,
+        mode: str = "local",
 ):
-    # Get shape of flattened params from any final model
-    example_stage = next(iter(model_dict))
+    # Get shape of flattened params from any model
+    example_stage = list(model_dict.keys())[-1]
     example_epoch = sorted(model_dict[example_stage])[-1]
     example_model = model_dict[example_stage][example_epoch]
-    flat_example_params, _ = flatten_tensor_list(get_params_conditional(example_model, which))
+    flat_example_params, metadata = flatten_tensor_list(get_params_conditional(example_model, which))
     param_shape = flat_example_params.shape
 
-    # Seed PRNG from multistart_job and get master key for directions and alphas
+    # Seed PRNG from multistart_job and get master key
     key = jr.PRNGKey(conf.multistart_job)
-    key_dirs, key_alphas = jr.split(key)
 
-    # Precompute random directions and make them unit vectors
-    direction_keys = jr.split(key_dirs, num_dirs)
-    directions = [jr.normal(k, param_shape) for k in direction_keys]
-    directions = [d / jnp.linalg.norm(d) for d in directions]
-
-    # Precompute corrsponding alphas ∈ (0, 1)
-    alphas = jr.uniform(key_alphas, shape=(num_dirs,), minval=0.01, maxval=0.99)
+    if mode == "global":
+        key_theta1, key_dirs, key_alpha = jr.split(key, 3)
+        # For global convexity, generate random θ₁ and θ₂ (defined as θ₁ + d where d is unit vector)
+        theta1_list = [jr.normal(k, param_shape) for k in jr.split(key_theta1, num_dirs)]
+        # Filter-normalise θ₁ to have the same norm as the example model -> model manifold
+        norm_target = jnp.linalg.norm(flat_example_params)
+        theta1_list = [(v / jnp.linalg.norm(v)) * norm_target for v in theta1_list]
+        dir_list = [jr.normal(k, param_shape) for k in jr.split(key_dirs, num_dirs)]
+        dir_list = [d / jnp.linalg.norm(d) for d in dir_list]
+        theta2_list = [theta1 + d for theta1, d in zip(theta1_list, dir_list)]
+        # Precompute corresponding alphas ∈ (0, 1)
+        alpha_list = jr.uniform(key_alpha, shape=(num_dirs,), minval=0.01, maxval=0.99)
+    else:
+        key_dirs, key_alphas = jr.split(key)
+        # For local convexity, generate random perturbations to theta_1=final model
+        direction_keys = jr.split(key_dirs, num_dirs)
+        directions = [jr.normal(k, param_shape) for k in direction_keys]
+        directions = [d / jnp.linalg.norm(d) for d in directions]
+        alphas = jr.uniform(key_alphas, shape=(num_dirs,), minval=0.01, maxval=0.99)
 
     results = {}
+
     for cl_stage in model_dict:
         sorted_epochs = sorted(model_dict[cl_stage])
         final_model = model_dict[cl_stage][sorted_epochs[-1]]
@@ -624,14 +637,24 @@ def test_curriculum_stage_convexity(
             t_save = t_save_windows
             stage_masks = masks
 
-        flat_ref, metadata = flatten_tensor_list(get_params_conditional(final_model, which))
+        if mode == "local":
+            flat_ref, metadata = flatten_tensor_list(get_params_conditional(final_model, which))
 
         count_convex = 0
-        pbar = tqdm(zip(directions, alphas), total=num_dirs,
-                    desc=f"CL Stage {cl_stage}", unit="dir")
-        for i, (direction, alpha) in enumerate(pbar, 1):
-            # θ₂ = θ₁ + d
-            flat_shift = flat_ref + direction
+        pbar = tqdm(range(num_dirs), desc=f"CL Stage {cl_stage}", unit="dir")
+        for i in pbar:
+            if mode == "global":
+                # Random θ₁ and θ₂
+                flat_ref = theta1_list[i]
+                flat_shift = theta2_list[i]
+                alpha = alpha_list[i]
+            else:
+                direction = directions[i]
+                alpha = alphas[i]
+                # θ₂ = θ₁ + d
+                flat_shift = flat_ref + direction
+
+            # Get θ₂ model
             shifted_params = unflatten_tensor_list(flat_shift, metadata)
             shifted_model = update_model_from_params(final_model, shifted_params, which)
 
@@ -658,7 +681,12 @@ def test_curriculum_stage_convexity(
                 return loss
 
             # Evaluate losses
-            loss_ref = get_loss(final_model)
+            loss_ref = get_loss(
+                final_model if mode == "local"
+                else update_model_from_params(
+                    final_model, unflatten_tensor_list(flat_ref, metadata), which
+                )
+            )
             loss_shift = get_loss(shifted_model)
             loss_mix = get_loss(mixed_model)
 
@@ -666,14 +694,18 @@ def test_curriculum_stage_convexity(
             if loss_mix <= alpha * loss_ref + (1 - alpha) * loss_shift:
                 count_convex += 1
 
-            pbar.set_postfix_str(f"Convex {count_convex}/{i}")
+            pbar.set_postfix_str(f"Convex {count_convex}/{i+1}")
 
         results[cl_stage] = count_convex / num_dirs
 
     return results
 
 
-def plot_convexity_fractions(results_dict, title="Convexity Check per Curriculum Stage"):
+def plot_convexity_fractions(
+        results_dict,
+        title="Convexity Check per Curriculum Stage",
+        mode: str = "local"
+):
     cl_stages = list(results_dict.keys())
     fractions = list(results_dict.values())
 
@@ -692,7 +724,7 @@ def plot_convexity_fractions(results_dict, title="Convexity Check per Curriculum
     ax.set_ylim(0, 1.05)
     ax.set_ylabel("Fraction of Convex Directions")
     ax.set_xlabel("Curriculum Stage")
-    ax.set_title(title)
+    ax.set_title(title + f" - {mode}")
     ax.grid(True, axis='y', linestyle='--', alpha=0.6)
     plt.tight_layout()
     plt.show()
