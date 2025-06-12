@@ -11,7 +11,7 @@ from jaxtyping import Array
 from sklearn.decomposition import PCA
 from src.ude_problem import UDEProblem, CustomDropoutMLP
 from tqdm import tqdm
-from typing import Callable, Union
+from typing import Callable, Optional, Union
 
 
 def flatten_tensor_list(tensor_list: list[Array]) -> tuple[Array, list[tuple]]:
@@ -591,6 +591,7 @@ def test_curriculum_stage_convexity(
         which: str = "full",
         num_dirs: int = 1000,
         mode: str = "local",
+        filter_normalise: Optional[bool] = True
 ):
     # Get shape of flattened params from any model
     example_stage = list(model_dict.keys())[-1]
@@ -606,9 +607,10 @@ def test_curriculum_stage_convexity(
         key_theta1, key_dirs, key_alpha = jr.split(key, 3)
         # For global convexity, generate random θ₁ and θ₂ (defined as θ₁ + d where d is unit vector)
         theta1_list = [jr.normal(k, param_shape) for k in jr.split(key_theta1, num_dirs)]
-        # Filter-normalise θ₁ to have the same norm as the example model -> model manifold
-        norm_target = jnp.linalg.norm(flat_example_params)
-        theta1_list = [(v / jnp.linalg.norm(v)) * norm_target for v in theta1_list]
+        if filter_normalise:
+            # Filter-normalise θ₁ to have the same norm as the example model -> model manifold
+            norm_target = jnp.linalg.norm(flat_example_params)
+            theta1_list = [(v / jnp.linalg.norm(v)) * norm_target for v in theta1_list]
         dir_list = [jr.normal(k, param_shape) for k in jr.split(key_dirs, num_dirs)]
         dir_list = [d / jnp.linalg.norm(d) for d in dir_list]
         theta2_list = [theta1 + d for theta1, d in zip(theta1_list, dir_list)]
