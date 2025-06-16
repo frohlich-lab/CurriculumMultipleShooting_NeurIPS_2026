@@ -483,16 +483,6 @@ def train(
                     },
                     step=epoch+nn_epoch
                 )
-                # Disabled logging of values and gradients for weights & biases / dynamic parameters / initial values
-                # if jnp.isfinite(loss_train):
-                #     wandb.log(
-                #         log_model_stats(
-                #             model, grads, conf,
-                #             frozen_mechanistic=conf.freeze_mechanistic_params_adam,
-                #             frozen_nn=conf.freeze_nn_adam
-                #         ),
-                #         step=epoch+nn_epoch
-                #     )
 
                 if conf.compute_hessian_metrics:
                     # Log Hessian metrics
