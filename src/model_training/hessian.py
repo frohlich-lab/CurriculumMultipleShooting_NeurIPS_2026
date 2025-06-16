@@ -5,7 +5,7 @@ from src.common import Conf
 from functools import partial
 from jaxtyping import PyTree
 from src.model_training.training_util import get_hessian_metrics, make_grads_finite
-from src.model_training.losses import compute_hess_array #, compute_batch_hess_array
+from src.model_training.losses import compute_hess_array
 from src.ude_problem import UDEProblem
 from typing import Callable, Union
 
