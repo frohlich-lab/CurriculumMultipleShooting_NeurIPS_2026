@@ -111,13 +111,6 @@ ude_problem = UDEProblem(
     regularise_network=True,  # TODO: consider making this more general / not hardcoded
 )
 
-# # Linear schedule Fabian set up for the DMM -- DISABLED WITH NEW SCHEDULER
-# schedule_config = dict(
-#     init_value=conf.optimiser_learning_rate,
-#     transition_steps=100,
-#     end_value=conf.optimiser_learning_rate/10
-# )
-
 # ================================================================
 #                            TRAIN
 # ================================================================
