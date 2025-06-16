@@ -147,46 +147,6 @@ default_attributes = [
     if not k.startswith('__') and k not in unwanted_fields
 ]
 
-# default_attributes = [
-#     "dynamical_model",
-#     "mlp_layer_width",
-#     "mlp_depth",
-#     "init_scale",
-#     "use_bias",
-#     "use_final_bias",
-#     "activation_fn_name",
-#     "optimiser",
-#     "max_lrate",
-#     "lrate_span",
-#     "lrate_decay",
-#     "warmup_fct",
-#     "opt_steps",
-#     "opt_mult",
-#     "mlp_reg_exp",
-#     "mlp_reg_strength",
-#     "output_reg",
-#     "shooting_mode",
-#     "shooting_window_length",
-#     "shooting_iv_init",
-#     "multiple_shooting_penalty",
-#     "curriculum_learning",
-#     "num_curriculum_steps",
-#     "max_curriculum_epochs",
-#     "dynamic_params_scale",
-#     "multistart_deviation",
-#     "multistart_job",
-#     "dynamic_params_perturb_method",
-#     "node_augmentation",
-#     "hessian_precondition",
-#     "compute_hessian_metrics",
-#     "second_opt",
-#     "normalise_data",
-#     "normalise_timepoints",
-#     "training_setting",
-#     "mlpexp_target",
-#     "experiment_name"
-# ]
-
 defaults = {
     x: f"{{{x}}}"
     for x in default_attributes
