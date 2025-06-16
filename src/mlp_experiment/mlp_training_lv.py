@@ -7,10 +7,10 @@ import wandb
 
 from dataclasses import replace
 from jaxtyping import Array, Float, PyTree
-from src.common import Conf, EarlyStoppingParams
+from src.common import Conf
 from src.model_training.model_util import regularise_mlp, get_mse
 from src.model_training.training import make_grads_finite
-from src.model_training.training_util import (configure_early_stopping, get_hessian_metrics, generate_log_epochs,
+from src.model_training.training_util import (get_hessian_metrics, generate_log_epochs,
                                               get_opt_opt_state_params, get_scheduler, initialise_wandb)
 from typing import Union
 
@@ -70,7 +70,6 @@ def mlp_train(
         validation_targets: jnp.ndarray,
         conf: Conf,
         n_epochs: int,
-        early_stopping_params: EarlyStoppingParams,
         use_wandb: bool = True,
 ):
     # Set training setting in configuration
@@ -79,7 +78,6 @@ def mlp_train(
     if use_wandb:
         initialise_wandb(
             conf=conf,
-            early_stopping_params=early_stopping_params,
             model=model,
         )
 
@@ -92,9 +90,6 @@ def mlp_train(
 
     # Initialise optimiser and optimiser state
     opt, opt_state, params = get_opt_opt_state_params(conf, params, schedule)
-
-    # Check Early-stopping parameters have been set correctly and instantiate early stopper
-    early_stopper = configure_early_stopping(early_stopping_params)
 
     # Generate log-spaced epochs
     log_epochs = generate_log_epochs(n_epochs=n_epochs, num_samples=100, min_dist=5)
@@ -162,30 +157,6 @@ def mlp_train(
                         },
                         step=epoch
                     )
-
-        # Check early stopping criterion
-        if early_stopping_params.use_early_stopping:
-            # Update early stopper
-            early_stopper = early_stopper.update(loss_val)
-            # Debugging statements
-            print(
-                f"epoch {epoch} | "
-                f"loss_val {loss_val} | "
-                f"has improved? {early_stopper.has_improved} | "
-                f"patience count {early_stopper.patience_count}"
-            )
-            if use_wandb:
-                # Log current patience count
-                wandb.log(
-                    {
-                        "patience_counter": early_stopper.patience_count,
-                    },
-                    step=epoch,
-                )
-            # Stop training if we have run out of patience
-            if early_stopper.should_stop:
-                print(f'Met early stopping criteria, breaking at epoch {epoch}')
-                break
 
     if use_wandb:
         wandb.log({"final_epoch": epoch})

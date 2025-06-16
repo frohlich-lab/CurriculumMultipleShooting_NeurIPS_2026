@@ -11,7 +11,6 @@ from src.model_training.training_configuration import (
     OPTIMISERS,
     MAX_LEARNING_RATES, LEARNING_RATE_SPANS, LEARNING_RATE_DECAYS, WARMUP_FCTS, OPT_STEPS, OPT_MULT, OPT_SCHED_TYPES,
     # USE_LOOKAHEAD, LOOKAHEAD_SYNC,
-    USE_EARLY_STOP,
     MLP_REG_EXPS, MLP_REG_STRENGTHS,
     OUTPUT_REG,
     SHOOTING_MODES, SHOOTING_WINDOW_LENGTHS, SHOOTING_IV_INITS, MULTIPLE_SHOOTING_PENALTIES,
@@ -58,7 +57,6 @@ def generate_param_combinations(n_starts: int) -> List[Dict]:
         "opt_steps": OPT_STEPS,
         "opt_mult": OPT_MULT,
         "opt_sched_type": OPT_SCHED_TYPES,
-        "use_early_stop": USE_EARLY_STOP,
         # Regularisation
         "mlp_reg_exp": MLP_REG_EXPS,
         "mlp_reg_strength": MLP_REG_STRENGTHS,

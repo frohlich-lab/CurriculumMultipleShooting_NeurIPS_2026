@@ -15,7 +15,6 @@ unwanted_fields = [
     "final_activation_fn_name",
     "use_skip_connections",  # might need
     "use_dropout", "input_dropout_rate", "hidden_dropout_rate",  # might need
-    "use_early_stop",
     "dynamic_params_lb", "dynamic_params_ub",
     "get_sindy_formula", "sindy_use_derivatives",
     "freeze_mechanistic_params_adam", "freeze_mechanistic_params_optx",  # might need
@@ -52,8 +51,6 @@ class Conf(dict):
     opt_steps: int = 0  # Number of steps in the first schedule (they multiply each time in length by opt_mult)
     opt_mult: int = 0  # Multiplier for the number of steps in each schedule
     opt_sched_type: str = "lin"  # options: "cos", "lin", "exp"
-    # Early-Stopping
-    use_early_stop: bool = False  # default: False, not in use
     # Regularisation
     # MLP regularisation (L1/L2/network contribution regularisation)
     mlp_reg_exp: float = 1.0  # default: L1
@@ -118,13 +115,6 @@ class Conf(dict):
 
 
 @dataclasses.dataclass
-class EarlyStoppingParams(dict):
-    use_early_stopping: bool = True
-    patience: int = 9
-    min_improvement: float = 0
-
-
-@dataclasses.dataclass
 class TrainValArgs(dict):
     data: Array
     u0: Array
@@ -173,7 +163,6 @@ default_attributes = [
 #     "warmup_fct",
 #     "opt_steps",
 #     "opt_mult",
-#     "use_early_stop",
 #     "mlp_reg_exp",
 #     "mlp_reg_strength",
 #     "output_reg",

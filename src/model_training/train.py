@@ -4,11 +4,19 @@ import jax.numpy as jnp
 
 from dataclasses import replace
 from jax import config
-from src.common import (Conf, EarlyStoppingParams, model_save_dir,
-                        state_dims, true_dynamic_parameters)
-from src.model_training.training_setup import (broadcast_bounds, get_data_and_funcs_for_train,
-                                               get_initial_conditions,
-                                               setup_mlp, setup_time_masks_u0_curriculum)
+from src.common import (
+    Conf,
+    model_save_dir,
+    state_dims,
+    true_dynamic_parameters
+)
+from src.model_training.training_setup import (
+    broadcast_bounds,
+    get_data_and_funcs_for_train,
+    get_initial_conditions,
+    setup_mlp,
+    setup_time_masks_u0_curriculum
+)
 from src.model_training.training_util import sample_dynamical_params, get_sindy_formula
 from src.ude_problem import UDEProblem
 from training import train
@@ -110,12 +118,6 @@ ude_problem = UDEProblem(
 #     end_value=conf.optimiser_learning_rate/10
 # )
 
-early_stopping_params = EarlyStoppingParams(
-    use_early_stopping=conf.use_early_stop,  # enables flax.training.early_stopping
-    patience=50,  # number of consecutive epochs where we tolerate loss_val not improving by at least min_improvement
-    min_improvement=0,  # absolute improvement in loss_val to consider as improvement
-)
-
 # ================================================================
 #                            TRAIN
 # ================================================================
@@ -130,7 +132,6 @@ best_model = train(
     masks=masks,
     curriculum_params=curriculum_stage_dict if conf.curriculum_learning else None,
     conf=conf,
-    early_stopping_params=early_stopping_params,
     loss_dict=loss_dict,
     optx_config=optx_config,
     n_epochs=conf.num_epochs_adam,

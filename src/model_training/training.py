@@ -13,7 +13,6 @@ import warnings
 from src.common import (
     Conf,
     dynamic_param_labels,
-    EarlyStoppingParams,
     hessian_metrics_wandb,
     plots_dir,
     results_dir,
@@ -25,7 +24,7 @@ from jaxtyping import Array, Float, PyTree
 from pathlib import Path
 from src.common import TRAINING_RESULTS
 from src.model_training.training_util import (
-    check_and_progress_curriculum, configure_early_stopping,
+    check_and_progress_curriculum,
     get_save_epochs,
     # generate_incremental_arrays,
     generate_log_epochs,
@@ -234,7 +233,6 @@ def train(
         masks: Array,
         curriculum_params: Optional[dict[int, Any]],
         conf: Conf,
-        early_stopping_params: EarlyStoppingParams,
         loss_dict: Dict[str, Callable],
         optx_config: Dict,
         n_epochs: int,
@@ -262,8 +260,6 @@ def train(
         Dictionary of curriculum learning parameters.
     :param conf:
         configuration (hyperparameters).
-    :param early_stopping_params:
-        Dictionary of parameters for Early-Stopping.
     :param loss_dict:
         Dictionary of loss functions.
     :param optx_config:
@@ -288,7 +284,6 @@ def train(
     # Initialise wandb and define metrics
     initialise_wandb(
         conf=conf,
-        early_stopping_params=early_stopping_params,
         model=model,
     )
 
@@ -366,9 +361,6 @@ def train(
         # Partition model into learnable / static parameters
         params, static = eqx.partition(model, adam_filter_spec)
 
-        # Instantiate early stopper (if needed)
-        early_stopper = configure_early_stopping(early_stopping_params)
-
         # Generate regularly log-spaced epochs for early-stopping evaluation + model stat logging - from DMMs
         log_epochs = generate_log_epochs(n_epochs=n_epochs, num_samples=100, min_dist=5)
 
@@ -415,11 +407,10 @@ def train(
                     t_save_windows, masks, nn_epoch, cl_stage, model_save_steps_start, curriculum_params
                 )
                 if advancing_cl_stage and conf.restart_opt_curriculum:
-                    # Reset optimiser and opt_state for new curriculum stage, including lr schedule and early stopper
+                    # Reset optimiser and opt_state for new curriculum stage, including lr schedule
                     print(f"Restarting optimiser at epoch {nn_epoch} for CL stage {cl_stage}")
                     schedule = get_scheduler(conf=conf, n_epochs=n_epochs)
                     opt, opt_state, params = get_opt_opt_state_params(conf, params, schedule)
-                    early_stopper = configure_early_stopping(early_stopping_params)
 
                 # Update last valid window index
                 last_valid_index = curriculum_params[cl_stage]["last_valid_index"]
@@ -563,29 +554,6 @@ def train(
                     f"mlp_reg {reg_loss_dict['mlp_reg'] if reg_loss_dict is not None else 'n/a'} | "
                     f"loss_val {loss_val} | "
                 )
-
-                # Check early stopping criterion
-                if early_stopping_params.use_early_stopping:
-                    # Update early stopper
-                    early_stopper = early_stopper.update(loss_val)
-                    # Debugging statements
-                    print(
-                        f"has improved? {early_stopper.has_improved} | "
-                        f"patience count {early_stopper.patience_count}"
-                    )
-                    # Log current patience count
-                    wandb.log(
-                        {
-                            "patience_counter": early_stopper.patience_count,
-                        },
-                        step=epoch+nn_epoch,
-                    )
-                    partial_results_df = partial_results_df.assign(ES_patience_counter=early_stopper.patience_count)
-
-                    # Stop training if we have run out of patience
-                    if early_stopper.should_stop:
-                        print(f'Met early stopping criteria, breaking at epoch {epoch+nn_epoch}')
-                        break
             elif nn_epoch == n_epochs - 1:
                 # Log final loss values for ADAM training stage
                 wandb.log(
@@ -610,7 +578,7 @@ def train(
             plot_name="optax", plot_subdir="optax",
         )
 
-        # Log final values of mechanistic parameters + final epoch value (can vary if using early stopping)
+        # Log final values of mechanistic parameters + final epoch value
         wandb.log(
             {
                 **{

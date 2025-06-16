@@ -4,7 +4,7 @@ import jax.numpy as jnp
 from jax import config
 import src.model_examples.lotka_volterra.setup_diffrax_model as setup_lv
 
-from src.common import activation_functions, Conf, EarlyStoppingParams
+from src.common import activation_functions, Conf
 from src.mlp_experiment.mlp_training_lv import mlp_train
 from src.model_training.model_util import set_weight_bias
 from src.ude_problem import build_mlp
@@ -84,13 +84,6 @@ for dataset, data in zip(["train", "val"], [train_data, validation_data]):
     else:
         raise ValueError(f"Unknown mode: {conf.mlpexp_target}!")
 
-# Setup early stopping
-early_stopping_params = EarlyStoppingParams(
-    use_early_stopping=conf.use_early_stop,  # enables flax.training.early_stopping
-    patience=50,  # number of consecutive epochs where we tolerate loss_val not improving by at least min_improvement
-    min_improvement=0,  # absolute improvement in loss_val to consider as improvement
-)
-
 trained_mlp = mlp_train(
     model=mlp,
     training_data=train_data,
@@ -99,5 +92,4 @@ trained_mlp = mlp_train(
     validation_targets=targets["val"],
     conf=conf,
     n_epochs=conf.num_epochs_adam,
-    early_stopping_params=early_stopping_params,
 )

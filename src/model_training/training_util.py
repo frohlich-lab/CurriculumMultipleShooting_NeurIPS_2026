@@ -14,12 +14,11 @@ import seaborn as sns
 import wandb
 from diffrax import SaveAt
 
-from flax.training.early_stopping import EarlyStopping
 from jaxtyping import Array, PyTree
 from pathlib import Path
 from scipy.stats import qmc
-from src.common import Conf, dynamic_param_labels, EarlyStoppingParams, hessian_metrics_wandb, plots_dir
-from src.model_training.model_util import bounded_tanh_transform_params, get_masked_mse, set_weight_bias
+from src.common import Conf, dynamic_param_labels, hessian_metrics_wandb, plots_dir
+from src.model_training.model_util import bounded_tanh_transform_params, set_weight_bias
 from src.ude_problem.ude_problem import UDEProblem
 from typing import Any, Callable, List, Union
 
@@ -154,7 +153,6 @@ def get_opt_opt_state_params(
 
 def initialise_wandb(
         conf: Conf,
-        early_stopping_params: EarlyStoppingParams,
         model: Union[UDEProblem, eqx.nn.MLP],
 ):
     # Link to repo
@@ -164,25 +162,14 @@ def initialise_wandb(
     wandb.init(
         project=f"TestUDE.snakemake.{conf.dynamical_model}.{conf.experiment_name}",
         group=f"{conf.training_setting}.{conf.shooting_mode}.{conf.curriculum_learning}",
-        config={
-            **conf.__dict__,
-            "patience": early_stopping_params.patience
-            if conf.use_early_stop else None,
-            "min_improvement": early_stopping_params.min_improvement
-            if conf.use_early_stop else None,
-        },
+        config=conf.__dict__,
         name='__'.join(field for field in conf.__str__().split('__')[1:]),  # dynamical_system info already in project
         settings=wandb.Settings(
             start_method="fork",
             git_commit=repo.head.object.hexsha,
             git_remote_url=repo.remotes.origin.url,
         ),
-        tags=[
-            "early_stop" if conf.use_early_stop else "no_early_stop",
-            # "frozen_mechanistic_params_optx"
-            # if conf.freeze_mechanistic_params_optx else "learnable_mechanistic_params_optx", DISABLED TO MERGE WITH MLP
-        ],
-        # mode="offline",  # TODO restore after debugging
+        mode="online"
     )
 
     # Define shared metrics
@@ -832,21 +819,6 @@ def generate_epochs_dict(epochs_list):
         end_epoch = epochs_list[2 * i + 1]
         epochs_dict[i] = {"start": start_epoch, "end": end_epoch}
     return epochs_dict
-
-def configure_early_stopping(early_stopping_params):
-    if early_stopping_params.use_early_stopping:
-        if early_stopping_params.patience is None:
-            raise ValueError("Patience value for early stopping is undefined.")
-        elif early_stopping_params.min_improvement is None:
-            raise ValueError("Minimum absolute improvement for early stopping is undefined.")
-        else:
-            early_stopper = EarlyStopping(
-                min_delta=early_stopping_params.min_improvement,
-                patience=early_stopping_params.patience
-            )
-    else:
-        early_stopper = None
-    return early_stopper
 
 
 def augment_u0(u0):

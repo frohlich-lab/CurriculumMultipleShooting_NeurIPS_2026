@@ -123,12 +123,6 @@ OPT_SCHED_TYPES = {
 }
 
 
-USE_EARLY_STOP = {
-    # True,
-    False,
-}
-
-
 # Regularisation
 MLP_REG_EXPS = {
     1.0,
