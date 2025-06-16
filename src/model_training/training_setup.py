@@ -13,7 +13,6 @@ from src.model_training.model_util import set_weight_bias
 from src.model_training.losses import (
     compute_validation_loss, compute_loss, compute_loss_grad,
     compute_val_loss_optx, compute_loss_optx,
-    # compute_batch_loss, compute_batch_loss_grad, compute_batch_loss_optx
 )
 from src.ude_problem import build_mlp
 from typing import Optional, Tuple, Union
