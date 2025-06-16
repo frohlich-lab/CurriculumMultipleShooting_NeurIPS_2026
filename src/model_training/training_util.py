@@ -564,33 +564,6 @@ def generate_incremental_arrays(
     return incremental_data, incremental_t_save, incremental_t_span, incremental_steps
 
 
-def eig_sv_plot(
-        eigenvalues: jnp.ndarray,
-        singular_values: jnp.ndarray,
-        conf: Conf,
-        epoch: int,
-):
-    plt.subplots(1, 2, figsize=(10, 5))
-    plt.subplot(121)
-    # Discrete singular values
-    plt.stem(singular_values, jnp.ones_like(singular_values), label=f"Epoch {epoch}")
-    plt.xlabel("Singular Value")
-    plt.ylim([0, 1.2])
-    plt.legend()
-    plt.subplot(122)
-    # Discrete eigenvalues values
-    plt.stem(eigenvalues, jnp.ones_like(eigenvalues), label=f"Epoch {epoch}")
-    plt.xlabel("Eigenvalue")
-    plt.ylim([0, 1.2])
-    plt.legend()
-    plt.savefig(
-        plots_dir /
-        conf.dynamical_model /
-        f"sv+eig_plot_{conf.curriculum_learning}_{conf.num_epochs_adam}_{conf.num_epochs_bfgs}_{epoch}.pdf"
-    )
-    plt.show()
-
-
 def max_grad_norm(grads: PyTree) -> Array:
     # Flatten
     grads_flat, _ = jax.tree_util.tree_flatten(grads)

@@ -671,15 +671,6 @@ def train(
         if loss_val < loss_val_min:
             best_model = model
 
-        # Plot eigenvalue and singular value spectrum
-        # hessian = get_hessian(sol.value, static, (u0, t_save_train, t_span_train, training_data), conf)
-        # hessian_metrics, eigs, svs = get_hessian_metrics(hessian, return_eigs_svs=True)
-        # eig_sv_plot(
-        #     eigs, svs,
-        #     conf,
-        #     epoch+sol.stats["num_steps"],
-        # )
-
         # Log plots again after further training with optimistix/BFGS
         log_fit_plots(
             model=model, **plot_args,

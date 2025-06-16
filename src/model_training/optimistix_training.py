@@ -86,15 +86,6 @@ def train_optimistix(
     # Update epoch
     epoch += sol.stats["num_steps"]
 
-    # Plot eigenvalue and singular value spectrum
-    # hessian = get_hessian(sol.value, static, (u0, t_save_train, t_span_train, training_data), conf)
-    # hessian_metrics, eigs, svs = get_hessian_metrics(hessian, return_eigs_svs=True)
-    # eig_sv_plot(
-    #     eigs, svs,
-    #     conf,
-    #     epoch,
-    # )
-
     return model, sol, static, loss_train, loss_val, epoch, results_df  # last can be None
 
 
