@@ -165,7 +165,6 @@ def setup_mlp(conf: Conf, u0: jnp.ndarray, key_mlp, key_init):
             use_dropout=conf.use_dropout,
             input_dropout_rate=conf.input_dropout_rate,
             hidden_dropout_rate=conf.hidden_dropout_rate,
-            use_skip_connections=conf.use_skip_connections,
         ),
         conf.init_scale,
         key_init

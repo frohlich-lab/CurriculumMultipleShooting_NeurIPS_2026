@@ -46,11 +46,6 @@ MLP_FINAL_ACTIVATIONS = {
 }
 
 
-USE_SKIP_CONNECTIONS = {
-    False,
-}
-
-
 USE_DROPOUT = {
     False,
 }

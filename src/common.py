@@ -13,7 +13,6 @@ from typing import List, Optional, Union
 unwanted_fields = [
     "dynamical_model",
     "final_activation_fn_name",
-    "use_skip_connections",  # might need
     "use_dropout", "input_dropout_rate", "hidden_dropout_rate",  # might need
     "dynamic_params_lb", "dynamic_params_ub",
     "freeze_mechanistic_params_adam", "freeze_mechanistic_params_optx",  # might need
@@ -34,7 +33,6 @@ class Conf(dict):
     use_final_bias: bool = True
     activation_fn_name: str = "relu"
     final_activation_fn_name: str = "identity"
-    use_skip_connections: bool = False
     # Dropout
     use_dropout: bool = False
     input_dropout_rate: float = 0.8

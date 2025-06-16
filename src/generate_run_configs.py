@@ -6,7 +6,6 @@ from src.model_training.training_configuration import (
     INIT_SCALES, USE_BIASES, USE_FINAL_BIASES,
     MLP_ACTIVATIONS,
     # MLP_FINAL_ACTIVATIONS,
-    # USE_SKIP_CONNECTIONS,
     # USE_DROPOUT, INPUT_DROPOUT_RATES, HIDDEN_DROPOUT_RATES,
     OPTIMISERS,
     MAX_LEARNING_RATES, LEARNING_RATE_SPANS, LEARNING_RATE_DECAYS, WARMUP_FCTS, OPT_STEPS, OPT_MULT, OPT_SCHED_TYPES,
@@ -42,7 +41,6 @@ def generate_param_combinations(n_starts: int) -> List[Dict]:
         "activation_fn_name": MLP_ACTIVATIONS,
         # "final_activation_fn_name": MLP_FINAL_ACTIVATIONS,
         # Skip Connections
-        # "use_skip_connections": USE_SKIP_CONNECTIONS,
         # Dropout
         # "use_dropout": USE_DROPOUT,
         # "input_dropout_rate": INPUT_DROPOUT_RATES,
