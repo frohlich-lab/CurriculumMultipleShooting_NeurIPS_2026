@@ -79,7 +79,7 @@ def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple, u0) ->
     }
     if conf.normalise_data:
         # Normalise initial condition u0 as well
-        train_data, validation_data, u0, data_rescaling = normalise(train_data, validation_data, provide_u0=True, u0=u0)
+        train_data, validation_data, u0, data_rescaling = normalise(train_data, validation_data, return_u0=True, u0=u0)
     else:
         data_rescaling = 1
     if conf.normalise_timepoints:
