@@ -9,7 +9,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import optax
 import pandas as pd
-import pysindy as ps
 import seaborn as sns
 import wandb
 from diffrax import SaveAt
@@ -539,97 +538,6 @@ def transform_dynamic_params(dynamic_parameters: jnp.ndarray, conf: Conf) -> jnp
         return dynamic_parameters
     else:
         raise ValueError(f"Unknown dynamic parameter scale: {conf.dynamic_params_scale}!")
-
-
-def get_ude_trajectory(
-        model: UDEProblem,
-        u0,
-        t_save,
-        t_span,
-        mlp_only: bool = False,
-        return_full_solution: bool = False
-):
-    solver = diffrax.Tsit5()
-
-    if len(u0) == model.func.state_dimension and model.func.regularise_network:
-        u0 = jnp.concatenate([u0, jnp.zeros(1)])
-
-    if mlp_only:
-        # Zero out dynamical parameters -- only use MLP contribution to determine dynamics
-        model = model.replace_dynamic_parameters(
-            new_dynamic_parameters=jnp.zeros(len(model.func.dynamic_parameters))
-        )
-        # Set dynamic parameter scale to linear
-        model = model.replace_options(
-            new_options={"dynamic_params_scale": "linear"}
-        )
-
-    # Compute solution using single-shooting
-    solution = model.solve_single_shooting_validation(
-        solver,
-        u0,
-        t_save,
-        t_span,
-    )
-
-    return solution if return_full_solution else solution.ys[:, :model.func.state_dimension]
-
-
-def get_ude_trajectory_and_derivatives(model: UDEProblem, u0, t_save, t_span, mlp_only: bool = False):
-    # Save dense solution
-    t_save = diffrax.SaveAt(ts=t_save.subs.ts, dense=True)
-    trajectory_solution = get_ude_trajectory(model, u0, t_save, t_span, mlp_only, return_full_solution=True)
-    # Evaluate the vector field to get true derivatives
-    vector_field = model.func
-    derivatives = np.array(
-        [
-            vector_field(t, trajectory_solution.evaluate(t), args=u0)
-            for t in t_save.subs.ts
-        ]
-    )
-    return dict(
-        traj=trajectory_solution.ys[:, :model.func.state_dimension],
-        der=derivatives[:, :model.func.state_dimension]
-    )
-
-
-def get_sindy_formula(
-        model: UDEProblem,
-        u0: jnp.ndarray,
-        t_save: diffrax.SaveAt,
-        t_span: List[float],
-        settings: List[str],
-        use_derivatives: bool
-):
-    # Get trajectories + true derivatives (vector field)
-    traj_der = {
-        tag: get_ude_trajectory_and_derivatives(
-            model, u0, t_save, t_span, mlp_only=zero_mlp
-        )
-        for tag, zero_mlp in zip(["MLP", "UDE"], [True, False])
-    }
-    ps_models = {}
-    for setting in settings:  # missing physics & full model (known + missing)
-        ps_models[setting] = ps.SINDy(
-            feature_names=[f"x{i + 1}" for i in range(model.func.state_dimension)]
-        )
-        if not use_derivatives:
-            ps_models[setting].fit(
-                x=traj_der[setting]["traj"],
-                t=np.array(t_save.subs.ts)
-            )  # numerically estimate derivatives
-        else:
-            ps_models[setting].fit(
-                x=traj_der[setting]["traj"],
-                t=np.array(t_save.subs.ts),
-                x_dot=traj_der[setting]["der"],  # use derivatives from vector field evaluations
-            )
-        # Print found symbolic regression model
-        ps_models[setting].print()
-        print(
-            f"Number of non-zero coefficients in SINDy model of {setting}: "
-            f"{(np.abs(ps_models[setting].coefficients()) > 0).sum()}"
-        )
 
 
 def generate_epochs_dict(epochs_list):

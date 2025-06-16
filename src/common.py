@@ -16,7 +16,6 @@ unwanted_fields = [
     "use_skip_connections",  # might need
     "use_dropout", "input_dropout_rate", "hidden_dropout_rate",  # might need
     "dynamic_params_lb", "dynamic_params_ub",
-    "get_sindy_formula", "sindy_use_derivatives",
     "freeze_mechanistic_params_adam", "freeze_mechanistic_params_optx",  # might need
     "freeze_nn_adam", "freeze_nn_optx",  # might need
     "save_plots",
@@ -76,10 +75,8 @@ class Conf(dict):
     dynamic_params_ub: float = 1e3  # default upper bound
     # UDE Augmentation
     node_augmentation: int = 0
-    # Additional computations: Hessian, SINDy
+    # Hessian metrics
     compute_hessian_metrics: bool = False
-    get_sindy_formula: bool = False
-    sindy_use_derivatives: bool = False
     # Mechanistic fit optimisation
     second_opt: str = "optx"  # alternative: "fides"
     num_epochs_bfgs : int = 0  # number of epochs for second optimiser (BFGS, fides/optimistix)

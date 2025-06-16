@@ -17,7 +17,7 @@ from src.model_training.training_setup import (
     setup_mlp,
     setup_time_masks_u0_curriculum
 )
-from src.model_training.training_util import sample_dynamical_params, get_sindy_formula
+from src.model_training.training_util import sample_dynamical_params
 from src.ude_problem import UDEProblem
 from training import train
 
@@ -133,19 +133,3 @@ best_model = train(
     plot_args=plot_args,
     rescaling_args=rescaling_args,
 )
-
-# ================================================================
-#                  GET SYMBOLIC EXPRESSION (SINDy)
-# ================================================================
-# SINDy on final model (if enabled)
-if conf.get_sindy_formula:
-    # Final model -> evaluate on validation dataset
-    # TODO @GiacomoFabrini - do we want train or val?
-    get_sindy_formula(
-        model=best_model,
-        u0=val_args["u0"],
-        t_save=val_args["t_save"],
-        t_span=val_args["t_span"],
-        settings=["MLP", "UDE"],
-        use_derivatives=conf.sindy_use_derivatives,
-    )
