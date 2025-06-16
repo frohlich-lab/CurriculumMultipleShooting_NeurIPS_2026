@@ -1,12 +1,21 @@
 import jax.numpy as jnp
 import jax.random as jr
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 import numpy as np
 
 from diffrax import SaveAt
 from functools import partial
 from jaxtyping import Array
-from src.common import activation_functions, Conf, default_out_sizes, normalise, state_dims, TrainValArgs, u0s
+from src.common import (
+    activation_functions,
+    Conf,
+    default_out_sizes,
+    normalise,
+    plots_dir,
+    state_dims,
+    TrainValArgs,
+    u0s
+)
 from src.model_examples.lotka_volterra import setup_diffrax_model as setup_lv
 from src.model_examples.sir import setup_diffrax_model as setup_sir
 from src.model_training.model_util import set_weight_bias
@@ -168,7 +177,8 @@ def generate_ms_time_and_mask(
         num_windows: int,
         shooting_window_length: int,
         training_horizon: int,
-        t_save: SaveAt
+        t_save: SaveAt,
+        make_plots: bool = False
 ) -> Tuple[Array, Array]:
     # Compute auxiliary MS variables
     t_windows, masks = [], []
@@ -194,12 +204,12 @@ def generate_ms_time_and_mask(
     t_save_windows = jnp.array(t_windows)
     masks = jnp.array(masks)
 
-    # import matplotlib.pyplot as plt
-    # for arr, label in zip([t_save_windows, masks], ["time", "mask"]):
-    #     plt.imshow(arr, vmin=0, vmax=1)
-    #     ax = plt.gca()
-    #     ax.yaxis.set_visible(False)  # Hide y-axis labels and ticks
-    #     plt.savefig(f"multiple.{shooting_window_length}.noCL.{label}.pdf")
+    if make_plots:
+        for arr, label in zip([t_save_windows, masks], ["time", "mask"]):
+            plt.imshow(arr, vmin=0, vmax=1)
+            ax = plt.gca()
+            ax.yaxis.set_visible(False)  # Hide y-axis labels and ticks
+            plt.savefig(plots_dir / f"multiple.{shooting_window_length}.noCL.{label}.pdf")
     return t_save_windows, masks
 
 
@@ -212,6 +222,7 @@ def setup_curriculum_learning(
         curriculum_learning: bool,
         num_curriculum_steps: int,
         max_curriculum_epochs: Optional[int],
+        make_plots: bool = False
 ):
     if not curriculum_learning:
         return None
@@ -304,30 +315,32 @@ def setup_curriculum_learning(
                     "last_valid_index": num_windows - (step-1)
                 }
 
-
-        # for attribute in ["time", "mask", "mask_overlap"]:
-        #     plt.subplots(len(stage_dict.keys()), 1, figsize=(10, 3*len(stage_dict.keys())))
-        #     for stage in sorted(stage_dict.keys()):
-        #         plt.subplot(len(stage_dict.keys()), 1, stage)
-        #         if attribute in ["time", "mask"]:
-        #             if len(jnp.array(stage_dict[stage][attribute]).shape) == 1:
-        #                 arr = jnp.expand_dims(jnp.array(stage_dict[stage][attribute]), axis=0)
-        #             else:
-        #                 arr = jnp.array(stage_dict[stage][attribute])
-        #         else:
-        #             if len(jnp.array(stage_dict[stage]["mask"]).shape) == 1:
-        #                 arr = jnp.expand_dims(
-        #                     jnp.array(stage_dict[stage]["mask"])[:-1] & jnp.array(stage_dict[stage]["mask"])[1:],
-        #                     axis=0
-        #                 )
-        #             else:
-        #                 arr = jnp.array(stage_dict[stage]["mask"])[:-1] & jnp.array(stage_dict[stage]["mask"])[1:]
-        #         plt.imshow(arr, vmin=0, vmax=1, aspect="auto")
-        #         ax = plt.gca()
-        #         ax.yaxis.set_visible(False)  # Hide y-axis labels and ticks
-        #         plt.title(f"CL Stage {stage}")
-        #     plt.tight_layout()
-        #     plt.savefig(f"{shooting_mode}.{shooting_window_length}.{curriculum_learning}.{attribute}.pdf")
+        if make_plots:
+            for attribute in ["time", "mask", "mask_overlap"]:
+                plt.subplots(len(stage_dict.keys()), 1, figsize=(10, 3*len(stage_dict.keys())))
+                for stage in sorted(stage_dict.keys()):
+                    plt.subplot(len(stage_dict.keys()), 1, stage)
+                    if attribute in ["time", "mask"]:
+                        if len(jnp.array(stage_dict[stage][attribute]).shape) == 1:
+                            arr = jnp.expand_dims(jnp.array(stage_dict[stage][attribute]), axis=0)
+                        else:
+                            arr = jnp.array(stage_dict[stage][attribute])
+                    else:
+                        if len(jnp.array(stage_dict[stage]["mask"]).shape) == 1:
+                            arr = jnp.expand_dims(
+                                jnp.array(stage_dict[stage]["mask"])[:-1] & jnp.array(stage_dict[stage]["mask"])[1:],
+                                axis=0
+                            )
+                        else:
+                            arr = jnp.array(stage_dict[stage]["mask"])[:-1] & jnp.array(stage_dict[stage]["mask"])[1:]
+                    plt.imshow(arr, vmin=0, vmax=1, aspect="auto")
+                    ax = plt.gca()
+                    ax.yaxis.set_visible(False)  # Hide y-axis labels and ticks
+                    plt.title(f"CL Stage {stage}")
+                plt.tight_layout()
+                plt.savefig(
+                    plots_dir / f"{shooting_mode}.{shooting_window_length}.{curriculum_learning}.{attribute}.pdf"
+                )
         return stage_dict
 
 
