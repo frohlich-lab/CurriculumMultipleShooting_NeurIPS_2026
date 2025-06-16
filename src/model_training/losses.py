@@ -162,16 +162,6 @@ def compute_val_loss_optx(prob_params, args):
     return loss, None
 
 
-# HESSIAN -- UNUSED
-# @eqx.filter_jit
-# @jax.hessian
-# def compute_hess(prob_params, prob_static, u0, t_save, t_span, data, adjoint):
-#     prob = eqx.combine(prob_params, prob_static)
-#     u_pred = prob.solve(diffrax.Tsit5(), u0, t_save, t_span,
-#                         adjoint=adjoint)
-#     return jnp.mean((u_pred.ys[:, :prob.func.state_dimension] - data) ** 2)
-
-
 @eqx.filter_jit
 @jax.hessian
 def compute_hess_array(
