@@ -42,10 +42,7 @@ from src.model_training.training_util import (
 )
 from src.model_training.optimistix_training import train_optimistix
 from src.model_training.fides_training import train_fides
-from src.model_training.hessian import (
-    get_hessian,
-    apply_hessian_preconditioning_to_grads
-)
+from src.model_training.hessian import get_hessian
 from src.ude_problem import UDEProblem
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -208,12 +205,7 @@ def make_step(
         metric: jnp.nan
         for metric in hessian_metrics_wandb.keys()
     }
-    if conf.hessian_precondition:
-        args = (t_save_windows, masks, input_data)
-        grads, updated_hessian_metrics = apply_hessian_preconditioning_to_grads(
-            grads, params, static, args, conf, base_loss_fn
-        )
-    elif compute_hessian_metrics:
+    if compute_hessian_metrics:
         args = (t_save_windows, masks, input_data, last_valid_index)
         hessian_metrics = get_hessian_metrics(
             get_hessian(params, static, args, conf, base_loss_fn),

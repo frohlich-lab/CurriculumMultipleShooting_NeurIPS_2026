@@ -77,7 +77,6 @@ class Conf(dict):
     # UDE Augmentation
     node_augmentation: int = 0
     # Additional computations: Hessian, SINDy
-    hessian_precondition: bool = False
     compute_hessian_metrics: bool = False
     get_sindy_formula: bool = False
     sindy_use_derivatives: bool = False

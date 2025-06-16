@@ -18,7 +18,7 @@ from src.model_training.training_configuration import (
     CURRICULUM_LEARNING, NUM_CURRICULUM_STEPS, MAX_CURRICULUM_EPOCHS, RESTART_OPT_CURRICULUM,
     DYNAMIC_PARAMS_SCALES, MULTISTART_DEVIATIONS, DYNAMIC_PARAMS_PERTURB_METHODS,
     NODE_AUGMENTATIONS,
-    HESSIAN_PRECONDITION, COMPUTE_HESSIAN_METRICS,
+    COMPUTE_HESSIAN_METRICS,
     SECOND_OPTS,
     # FREEZE_MECHANISTIC_PARAMS_ADAM, FREEZE_MECHANISTIC_PARAMS_OPTX, FREEZE_NN_ADAM, FREEZE_NN_OPTX,
     TRAINING_SETTINGS, MLPEXP_TARGETS,
@@ -79,7 +79,6 @@ def generate_param_combinations(n_starts: int) -> List[Dict]:
         # Node augmentation
         "node_augmentation": NODE_AUGMENTATIONS,
         # Hessian
-        "hessian_precondition": HESSIAN_PRECONDITION,
         "compute_hessian_metrics": COMPUTE_HESSIAN_METRICS,
         # Second optimiser
         "second_opt": SECOND_OPTS,
@@ -162,7 +161,6 @@ def generate_param_combinations(n_starts: int) -> List[Dict]:
             params["second_opt"] = "None"
             params_set_to_false = [
                 "curriculum_learning",
-                "hessian_precondition",
                 "freeze_mechanistic_params_adam", "freeze_mechanistic_params_optx",
                 "freeze_nn_adam", "freeze_nn_optx",
             ]
