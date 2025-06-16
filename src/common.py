@@ -121,8 +121,6 @@ class TrainValArgs(dict):
     t_span: List
 
 
-# Flatten a tree to an array to allow gradient and Hessian functions to
-# produce Array output
 def flatten(v: PyTree):
     """
     Flatten a pytree to an array. This allows for vector gradient
