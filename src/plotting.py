@@ -1,12 +1,14 @@
+import itertools as itt
 import jax.numpy as jnp
 import pandas as pd
 import plotnine as p9
 
 from diffrax import SaveAt
+from pathlib import Path
 from src.model_examples.lotka_volterra.setup_diffrax_model import get_result_plot as get_result_plot_lv
 from src.model_examples.sir.setup_diffrax_model import get_result_plot as get_result_plot_sir
 from src.ude_problem import UDEProblem
-from typing import List
+from typing import List, Optional
 
 get_result_plot_funcs = {
     'lotka_volterra': get_result_plot_lv,
@@ -61,3 +63,158 @@ def save_plot_results(
         return p
     else:
         p.save(f"{dataset}_{plot_name}.{plot_fmt}")
+        return None
+
+
+def tiled_plot_plotnine(
+    df: pd.DataFrame,
+    row_col: str,
+    col_col: str,
+    kind: str,
+    x_col: str,
+    y_col: str,
+    hue_col: str,
+    fig_dir: Path,
+    plot_name: str,
+    save_plots: bool = True,
+    ref_line_y: Optional[float] = None,
+    y_limits: Optional[tuple] = None,
+    x_limits: Optional[tuple] = None,
+    xscale: Optional[str] = None,
+    yscale: Optional[str] = None,
+    style_col: Optional[str] = None,
+    plot_fmt: Optional[str] = "png",
+):
+    for optimiser, activation_fn_name, max_lrate, shooting_mode in itt.product(
+        sorted(df.optimiser.unique()),
+        sorted(df.activation_fn_name.unique()),
+        sorted(df.max_lrate.unique()),
+        sorted(df.shooting_mode.unique())
+    ):
+        data = df[
+            (df.optimiser == optimiser) &
+            (df.activation_fn_name == activation_fn_name) &
+            (df.max_lrate == max_lrate) &
+            (df.shooting_mode == shooting_mode)
+        ].copy()
+
+        # Preprocessing
+        if kind == "line":
+            for col in [x_col, y_col]:
+                # Convert to numeric if not already
+                data[col] = pd.to_numeric(data[col], errors='coerce')
+        else:
+            # For bar/box plots, x_col needs to be str/categorical
+            data[x_col] = data[x_col].astype(str)
+
+        required_cols = [x_col, y_col, hue_col, row_col, col_col]
+        if style_col is not None:
+            required_cols.append(style_col)
+        data = data.dropna(subset=required_cols)
+
+        # Convert hue_col and style_col to string
+        data[hue_col] = data[hue_col].astype(str)
+        if style_col is not None:
+            data[style_col] = data[style_col].astype(str)
+
+        # Define base aesthetics
+        aes_kwargs = {
+            'x': x_col,
+            'color': hue_col
+        }
+
+        if kind == "line":
+            # Grouping keys
+            group_cols = [row_col, col_col, x_col, hue_col]
+            if style_col:
+                group_cols.append(style_col)
+
+            # Perform aggregation: mean (line), min, max (shaded region, i.e. ribbon)
+            summary = (
+                data.groupby(group_cols)
+                    .agg(mean_y=(y_col, 'mean'), min_y=(y_col, 'min'), max_y=(y_col, 'max'))
+                    .reset_index()
+            )
+
+            # Construct group label/ID
+            if style_col:
+                summary['group_label'] = summary[hue_col] + "_" + summary[style_col]
+            else:
+                summary['group_label'] = summary[hue_col]
+
+            # Expand base aesthetics
+            aes_kwargs["y"] = 'mean_y'
+            aes_kwargs["group"] = 'group_label'
+            if style_col:
+                aes_kwargs['linetype'] = style_col
+
+            aes_base = p9.aes(**aes_kwargs)
+
+            p = (
+                p9.ggplot(summary, aes_base)
+                + p9.geom_ribbon(
+                    p9.aes(ymin='min_y', ymax='max_y', fill=hue_col),
+                    alpha=0.1,
+                    colour="None"
+                )
+                + p9.geom_line()
+                + p9.facet_grid(f'{row_col} ~ {col_col}')
+                + p9.labs(
+                    title=f"Shooting Mode: {shooting_mode}",
+                    x=x_col,
+                    y=f"Mean {y_col}, min-max range",
+                    color=hue_col,
+                    fill=hue_col,
+                    linetype=style_col if style_col else None
+                )
+                + p9.theme(figure_size=(12, 8))
+            )
+            if ref_line_y is not None:
+                p += p9.geom_hline(yintercept=ref_line_y, linetype='dashed', color='black')
+
+        else:
+            # Expand base aesthetics using raw data (y_col) for bar/box plots
+            aes_kwargs["y"] = y_col
+            if kind == "bar":
+                aes_kwargs["fill"] = hue_col
+            aes_mapping = p9.aes(**aes_kwargs)
+
+            if kind == "box":
+                geom_obj = p9.geom_boxplot()
+            elif kind == "bar":
+                geom_obj = p9.geom_bar(stat='identity', position='dodge')
+            else:
+                raise ValueError(f"Invalid plot kind: {kind}. Use 'box', 'bar', or 'line'.")
+
+            p = (
+                p9.ggplot(data, aes_mapping)
+                + geom_obj
+                + p9.facet_grid(f'{row_col} ~ {col_col}')
+                + p9.labs(
+                    title=f"Shooting Mode: {shooting_mode}",
+                    x=x_col,
+                    y=y_col,
+                    color=hue_col,
+                )
+                + p9.theme(figure_size=(12, 8))
+            )
+            if (kind == "box") and (ref_line_y is not None):
+                p += p9.geom_hline(yintercept=ref_line_y, linetype='dashed', color='black')
+
+        # Apply axis scalign and coordinate zooming if specified
+        if yscale == "log":
+            p += p9.scale_y_log10()
+        if y_limits is not None:
+            p += p9.coord_cartesian(ylim=y_limits)
+
+        if xscale == "log":
+            p += p9.scale_x_log10()
+        if x_limits is not None:
+            p += p9.coord_cartesian(xlim=x_limits)
+
+        # Save or show
+        if save_plots:
+            path = fig_dir / f"{plot_name}__{optimiser}__{activation_fn_name}__{max_lrate}__{shooting_mode}.{plot_fmt}"
+            p.save(str(path), dpi=300, verbose=False)
+        else:
+            p.show()
