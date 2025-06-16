@@ -7,6 +7,7 @@ import wandb
 
 from src.common import Conf, dynamic_param_labels
 from diffrax import SaveAt
+from jaxlib.xla_extension import XlaRuntimeError
 from jaxtyping import Array, PyTree
 from src.model_training.training_util import transform_dynamic_params, prep_bfgs_training
 from src.ude_problem import UDEProblem
@@ -67,19 +68,26 @@ def train_optimistix(
     aux_struct = None
 
     # Optimistix solve
-    sol, results_df, loss_train, loss_val = optx_solve(
-        y=params, solver=solver,
-        fn_train=loss_optx, fn_val=val_loss_optx, args=args, args_val=args_val,
-        f_struct=f_struct, aux_struct=aux_struct,
-        options=options, tags=tags,
-        max_steps=num_epochs,
-        starting_epoch=epoch,
-        conf=conf,
-        frozen_mechanistic=frozen_mechanistic,
-        frozen_nn=frozen_nn,
-        wandb_log=wandb_log,
-        wandb_log_final=wandb_log_final,
-    )
+    try:
+        sol, results_df, loss_train, loss_val = optx_solve(
+            y=params, solver=solver,
+            fn_train=loss_optx, fn_val=val_loss_optx, args=args, args_val=args_val,
+            f_struct=f_struct, aux_struct=aux_struct,
+            options=options, tags=tags,
+            max_steps=num_epochs,
+            starting_epoch=epoch,
+            conf=conf,
+            frozen_mechanistic=frozen_mechanistic,
+            frozen_nn=frozen_nn,
+            wandb_log=wandb_log,
+            wandb_log_final=wandb_log_final,
+        )
+    except XlaRuntimeError as e:
+        print(f"Optimistix ran into error: {e}")
+        # If there is an error, we return the current model and stats
+        sol = SimpleNamespace(value=params, stats={"num_steps": 0, "termination_reason": "error"})
+        results_df = None
+        loss_train, loss_val = jnp.inf, jnp.inf
 
     # Get final model
     model = eqx.combine(sol.value, static)
