@@ -31,7 +31,6 @@ from src.model_training.training_util import (
     get_opt_opt_state_params,
     get_scheduler,
     initialise_wandb,
-    # log_model_stats,
     log_plots,
     make_grads_finite,
     max_grad_norm,

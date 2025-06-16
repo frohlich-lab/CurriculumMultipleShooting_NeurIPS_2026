@@ -8,7 +8,7 @@ import wandb
 from src.common import Conf, dynamic_param_labels
 from diffrax import SaveAt
 from jaxtyping import Array, PyTree
-from src.model_training.training_util import log_model_stats, transform_dynamic_params, prep_bfgs_training
+from src.model_training.training_util import transform_dynamic_params, prep_bfgs_training
 from src.ude_problem import UDEProblem
 from types import SimpleNamespace
 from typing import Callable, List, Optional, Union
@@ -156,17 +156,6 @@ def optx_solve(
                     }]
                 )
             )
-            # Only log model stats if training loss is finite (can compute derivatives)
-            if jnp.isfinite(loss_train):
-                wandb.log(
-                    log_model_stats(
-                        eqx.combine(y, args[0]),  # recombine updated params and static
-                        state.f_info.grad,
-                        conf,
-                        frozen_mechanistic, frozen_nn,
-                    ),
-                    step=starting_epoch+iteration
-                )
         iteration += 1
         done, result = terminate(y=y, state=state)
     if result != optx.RESULTS.successful:
