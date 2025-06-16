@@ -20,8 +20,6 @@ def get_hessian(
 ):
     # define hessian functions for different dynamical models
     hessian_fn = partial(compute_hess_array, loss_fn=base_loss_fn)
-    # if conf.shooting_mode != "window_batch" \
-    # else partial(compute_batch_hess_array, loss_fn=base_loss_fn)
     # unpack args
     t_save, t_span, input_data, last_valid_index = args
     # flatten params PyTree and get unflatten function

@@ -62,7 +62,6 @@ class Conf(dict):
     shooting_window_length: int = 10
     shooting_iv_init: Optional[str] = "z"  # z: zeros, g: guess, ru: random uniform
     multiple_shooting_penalty: float = 0.0
-    # batch_size: int = 64  # batch size for window-batching -- DISABLED
     # Curriculum Learning (growing fits)
     curriculum_learning: bool = False
     num_curriculum_steps: int = 5

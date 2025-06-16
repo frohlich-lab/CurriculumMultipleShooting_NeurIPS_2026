@@ -69,7 +69,7 @@ def compute_loss(
             reg_exp=mlp_reg_exp,
             reg_strength=mlp_reg_strength
         )
-        if shooting_mode == "single":  # "window_batch" calls vmapped single-shooting
+        if shooting_mode == "single":
             mlp_output_reg = regularise_mlp_contribution(
                 l2_norm_nn_contrib=sol.ys[:, -1],
                 timespan_length=t_save_windows[0][-1]-t_save_windows[0][0],
@@ -198,95 +198,3 @@ def compute_hess_array(
         max_steps=max_steps
     )
     return loss
-
-
-# TODO window_batch still needed? Refactor into new implementation?
-# @eqx.filter_jit
-# def compute_batch_loss(
-#         prob_params, prob_static,
-#         u0, t_save_windows, masks, data,
-#         last_valid_index,
-#         mlp_reg_exp, mlp_reg_strength, output_reg,
-#         loss_fn, max_steps, **kwargs
-# ):
-#     losses, mlp_output_regs = jax.vmap(compute_loss, in_axes=(
-#         None, None,
-#         0, 0, 0, 0,
-#         None,
-#         None, None, None, None, None,
-#         None, None
-#     ))(
-#         prob_params, prob_static,
-#         u0, t_save_windows, masks, data,
-#         last_valid_index,  # not used for batch -> goes into single-shooting
-#         mlp_reg_exp, mlp_reg_strength, output_reg, 0, "single",
-#         loss_fn, max_steps,
-#     )
-#     mean_loss = jnp.mean(losses)
-#     if eqx.combine(prob_params, prob_static).func.regularise_network:
-#         mean_mlp_output_reg = jnp.mean(mlp_output_regs)
-#         return mean_loss, mean_mlp_output_reg
-#     return mean_loss, None
-#
-#
-# # LOSS AND GRAD
-# def compute_batch_loss_grad(
-#         prob_params, prob_static,
-#         u0, t_save_windows, masks, data,
-#         last_valid_index,
-#         mlp_reg_exp, mlp_reg_strength, output_reg, multiple_shooting_penalty, shooting_mode,
-#         loss_fn, max_steps
-# ):
-#     return eqx.filter_value_and_grad(compute_batch_loss, has_aux=True)(
-#         prob_params, prob_static,
-#         u0, t_save_windows, masks, data,
-#         last_valid_index,
-#         mlp_reg_exp, mlp_reg_strength, output_reg,
-#         multiple_shooting_penalty=multiple_shooting_penalty,
-#         shooting_mode=shooting_mode,
-#         loss_fn=loss_fn, max_steps=max_steps
-#     )
-#
-# # BATCH LOSS OPTIMISTIX/FIDES
-# def compute_batch_loss_optx(prob_params, args):
-#     (prob_static, u0, t_save_windows, masks, data, last_valid_index,
-#      mlp_reg_exp, mlp_reg_strength, output_reg,
-#      multiple_shooting_penalty, shooting_mode, loss_fn, max_steps) = args
-#     loss, _ = compute_batch_loss(
-#         prob_params, prob_static,
-#         u0, t_save_windows, masks,
-#         data, last_valid_index,
-#         mlp_reg_exp, mlp_reg_strength, output_reg,
-#         multiple_shooting_penalty=multiple_shooting_penalty,
-#         shooting_mode=shooting_mode,
-#         loss_fn=loss_fn, max_steps=max_steps
-#     )
-#     return loss, None
-#
-#
-# @eqx.filter_jit
-# @jax.hessian
-# def compute_batch_hess_array(
-#         flat_p, unflatten_p,
-#         prob_static,
-#         u0, t_save_windows, masks, data,
-#         last_valid_index,
-#         mlp_reg_exp, mlp_reg_strength, output_reg,
-#         multiple_shooting_penalty, shooting_mode,
-#         loss_fn: Callable,
-#         adjoint=diffrax.DirectAdjoint(),
-#         max_steps: int = 4096
-# ):
-#     prob_params = unflatten_p(flat_p)
-#     loss, _ = compute_batch_loss(
-#         prob_params, prob_static,
-#         u0, t_save_windows, masks, data,
-#         last_valid_index,
-#         mlp_reg_exp, mlp_reg_strength, output_reg,
-#         multiple_shooting_penalty=multiple_shooting_penalty,
-#         shooting_mode=shooting_mode,
-#         loss_fn=loss_fn,
-#         adjoint=adjoint,
-#         max_steps=max_steps
-#     )
-#     return loss
