@@ -58,9 +58,17 @@ HIDDEN_DROPOUT_RATES = {
     0.5,
 }
 
+TRAINING_SCHEMES = {
+    "bfgs",  # pure BFGS
+    "single",
+    "single+bfgs",
+    "single+CL",
+    "multiple",
+    "multiple+CL",
+}
+
 # Optimiser
 OPTIMISERS = {
-    "None",  # no NN optimiser, pure BFGS
     "adam",
     # "adamw",
 }
@@ -138,9 +146,9 @@ OUTPUT_REG = {
     0,
     # changed with 1e-6 premultiplier given issues with snakemake small wildcards
     # 1e0, # corresponds to 1e-6
-    1e1,  # corresponds to 1e-5
-    1e2,  # corresponds to 1e-4
-    1e3,  # corresponds to 1e-3
+    # 1e1,  # corresponds to 1e-5
+    # 1e2,  # corresponds to 1e-4
+    # 1e3,  # corresponds to 1e-3
     # 1e-2,
     # 1e-1,
     # 1e0,
@@ -152,17 +160,11 @@ OUTPUT_REG = {
     # 1e6,
 }
 
-
-# Shooting modes
-SHOOTING_MODES = {
-    "single",
-    "multiple",
-}
-
+# Shooting parameters (shooting mode is decided by TRAINING_SCHEMES)
 SHOOTING_WINDOW_LENGTHS = {
-    6,  # 13 windows
-    # 7,
-    8,  # 9 windows
+    # 6,  # 13 windows
+    # # 7,
+    # 8,  # 9 windows
     # 10,
     14,  # 5 windows
 }
@@ -175,8 +177,8 @@ SHOOTING_IV_INITS = {
 
 MULTIPLE_SHOOTING_PENALTIES = {
     0.0,
-    1e-1,
-    1e-2,
+    # 1e-1,
+    # 1e-2,
     # 1e-3,
 }
 
@@ -185,12 +187,7 @@ MULTIPLE_SHOOTING_PENALTIES = {
 #     64,
 # }
 
-# Curriculum learning
-CURRICULUM_LEARNING = {
-    True,
-    False,
-}
-
+# Curriculum learning (decided by TRAINING_SCHEMES)
 NUM_CURRICULUM_STEPS = {
     9  # matches number of stages from mid-point of shooting window range
 }
@@ -283,9 +280,9 @@ NORMALISE_TIMEPOINTS = {
     # False,
 }
 
-N_STARTS = 100  # number of multi-starts
+N_STARTS = 3  # number of multi-starts
 
-N_EPOCHS_ADAM = [4000]  # default from UDE paper: 2000 / SIR: 40000-100000
-N_EPOCHS_BFGS = [10000]
+N_EPOCHS_ADAM = 4000  # default from UDE paper: 2000 / SIR: 40000-100000
+N_EPOCHS_BFGS = 10000
 
-EXPERIMENT_NAME = "nemo_bv1"
+EXPERIMENT_NAME = "local_ts"

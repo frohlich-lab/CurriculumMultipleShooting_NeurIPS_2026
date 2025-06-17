@@ -3,6 +3,7 @@ import numpy as np
 
 from src.common import dynamic_param_labels, plots_dir, true_dynamic_parameters
 from src.model_training.training_configuration import DYNAMICAL_MODEL, EXPERIMENT_NAME, N_EPOCHS_ADAM, N_STARTS
+from src.plotting import tiled_plot_plotnine
 from src.aggregation_utils import *
 
 
@@ -11,6 +12,7 @@ hyperparam_groups = [
     "init_scale",
     "use_bias", "use_final_bias",
     "activation_fn_name",
+    "training_scheme",
     "optimiser", "max_lrate", "lrate_span", "lrate_decay", "warmup_fct", "opt_steps", "opt_mult", "opt_sched_type",
     "restart_opt_curriculum",
     "mlp_reg_exp", "mlp_reg_strength", "output_reg",
@@ -66,6 +68,11 @@ for dynamical_model in DYNAMICAL_MODEL:
         # Add dynamical model specific parameters/metrics
         metrics_model = metrics + dynamic_param_labels[dynamical_model]
 
+        # Ensure missing values are represented as the string "None"
+        for col in ["optimiser", "second_opt", "mlpexp_target"]:
+            if col in results_df.columns:
+                results_df[col] = results_df[col].fillna("None").astype(str)
+
         # Instantiate the model-specific plotting subdirectory
         fig_subdir = fig_dir / dynamical_model
         fig_subdir.mkdir(exist_ok=True, parents=True)
@@ -103,7 +110,7 @@ for dynamical_model in DYNAMICAL_MODEL:
                 kind="box",
                 x_col="multistart_deviation",
                 y_col=metric,
-                hue_col="curriculum_learning",
+                hue_col="training_scheme",
                 fig_dir=fig_subdir,
                 plot_name=f"final_{metric}_boxplot",
                 y_limits=(-5, 10) if metric in ["loss_train", "loss_val"] else None,  # with plotnine, y_limits for log-scaled axes must be specified in log-space
@@ -128,7 +135,7 @@ for dynamical_model in DYNAMICAL_MODEL:
                 kind="box",
                 x_col="multistart_deviation",
                 y_col=log_metric,
-                hue_col="curriculum_learning",
+                hue_col="training_scheme",
                 fig_dir=fig_subdir,
                 plot_name=f"final_{log_metric}_boxplot",
                 # y_limits=(-5, 10),  # with plotnine, y_limits for log-scaled axes must be specified in log-space
@@ -154,7 +161,7 @@ for dynamical_model in DYNAMICAL_MODEL:
                 kind='line',
                 x_col='epoch',
                 y_col=model_metric,
-                hue_col='curriculum_learning',
+                hue_col='training_scheme',
                 style_col='multistart_deviation',
                 yscale='log',
                 xscale='log',
@@ -173,7 +180,7 @@ for dynamical_model in DYNAMICAL_MODEL:
                 kind='line',
                 x_col='epoch',
                 y_col=log_metric,
-                hue_col='curriculum_learning',
+                hue_col='training_scheme',
                 style_col='multistart_deviation',
                 yscale='log',
                 xscale='log',
@@ -191,7 +198,7 @@ for dynamical_model in DYNAMICAL_MODEL:
             kind="bar",
             x_col="multistart_deviation",
             y_col="fraction_below_0.02",
-            hue_col="curriculum_learning",
+            hue_col="training_scheme",
             fig_dir=fig_subdir,
             plot_name="fraction_below_0.02",
             y_limits=(0, 1)
@@ -229,7 +236,7 @@ for dynamical_model in DYNAMICAL_MODEL:
                 kind="bar",
                 x_col="multistart_deviation",
                 y_col=y_col,
-                hue_col="curriculum_learning",
+                hue_col="training_scheme",
                 fig_dir=fig_subdir,
                 plot_name=y_col,
                 y_limits=(-1, 1)
@@ -252,7 +259,7 @@ for dynamical_model in DYNAMICAL_MODEL:
                 kind="bar",
                 x_col="multistart_deviation",
                 y_col="fraction_within_tolerance",
-                hue_col="curriculum_learning",
+                hue_col="training_scheme",
                 fig_dir=fig_subdir,
                 plot_name=f"fraction_within_tolerance{tolerance}",
             )

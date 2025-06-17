@@ -3,7 +3,7 @@ import itertools as itt
 from src.generate_run_configs import generate_param_combinations
 from src.common import TRAINING_RESULTS, AGGREGATION_PLOTS, PLOT_TYPES
 from src.model_training.training_configuration import (
-    DYNAMICAL_MODEL, N_STARTS, EXPERIMENT_NAME, MLP_ACTIVATIONS, MAX_LEARNING_RATES, SHOOTING_MODES,
+    DYNAMICAL_MODEL, N_STARTS, EXPERIMENT_NAME, MLP_ACTIVATIONS, MAX_LEARNING_RATES,
 )
 
 # Container if needed
@@ -25,7 +25,6 @@ rule train_udes:
         use_final_bias = "True|False",
         activation_fn_name = "[a-z]+",
         optimiser = "[a-z]+|None",
-        num_epochs_adam = "[0-9]+",
         max_lrate = "[0-9.]+",
         lrate_span = "[0-9.]+",
         lrate_decay = "[0-9.]+",
@@ -51,7 +50,6 @@ rule train_udes:
         node_augmentation = "[0-9]+",
         compute_hessian_metrics = "True|False",
         second_opt = "fides|optx|None",
-        num_epochs_bfgs= "[0-9]+",
         normalise_data = "True|False",
         normalise_timepoints = "True|False",
         training_setting = "UDE|MLP",
@@ -75,7 +73,6 @@ rule train_udes:
                 "use_final_bias",
                 "activation_fn_name",
                 "optimiser",
-                "num_epochs_adam",
                 "max_lrate",
                 "lrate_span",
                 "lrate_decay",
@@ -101,7 +98,6 @@ rule train_udes:
                 "node_augmentation",
                 "compute_hessian_metrics",
                 "second_opt",
-                "num_epochs_bfgs",
                 "normalise_data",
                 "normalise_timepoints",
                 "training_setting",
@@ -129,12 +125,11 @@ rule aggregate_results:
             experiment_name=EXPERIMENT_NAME,
             dynamical_model=DYNAMICAL_MODEL,
             filename=[
-                f"{plot_type}__{activation_fn_name}__{max_lrate}__{shooting_mode}"
+                f"{plot_type}__{activation_fn_name}__{max_lrate}"
                 for plot_type in PLOT_TYPES
-                for activation_fn_name, max_lrate, shooting_mode in itt.product(
+                for activation_fn_name, max_lrate in itt.product(
                     MLP_ACTIVATIONS,
-                    MAX_LEARNING_RATES,
-                    SHOOTING_MODES
+                    MAX_LEARNING_RATES
                 )
             ]
         )

@@ -14,10 +14,12 @@ unwanted_fields = [
     "dynamical_model",
     "final_activation_fn_name",
     "use_dropout", "input_dropout_rate", "hidden_dropout_rate",  # might need
+    "training_scheme",
     "dynamic_params_lb", "dynamic_params_ub",
     "freeze_mechanistic_params_adam", "freeze_mechanistic_params_optx",  # might need
     "freeze_nn_adam", "freeze_nn_optx",  # might need
     "save_plots",
+    "num_epochs_adam", "num_epochs_bfgs"
 ]
 
 
@@ -38,6 +40,7 @@ class Conf(dict):
     input_dropout_rate: float = 0.8
     hidden_dropout_rate: float = 0.5
     # Optimiser and learning rate schedule
+    training_scheme: str = "single"
     optimiser: str = "adam"
     num_epochs_adam: int = 4000  # number of epochs for Adam optimiser
     # default: constant learning rate (no schedule)

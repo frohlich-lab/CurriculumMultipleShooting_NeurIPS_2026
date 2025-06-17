@@ -85,17 +85,13 @@ def tiled_plot_plotnine(
     style_col: Optional[str] = None,
     plot_fmt: Optional[str] = "png",
 ):
-    for optimiser, activation_fn_name, max_lrate, shooting_mode in itt.product(
-        sorted(df.optimiser.unique()),
+    for activation_fn_name, max_lrate in itt.product(
         sorted(df.activation_fn_name.unique()),
         sorted(df.max_lrate.unique()),
-        sorted(df.shooting_mode.unique())
     ):
         data = df[
-            (df.optimiser == optimiser) &
             (df.activation_fn_name == activation_fn_name) &
-            (df.max_lrate == max_lrate) &
-            (df.shooting_mode == shooting_mode)
+            (df.max_lrate == max_lrate)
         ].copy()
 
         # Preprocessing
@@ -160,7 +156,6 @@ def tiled_plot_plotnine(
                 + p9.geom_line()
                 + p9.facet_grid(f'{row_col} ~ {col_col}')
                 + p9.labs(
-                    title=f"Shooting Mode: {shooting_mode}",
                     x=x_col,
                     y=f"Mean {y_col}, min-max range",
                     color=hue_col,
@@ -191,7 +186,6 @@ def tiled_plot_plotnine(
                 + geom_obj
                 + p9.facet_grid(f'{row_col} ~ {col_col}')
                 + p9.labs(
-                    title=f"Shooting Mode: {shooting_mode}",
                     x=x_col,
                     y=y_col,
                     color=hue_col,
@@ -214,7 +208,7 @@ def tiled_plot_plotnine(
 
         # Save or show
         if save_plots:
-            path = fig_dir / f"{plot_name}__{optimiser}__{activation_fn_name}__{max_lrate}__{shooting_mode}.{plot_fmt}"
+            path = fig_dir / f"{plot_name}__{activation_fn_name}__{max_lrate}.{plot_fmt}"
             p.save(str(path), dpi=300, verbose=False)
         else:
             p.show()

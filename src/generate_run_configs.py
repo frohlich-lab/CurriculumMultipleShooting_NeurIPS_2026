@@ -7,14 +7,14 @@ from src.model_training.training_configuration import (
     MLP_ACTIVATIONS,
     # MLP_FINAL_ACTIVATIONS,
     # USE_DROPOUT, INPUT_DROPOUT_RATES, HIDDEN_DROPOUT_RATES,
-    OPTIMISERS,
+    TRAINING_SCHEMES, OPTIMISERS,
     MAX_LEARNING_RATES, LEARNING_RATE_SPANS, LEARNING_RATE_DECAYS, WARMUP_FCTS, OPT_STEPS, OPT_MULT, OPT_SCHED_TYPES,
     # USE_LOOKAHEAD, LOOKAHEAD_SYNC,
     MLP_REG_EXPS, MLP_REG_STRENGTHS,
     OUTPUT_REG,
-    SHOOTING_MODES, SHOOTING_WINDOW_LENGTHS, SHOOTING_IV_INITS, MULTIPLE_SHOOTING_PENALTIES,
+    SHOOTING_WINDOW_LENGTHS, SHOOTING_IV_INITS, MULTIPLE_SHOOTING_PENALTIES,
     # BATCH_SIZES,
-    CURRICULUM_LEARNING, NUM_CURRICULUM_STEPS, MAX_CURRICULUM_EPOCHS, RESTART_OPT_CURRICULUM,
+    NUM_CURRICULUM_STEPS, MAX_CURRICULUM_EPOCHS, RESTART_OPT_CURRICULUM,
     DYNAMIC_PARAMS_SCALES, MULTISTART_DEVIATIONS, DYNAMIC_PARAMS_PERTURB_METHODS,
     NODE_AUGMENTATIONS,
     COMPUTE_HESSIAN_METRICS,
@@ -23,7 +23,7 @@ from src.model_training.training_configuration import (
     TRAINING_SETTINGS, MLPEXP_TARGETS,
     NORMALISE_DATA, NORMALISE_TIMEPOINTS,
     N_STARTS,
-    N_EPOCHS_ADAM, N_EPOCHS_BFGS
+    N_EPOCHS_ADAM, N_EPOCHS_BFGS,
 )
 from typing import List, Dict
 
@@ -45,9 +45,9 @@ def generate_param_combinations(n_starts: int) -> List[Dict]:
         # "use_dropout": USE_DROPOUT,
         # "input_dropout_rate": INPUT_DROPOUT_RATES,
         # "hidden_dropout_rate": HIDDEN_DROPOUT_RATES,
-        # Optimiser
+        # Training scheme, NN optimiser + scheduling
+        "training_scheme": TRAINING_SCHEMES,
         "optimiser": OPTIMISERS,
-        "num_epochs_adam": N_EPOCHS_ADAM,
         "max_lrate": MAX_LEARNING_RATES,
         "lrate_span": LEARNING_RATE_SPANS,
         "lrate_decay": LEARNING_RATE_DECAYS,
@@ -60,12 +60,10 @@ def generate_param_combinations(n_starts: int) -> List[Dict]:
         "mlp_reg_strength": MLP_REG_STRENGTHS,
         "output_reg": OUTPUT_REG,
         # Shooting modes
-        "shooting_mode": SHOOTING_MODES,
         "shooting_window_length": SHOOTING_WINDOW_LENGTHS,
         "shooting_iv_init": SHOOTING_IV_INITS,
         "multiple_shooting_penalty": MULTIPLE_SHOOTING_PENALTIES,
         # Curriculum learning
-        "curriculum_learning": CURRICULUM_LEARNING,
         "num_curriculum_steps": NUM_CURRICULUM_STEPS,
         "max_curriculum_epochs": MAX_CURRICULUM_EPOCHS,
         "restart_opt_curriculum": RESTART_OPT_CURRICULUM,
@@ -78,9 +76,8 @@ def generate_param_combinations(n_starts: int) -> List[Dict]:
         "node_augmentation": NODE_AUGMENTATIONS,
         # Hessian
         "compute_hessian_metrics": COMPUTE_HESSIAN_METRICS,
-        # Second optimiser
+        # Second (classical) optimiser
         "second_opt": SECOND_OPTS,
-        "num_epochs_bfgs": N_EPOCHS_BFGS,
         # Freeze params
         # "freeze_mechanistic_params_adam": FREEZE_MECHANISTIC_PARAMS_ADAM,
         # "freeze_mechanistic_params_optx": FREEZE_MECHANISTIC_PARAMS_OPTX,
@@ -108,6 +105,31 @@ def generate_param_combinations(n_starts: int) -> List[Dict]:
         #     params["input_dropout_rate"] = 0.0
         #     params["hidden_dropout_rate"] = 0.0
 
+        # Handle training schemes
+        params["curriculum_learning"] = "CL" in params.get("training_scheme")
+
+        if "single" in params.get("training_scheme"):
+            params["num_epochs_adam"] = N_EPOCHS_ADAM
+            params["shooting_mode"] = "single"
+            params["shooting_window_length"] = 0
+        elif "multiple" in params.get("training_scheme"):
+            params["num_epochs_adam"] = N_EPOCHS_ADAM
+            params["shooting_mode"] = "multiple"
+        else:
+            params["optimiser"] = "None"  # no NN optimiser
+            params["num_epochs_adam"] = 0
+            params["shooting_mode"] = "single"
+            params["shooting_window_length"] = 0
+
+        if "bfgs" in params.get("training_scheme"):
+            params["num_epochs_bfgs"] = N_EPOCHS_BFGS
+            params["shooting_mode"] = "single"  # set to single
+            params["shooting_window_length"] = 0
+        else:
+            params["second_opt"] = "None"  # no second optimiser
+            params["num_epochs_bfgs"] = 0
+
+
         if params.get("opt_sched_type") != "cos":
             # Only single schedules are supported for linear and exponential decays (+ warmup)
             params["opt_mult"] = 0
@@ -123,25 +145,14 @@ def generate_param_combinations(n_starts: int) -> List[Dict]:
             params["max_curriculum_epochs"] = 0
             params["restart_opt_curriculum"] = False
 
-        if params.get("curriculum_learning", False) or (params.get("shooting_mode", None) != "single"):
-            # With multiple shooting or curriculum learning, default to Adam and drop BFGS
-            params["num_epochs_bfgs"] = 0
-            params["optimiser"] = "adam"
-            params["second_opt"] = "None"
-
-        # Handle pure BFGS case
-        if ((params.get("shooting_mode", None) == "single")
-            and not params.get("curriculum_learning", False)
-            and (params.get("optimiser", None) == "None")):
-            params["num_epochs_adam"] = 0
-
         if params.get("curriculum_learning", False) and params.get("shooting_mode", None) == "multiple":
             params["num_curriculum_steps"] = 5  # set to default value, will be overwritten by number of windows
 
-        # Replicate setup of UDE paper (arXiv link: https://arxiv.org/pdf/2001.04385, see page 40)
-        if (params.get("mlp_layer_width") == 5) and (params.get("mlp_depth") == 2):
-            params["activation_fn_name"] = "rbf"
-            params["max_lrate"] = 1e-1
+        # TODO - think this through - we might want to try width 5 without RBF or viceversa RBF with another width
+        # # Replicate setup of UDE paper (arXiv link: https://arxiv.org/pdf/2001.04385, see page 40)
+        # if (params.get("mlp_layer_width") == 5) and (params.get("mlp_depth") == 2):
+        #     params["activation_fn_name"] = "rbf"
+        #     params["max_lrate"] = 1e-1
 
         if params.get("training_setting") == "UDE":
             params["mlpexp_target"] = "None"
