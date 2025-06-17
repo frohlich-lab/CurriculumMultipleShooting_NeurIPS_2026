@@ -37,7 +37,8 @@ USE_FINAL_BIASES = {
 MLP_ACTIVATIONS = {
     # "tanh",
     # "relu",
-    "swish"
+    "swish",
+    "gelu",
 }
 
 
@@ -189,7 +190,7 @@ MULTIPLE_SHOOTING_PENALTIES = {
 
 # Curriculum learning (decided by TRAINING_SCHEMES)
 NUM_CURRICULUM_STEPS = {
-    9  # matches number of stages from mid-point of shooting window range
+    5  # matches Homotopy paper and corresponding multiple+CL
 }
 
 MAX_CURRICULUM_EPOCHS = {
@@ -280,9 +281,9 @@ NORMALISE_TIMEPOINTS = {
     # False,
 }
 
-N_STARTS = 3  # number of multi-starts
+N_STARTS = 50  # number of multi-starts
 
 N_EPOCHS_ADAM = 4000  # default from UDE paper: 2000 / SIR: 40000-100000
 N_EPOCHS_BFGS = 10000
 
-EXPERIMENT_NAME = "local_ts"
+EXPERIMENT_NAME = "nemo_ts"
