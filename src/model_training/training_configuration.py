@@ -62,10 +62,10 @@ HIDDEN_DROPOUT_RATES = {
 TRAINING_SCHEMES = {
     "bfgs",  # pure BFGS
     "single",
-    "single+bfgs",
-    "single+CL",
+    "single_bfgs",
+    "single_CL",
     "multiple",
-    "multiple+CL",
+    "multiple_CL",
 }
 
 # Optimiser
