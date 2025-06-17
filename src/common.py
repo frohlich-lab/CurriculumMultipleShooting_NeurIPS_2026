@@ -135,6 +135,7 @@ basedir: Path = Path(__file__).resolve().parent.parent  # Test_UDE, outside src
 plots_dir = basedir / "plots"
 results_dir = basedir / "results"
 model_save_dir = basedir / "models"
+data_dir = basedir / "src" / "data_dir"
 
 default_attributes = [
     k

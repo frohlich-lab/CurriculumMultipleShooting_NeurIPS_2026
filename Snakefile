@@ -1,7 +1,7 @@
 import itertools as itt
 
 from src.generate_run_configs import generate_param_combinations
-from src.common import TRAINING_RESULTS, AGGREGATION_PLOTS, PLOT_TYPES
+from src.common import data_dir, TRAINING_RESULTS, AGGREGATION_PLOTS, PLOT_TYPES
 from src.model_training.training_configuration import (
     DYNAMICAL_MODEL, N_STARTS, EXPERIMENT_NAME, MLP_ACTIVATIONS, MAX_LEARNING_RATES,
 )
@@ -19,7 +19,7 @@ unique_multistart_settings = sorted(set(
 
 # Expand to file paths
 multistart_csvs = [
-    f"data_dir/{model}/{method}__{deviation}.csv"
+    data_dir / f"{model}/{method}__{deviation}.csv"
     for model, deviation, method in unique_multistart_settings
 ]
 

@@ -7,6 +7,7 @@ from jax import config
 from pathlib import Path
 from src.common import (
     Conf,
+    data_dir,
     model_save_dir,
     state_dims,
     true_dynamic_parameters
@@ -36,9 +37,6 @@ config.update("jax_enable_x64", True)
 # Key
 key = jr.PRNGKey(seed)
 key_mlp, key_init = jr.split(key, 2)
-
-# Data directory
-data_dir = Path(__file__).resolve().parent.parent / "data_dir"
 
 # ================================================================
 #           INITIAL CONDITIONS AND DYNAMIC PARAMETERS

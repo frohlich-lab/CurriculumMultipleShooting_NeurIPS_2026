@@ -1,15 +1,11 @@
 import pandas as pd
 import numpy as np
-from pathlib import Path
 from scipy.stats import qmc
 
-from src.common import true_dynamic_parameters
+from src.common import data_dir, true_dynamic_parameters
 from src.generate_run_configs import generate_param_combinations
 from src.model_training.training_configuration import N_STARTS
 
-
-# Resolve the data directory
-data_dir = Path(__file__).resolve().parent / "data_dir"
 
 def get_unique_sampling_settings(param_combinations):
     settings = set()
