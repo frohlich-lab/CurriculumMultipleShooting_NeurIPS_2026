@@ -2,10 +2,12 @@ import jax.numpy as jnp
 import jax.random as jr
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
 from diffrax import SaveAt
 from functools import partial
 from jaxtyping import Array
+from pathlib import Path
 from src.common import (
     activation_functions,
     Conf,
@@ -14,6 +16,7 @@ from src.common import (
     plots_dir,
     state_dims,
     TrainValArgs,
+    true_dynamic_parameters,
     u0s
 )
 from src.model_examples.lotka_volterra import setup_diffrax_model as setup_lv
@@ -470,3 +473,51 @@ def setup_time_masks_u0_curriculum(
     else:
         raise ValueError(f"Unknown shooting mode: {conf.shooting_mode}!")
     return t_save_windows, masks, u0, curriculum_stage_dict
+
+
+def load_multistart_dynamic_params(conf: Conf, data_dir: Path) -> jnp.ndarray:
+    """
+    Load pre-sampled log10 dynamic parameters from CSV and apply correct scale.
+
+    Returns:
+        jnp.ndarray of shape (n_params,) in the correct scale (log10, linear, or bounded_tanh)
+    """
+    # Locate the correct file
+    multistart_file = (
+        data_dir / conf.dynamical_model /
+        f"{conf.dynamic_params_perturb_method}__{conf.multistart_deviation}.csv"
+    )
+
+    # Load the multistart CSV
+    df = pd.read_csv(multistart_file)
+
+    # Select the correct row by job index
+    row = df[df["multistart_job"] == conf.multistart_job]
+    if row.empty:
+        raise ValueError(f"No row found for multistart_job={conf.multistart_job} in {multistart_file}")
+
+    # Extract log10 values
+    log_params = row.filter(like="param_").values.flatten()
+    true_shape = true_dynamic_parameters[conf.dynamical_model].shape
+    if log_params.shape[0] != true_shape[0]:
+        raise ValueError(f"Expected {true_shape[0]} parameters but got {log_params.shape[0]}")
+
+    # Convert to required scale
+    if conf.dynamic_params_scale == "log10":
+        return jnp.array(log_params)
+    elif conf.dynamic_params_scale == "linear":
+        return jnp.power(10, jnp.array(log_params))
+    elif conf.dynamic_params_scale == "bounded_tanh":
+        from src.model_training.training_util import bounded_tanh_transform_params
+        return bounded_tanh_transform_params(
+            params=jnp.power(10, jnp.array(log_params)),
+            **broadcast_bounds(
+                bounds={
+                    "lb": conf.dynamic_params_lb,
+                    "ub": conf.dynamic_params_ub
+                },
+                shape=true_dynamic_parameters[conf.dynamical_model].shape
+            )
+        )
+    else:
+        raise ValueError(f"Unsupported dynamic_params_scale: {conf.dynamic_params_scale}")

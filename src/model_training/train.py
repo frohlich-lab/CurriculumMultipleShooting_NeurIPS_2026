@@ -4,6 +4,7 @@ import jax.numpy as jnp
 
 from dataclasses import replace
 from jax import config
+from pathlib import Path
 from src.common import (
     Conf,
     model_save_dir,
@@ -11,13 +12,12 @@ from src.common import (
     true_dynamic_parameters
 )
 from src.model_training.training_setup import (
-    broadcast_bounds,
     get_data_and_funcs_for_train,
     get_initial_conditions,
+    load_multistart_dynamic_params,
     setup_mlp,
     setup_time_masks_u0_curriculum
 )
-from src.model_training.training_util import sample_dynamical_params
 from src.ude_problem import UDEProblem
 from training import train
 
@@ -37,6 +37,9 @@ config.update("jax_enable_x64", True)
 key = jr.PRNGKey(seed)
 key_mlp, key_init = jr.split(key, 2)
 
+# Data directory
+data_dir = Path(__file__).resolve().parent.parent / "data_dir"
+
 # ================================================================
 #           INITIAL CONDITIONS AND DYNAMIC PARAMETERS
 # ================================================================
@@ -46,21 +49,7 @@ u0 = get_initial_conditions(conf)
 # Sample dynamic parameters and apply correct estimation scale
 if conf.training_setting != "NODE":
     dynamic_parameters = {
-        dynamical_model: sample_dynamical_params(
-            true_params=true_dynamic_parameters[dynamical_model],
-            deviation=conf.multistart_deviation,
-            seed=seed,
-            scale=conf.dynamic_params_scale,
-            method=conf.dynamic_params_perturb_method,
-            **broadcast_bounds(
-                bounds={
-                    "lb": conf.dynamic_params_lb,
-                    "ub": conf.dynamic_params_ub
-                },
-                shape=true_dynamic_parameters[dynamical_model].shape
-            )
-        )
-        for dynamical_model in true_dynamic_parameters.keys()
+        conf.dynamical_model: load_multistart_dynamic_params(conf, data_dir)
     }
 else:
     # if training NODEs, zero out dynamic parameters (no known terms),

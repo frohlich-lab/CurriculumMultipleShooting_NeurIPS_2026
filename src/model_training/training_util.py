@@ -16,7 +16,7 @@ from diffrax import SaveAt
 from jaxtyping import Array, PyTree
 from pathlib import Path
 from scipy.stats import qmc
-from src.common import Conf, dynamic_param_labels, hessian_metrics_wandb, plots_dir
+from src.common import Conf, dynamic_param_labels, hessian_metrics_wandb, plots_dir, true_dynamic_parameters
 from src.model_training.model_util import bounded_tanh_transform_params, set_weight_bias
 from src.ude_problem.ude_problem import UDEProblem
 from typing import Any, Callable, List, Union
@@ -367,42 +367,6 @@ def max_grad_norm(grads: PyTree) -> Array:
     # Return max norm
     return jnp.max(jnp.array(grad_norms))
 
-
-def sample_dynamical_params(true_params, deviation, seed, scale="log10", method="sample_uniform", **kwargs):
-    # Perturbation/sampling is always performed in log10-space
-    if method == "lh":  # lh=latin_hypercube
-        sampler = qmc.LatinHypercube(d=true_params.shape[0], seed=seed)
-        sampled_deviation = 2*(sampler.random(n=1).flatten() - 0.5)  # shift from [0, 1) to [-1, 1) range
-        sampled_deviation *= deviation
-        starting_params_log10 = jnp.log10(true_params) + sampled_deviation
-    elif method == "su": # su=sample_uniform
-        starting_params_log10 = jax.random.uniform(
-            key=jr.PRNGKey(seed),
-            shape=true_params.shape,
-            minval=jnp.log10(true_params)-deviation,
-            maxval=jnp.log10(true_params)+deviation,
-        )
-    elif method == "agn":  # agn=add_gaussian_noise, perturbs original values
-        log_true_params = jnp.log10(true_params)
-        starting_params_log10 = log_true_params + deviation*jax.random.normal(
-            key=jr.PRNGKey(seed),
-            shape=true_params.shape,
-        )
-    else:
-        raise ValueError(
-            f"Found unknown method {method}. Method must be either 'sample_uniform' or 'add_gaussian_noise'."
-        )
-    if scale == "log10":
-        return starting_params_log10
-    elif scale == "linear":
-        return jnp.power(10, starting_params_log10)
-    elif scale == "bounded_tanh":
-        return bounded_tanh_transform_params(
-            params=jnp.power(10, starting_params_log10),
-            **kwargs, # pass additional arguments to the bounded_tanh_transform_params function (lower/upper bounds, loc)
-        )
-    else:
-        raise ValueError(f"Unknown parameter estimation scale: {scale}!")
 
 def enforce_minimum_spacing(arr: np.ndarray, min_dist: int) -> np.ndarray:
     """

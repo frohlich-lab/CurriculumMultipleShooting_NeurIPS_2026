@@ -11,9 +11,36 @@ singularity: "docker://giacomofabrini/test_ude:amd64"
 
 param_combos = generate_param_combinations(N_STARTS)
 
+# Get unique combinations for multistart generation
+unique_multistart_settings = sorted(set(
+    (p["dynamical_model"], p["multistart_deviation"], p["dynamic_params_perturb_method"])
+    for p in param_combos
+))
+
+# Expand to file paths
+multistart_csvs = [
+    f"data_dir/{model}/{method}__{deviation}.csv"
+    for model, deviation, method in unique_multistart_settings
+]
+
+
+rule generate_multistarts:
+    input:
+        script="src/generate_multistarts.py"
+    output:
+        multistart_csvs
+    resources:
+        mem="1GB",
+        runtime="30m",
+        threads=1
+    shell:
+        "python3 {input.script}"
+
+
 rule train_udes:
     input:
-        script = 'src/model_training/train.py'
+        script = 'src/model_training/train.py',
+        multistarts=rules.generate_multistarts.output
     output:
         csv = TRAINING_RESULTS
     wildcard_constraints:
