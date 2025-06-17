@@ -124,8 +124,51 @@ def optx_solve(
     state = solver.init(fn_train, y, args, options, f_struct, aux_struct, tags)
     done, result = terminate(y=y, state=state)
 
-    iteration = 1
     results_dfs = []
+    # Log initial state and loss
+    if wandb_log:
+        loss_train = fn_train(y, args)[0]
+        loss_val = fn_val(y, args_val)[0]
+        print(
+            f"epoch {starting_epoch} | "
+            f"loss_train: {loss_train} | "
+            f"loss_val: {loss_val}"
+        )
+        wandb.log(
+            {
+                "loss_train": loss_train,
+                "loss_val": loss_val,
+            },
+            step=starting_epoch
+        )
+        results_dfs.append(
+            pd.DataFrame(
+                [{
+                    "optimiser": "optimistix_BFGS",
+                    "epoch": starting_epoch,
+                    "loss_train": loss_train,
+                    "loss_val": loss_val,
+                    **{
+                        param: transform_dynamic_params(
+                            eqx.combine(y, args[0]).func.dynamic_parameters, conf
+                        )[i]
+                        for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
+                    },
+                }]
+            )
+        )
+        if jnp.isfinite(loss_train):
+            wandb.log(
+                log_model_stats(
+                    eqx.combine(y, args[0]),
+                    state.f_info.grad,
+                    conf,
+                    frozen_mechanistic, frozen_nn,
+                ),
+                step=starting_epoch
+            )
+
+    iteration = 1
     while not (done or iteration > max_steps):
         # print(f"Evaluating point {y} with value {fn(y, args)}.")
         y, state, aux = step(y=y, state=state)
