@@ -165,7 +165,7 @@ OUTPUT_REG = {
 SHOOTING_WINDOW_LENGTHS = {
     # 6,  # 13 windows
     # # 7,
-    # 8,  # 9 windows
+    8,  # 9 windows
     # 10,
     14,  # 5 windows
 }
@@ -180,7 +180,7 @@ MULTIPLE_SHOOTING_PENALTIES = {
     0.0,
     # 1e-1,
     # 1e-2,
-    # 1e-3,
+    2e-3,
 }
 
 # Batch size -- unused, only for window-batch, DISABLED
