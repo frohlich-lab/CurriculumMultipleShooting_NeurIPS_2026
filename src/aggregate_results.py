@@ -84,12 +84,15 @@ for dynamical_model in DYNAMICAL_MODEL:
         )
         del results_df
 
-        # Get dataframe with start and final ADAM epoch losses
-        start_epoch_df, final_epoch_df = compute_epoch_subset(
+        # Get dataframe with start and final epoch losses
+        start_epoch_df, adam_final_epoch_df, bfgs_final_epoch_df = compute_epoch_subset(
             df=results_df_filtered,
             metrics=metrics_model,
             group_cols=hyperparam_groups,
-            max_epochs=N_EPOCHS_ADAM[0]
+        )
+        final_epoch_df = pd.concat(
+            [df for df in [adam_final_epoch_df, bfgs_final_epoch_df] if df is not None],
+            axis=0
         )
 
         col_param = "multiple_shooting_penalty" if final_epoch_df.multiple_shooting_penalty.nunique() > 1 \

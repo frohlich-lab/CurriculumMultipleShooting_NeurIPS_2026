@@ -21,15 +21,50 @@ def clean_results(df: pd.DataFrame, attributes_to_fix: list[str]):
 def compute_epoch_subset(
         df: pd.DataFrame,
         metrics: list[str],
-        group_cols: list[str],
-        max_epochs: int
-):
-    # Subset to model metrics only
-    loss_subset = df[["epoch", "multistart_job"] + group_cols + metrics]
-    # First epoch and last ADAM epoch (< max_epochs)
-    first_epoch = loss_subset["epoch"].min()
-    last_epoch = loss_subset[loss_subset["epoch"] < max_epochs]["epoch"].max()
-    return loss_subset[loss_subset["epoch"] == first_epoch], loss_subset[loss_subset["epoch"] == last_epoch]
+        group_cols: list[str]
+) -> tuple[pd.DataFrame, pd.DataFrame | None, pd.DataFrame | None]:
+    """
+    Extracts:
+      - First epoch (start of training, ADAM or BFGS)
+      - Final ADAM epoch (if optimiser used)
+      - Final BFGS/second optimiser epoch (if second optimiser used)
+
+    Parameters:
+        df (pd.DataFrame): Full results dataframe.
+        metrics (list[str]): List of metric column names.
+        group_cols (list[str]): Grouping keys for unique runs (e.g., hyperparameter settings).
+
+    Returns:
+        (start_epoch_df, adam_final_epoch_df or None, bfgs_final_epoch_df or None)
+    """
+    cols = ["epoch", "multistart_job", "curriculum_stage"] + group_cols + metrics
+    df = df[cols].copy()
+    group_keys = group_cols + ["multistart_job"]
+
+    # 1. First epoch of training (ADAM or BFGS)
+    start_epoch_df = df.groupby(group_keys).apply(
+        lambda g: g[g.epoch == g.epoch.min()]
+    ).reset_index(drop=True)
+
+    # 2. Final ADAM epoch (if any rows with curriculum_stage != -1)
+    if (df.curriculum_stage != -1).any():
+        adam_df = df[df.curriculum_stage != -1]
+        adam_final_epoch_df = adam_df.groupby(group_keys).apply(
+            lambda g: g[g.epoch == g.epoch.max()]
+        ).reset_index(drop=True)
+    else:
+        adam_final_epoch_df = None
+
+    # 3. Final BFGS epoch (if any rows with curriculum_stage == -1)
+    if (df.curriculum_stage == -1).any():
+        bfgs_df = df[df.curriculum_stage == -1]
+        bfgs_final_epoch_df = bfgs_df.groupby(group_keys).apply(
+            lambda g: g[g.epoch == g.epoch.max()]
+        ).reset_index(drop=True)
+    else:
+        bfgs_final_epoch_df = None
+
+    return start_epoch_df, adam_final_epoch_df, bfgs_final_epoch_df
 
 
 def compute_success_fraction(df: pd.DataFrame, threshold: float, group_cols: list[str]):
@@ -161,24 +196,26 @@ def exclude_loss_val_outside_iqr(
         hyperparam_groups: list[str],
         iqr_multiplier: float = 1.5,
 ) -> pd.DataFrame:
-    # Step 1: get loss_val at the starting epoch
-    start_vals = df[df.epoch == df.epoch.min()]
+    group_keys = hyperparam_groups + ["multistart_job"]
 
-    # Step 2: compute and apply IQR filtering mask per group
+    # Step 1: Get first logged epoch per run
+    start_vals = df.groupby(group_keys, group_keys=False).apply(
+        lambda g: g[g.epoch == g.epoch.min()]
+    ).reset_index(drop=True)
+
+    # Step 2: Apply IQR filter on starting loss_val, per hyperparameter group
     def iqr_filter(group):
-        q1 = group['loss_val'].quantile(0.25)
-        q3 = group['loss_val'].quantile(0.75)
+        q1 = group["loss_val"].quantile(0.25)
+        q3 = group["loss_val"].quantile(0.75)
         iqr = q3 - q1
         lower = q1 - iqr_multiplier * iqr
         upper = q3 + iqr_multiplier * iqr
-        # Determine if the group's starting value is within IQR bounds
-        return group[(group['loss_val'] >= lower) & (group['loss_val'] <= upper)]
+        return group[(group["loss_val"] >= lower) & (group["loss_val"] <= upper)]
 
     filtered_start_vals = start_vals.groupby(hyperparam_groups, group_keys=False).apply(iqr_filter)
 
-    # Step 3: get valid hyperparam combinations to keep
-    valid_combinations = filtered_start_vals[hyperparam_groups + ["multistart_job"]].drop_duplicates()
+    # Step 3: Keep full run data for those runs
+    valid_combinations = filtered_start_vals[group_keys].drop_duplicates()
+    filtered_df = df.merge(valid_combinations, on=group_keys, how='inner')
 
-    # Step 4: filter the full dataset using valid hyperparam combinations
-    filtered_df = df.merge(valid_combinations, on=hyperparam_groups + ["multistart_job"], how='inner')
     return filtered_df
