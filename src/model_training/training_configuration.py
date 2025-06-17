@@ -146,7 +146,7 @@ MLP_REG_STRENGTHS = {
 OUTPUT_REG = {
     0,
     # changed with 1e-6 premultiplier given issues with snakemake small wildcards
-    # 1e0, # corresponds to 1e-6
+    1e0, # corresponds to 1e-6
     # 1e1,  # corresponds to 1e-5
     # 1e2,  # corresponds to 1e-4
     # 1e3,  # corresponds to 1e-3
@@ -190,7 +190,8 @@ MULTIPLE_SHOOTING_PENALTIES = {
 
 # Curriculum learning (decided by TRAINING_SCHEMES)
 NUM_CURRICULUM_STEPS = {
-    5  # matches Homotopy paper and corresponding multiple+CL
+    5,   # matches Homotopy paper and corresponding multiple+CL
+    9
 }
 
 MAX_CURRICULUM_EPOCHS = {
