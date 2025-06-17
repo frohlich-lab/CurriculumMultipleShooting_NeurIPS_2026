@@ -65,7 +65,7 @@ HIDDEN_DROPOUT_RATES = {
 
 # Optimiser
 OPTIMISERS = {
-    "None",  # no NN optimiser, pure BFGS
+    # "None",  # no NN optimiser, pure BFGS
     "adam",
     # "adamw",
 }
@@ -150,8 +150,8 @@ OUTPUT_REG = {
     # changed with 1e-6 premultiplier given issues with snakemake small wildcards
     # 1e0, # corresponds to 1e-6
     1e1,  # corresponds to 1e-5
-    1e2,  # corresponds to 1e-4
-    1e3,  # corresponds to 1e-3
+    # 1e2,  # corresponds to 1e-4
+    # 1e3,  # corresponds to 1e-3
     # 1e-2,
     # 1e-1,
     # 1e0,
@@ -186,8 +186,8 @@ SHOOTING_IV_INITS = {
 
 MULTIPLE_SHOOTING_PENALTIES = {
     0.0,
-    1e-1,
-    1e-2,
+    # 1e-1,
+    # 1e-2,
     # 1e-3,
 }
 
@@ -299,9 +299,9 @@ NORMALISE_TIMEPOINTS = {
     # False,
 }
 
-N_STARTS = 100  # number of multi-starts
+N_STARTS = 3  # number of multi-starts
 
-N_EPOCHS_ADAM = {4000}  # default from UDE paper: 2000 / SIR: 40000-100000
-N_EPOCHS_BFGS = {10000}
+N_EPOCHS_ADAM = [4000]  # default from UDE paper: 2000 / SIR: 40000-100000
+N_EPOCHS_BFGS = [10000]
 
 EXPERIMENT_NAME = "nemo_bv1"

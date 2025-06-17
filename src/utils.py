@@ -26,21 +26,56 @@ def clean_results(df: pd.DataFrame, attributes_to_fix: list[str]):
 def compute_epoch_subset(
         df: pd.DataFrame,
         metrics: list[str],
-        group_cols: list[str],
-        max_epochs: int
-):
-    # Subset to model metrics only
-    loss_subset = df[["epoch", "multistart_job"] + group_cols + metrics]
-    # First epoch and last ADAM epoch (< max_epochs)
-    first_epoch = loss_subset["epoch"].min()
-    last_epoch = loss_subset[loss_subset["epoch"] < max_epochs]["epoch"].max()
-    return loss_subset[loss_subset["epoch"] == first_epoch], loss_subset[loss_subset["epoch"] == last_epoch]
+        group_cols: list[str]
+) -> tuple[pd.DataFrame, pd.DataFrame | None, pd.DataFrame | None]:
+    """
+    Extracts:
+      - First epoch (start of training, ADAM or BFGS)
+      - Final ADAM epoch (if optimiser used)
+      - Final BFGS/second optimiser epoch (if second optimiser used)
+
+    Parameters:
+        df (pd.DataFrame): Full results dataframe.
+        metrics (list[str]): List of metric column names.
+        group_cols (list[str]): Grouping keys for unique runs (e.g., hyperparameter settings).
+
+    Returns:
+        (start_epoch_df, adam_final_epoch_df or None, bfgs_final_epoch_df or None)
+    """
+    cols = ["epoch", "multistart_job", "curriculum_stage", "strategy"] + group_cols + metrics
+    df = df[cols].copy()
+    group_keys = group_cols + ["multistart_job"]
+
+    # 1. First epoch of training (ADAM or BFGS)
+    start_epoch_df = df.groupby(group_keys).apply(
+        lambda g: g[g.epoch == g.epoch.min()]
+    ).reset_index(drop=True)
+
+    # 2. Final ADAM epoch (if any rows with curriculum_stage != -1)
+    if (df.curriculum_stage != -1).any():
+        adam_df = df[df.curriculum_stage != -1]
+        adam_final_epoch_df = adam_df.groupby(group_keys).apply(
+            lambda g: g[g.epoch == g.epoch.max()]
+        ).reset_index(drop=True)
+    else:
+        adam_final_epoch_df = None
+
+    # 3. Final BFGS epoch (if any rows with curriculum_stage == -1)
+    if (df.curriculum_stage == -1).any():
+        bfgs_df = df[df.curriculum_stage == -1]
+        bfgs_final_epoch_df = bfgs_df.groupby(group_keys).apply(
+            lambda g: g[g.epoch == g.epoch.max()]
+        ).reset_index(drop=True)
+    else:
+        bfgs_final_epoch_df = None
+
+    return start_epoch_df, adam_final_epoch_df, bfgs_final_epoch_df
 
 
 def compute_success_fraction(df: pd.DataFrame, threshold: float, group_cols: list[str]):
     df["success"] = df["loss_val"] < threshold
     return (
-        df.groupby(group_cols)["success"]
+        df.groupby(group_cols, observed=False)["success"]
         .agg(["mean", "count", "sum"])
         .rename(columns={"mean": f"fraction_below_{threshold}", "count": "num_runs", "sum": "num_successful"})
         .reset_index()
@@ -54,7 +89,7 @@ def compute_fraction_params_within_tolerance(
 ) -> pd.DataFrame:
     rows = []
 
-    for group_key, group in final_epoch.groupby(hyperparam_groups):
+    for group_key, group in final_epoch.groupby(hyperparam_groups, observed=False):
         # Extract inferred parameters from the group
         inferred_params = group[["alpha", "delta"]].to_numpy()
 
@@ -80,7 +115,7 @@ def compute_fraction_params_within_tolerance(
 
 def compute_loss_correlations(merged_df: pd.DataFrame, group_cols: list[str]):
     rows = []
-    for combo, group in merged_df.groupby(group_cols):
+    for combo, group in merged_df.groupby(group_cols, observed=False):
         result = dict(zip(group_cols, combo))
         result["corr_start_vs_final"] = (
             group[["loss_val_starting_epoch", "loss_val_final_epoch"]].corr().iloc[0, 1]
@@ -181,7 +216,7 @@ def tiled_plot_plotnine(
     kind: str,
     x_col: str,
     y_col: str,
-    hue_col: str,
+    hue_col: Union[str, dict[str, str]],
     fig_dir: Path,
     plot_name: str,
     save_plots: bool = True,
@@ -204,6 +239,11 @@ def tiled_plot_plotnine(
             (df.shooting_mode == shooting_mode)
         ].copy()
 
+        if type(hue_col) is dict:
+            hue_var = hue_col.get(shooting_mode)
+        else:
+            hue_var = hue_col
+
         # Preprocessing
         if kind == "line":
             for col in [x_col, y_col]:
@@ -213,25 +253,25 @@ def tiled_plot_plotnine(
             # For bar/box plots, x_col needs to be str/categorical
             data[x_col] = data[x_col].astype(str)
 
-        required_cols = [x_col, y_col, hue_col, row_col, col_col]
+        required_cols = [x_col, y_col, hue_var, row_col, col_col]
         if style_col is not None:
             required_cols.append(style_col)
         data = data.dropna(subset=required_cols)
 
-        # Convert hue_col and style_col to string
-        data[hue_col] = data[hue_col].astype(str)
+        # Convert hue_var and style_col to string
+        data[hue_var] = data[hue_var].astype(str)
         if style_col is not None:
             data[style_col] = data[style_col].astype(str)
 
         # Define base aesthetics
         aes_kwargs = {
             'x': x_col,
-            'color': hue_col
+            'color': hue_var
         }
 
         if kind == "line":
             # Grouping keys
-            group_cols = [row_col, col_col, x_col, hue_col]
+            group_cols = [row_col, col_col, x_col, hue_var]
             if style_col:
                 group_cols.append(style_col)
 
@@ -244,9 +284,9 @@ def tiled_plot_plotnine(
 
             # Construct group label/ID
             if style_col:
-                summary['group_label'] = summary[hue_col] + "_" + summary[style_col]
+                summary['group_label'] = summary[hue_var] + "_" + summary[style_col]
             else:
-                summary['group_label'] = summary[hue_col]
+                summary['group_label'] = summary[hue_var]
 
             # Expand base aesthetics
             aes_kwargs["y"] = 'mean_y'
@@ -259,7 +299,7 @@ def tiled_plot_plotnine(
             p = (
                 ggplot(summary, aes_base)
                 + geom_ribbon(
-                    aes(ymin='min_y', ymax='max_y', fill=hue_col),
+                    aes(ymin='min_y', ymax='max_y', fill=hue_var),
                     alpha=0.1,
                     colour="None"
                 )
@@ -269,8 +309,8 @@ def tiled_plot_plotnine(
                     title=f"Shooting Mode: {shooting_mode}",
                     x=x_col,
                     y=f"Mean {y_col}, min-max range",
-                    color=hue_col,
-                    fill=hue_col,
+                    color=hue_var,
+                    fill=hue_var,
                     linetype=style_col if style_col else None
                 )
                 + theme(figure_size=(12, 8))
@@ -282,7 +322,7 @@ def tiled_plot_plotnine(
             # Expand base aesthetics using raw data (y_col) for bar/box plots
             aes_kwargs["y"] = y_col
             if kind == "bar":
-                aes_kwargs["fill"] = hue_col
+                aes_kwargs["fill"] = hue_var
             aes_mapping = aes(**aes_kwargs)
 
             if kind == "box":
@@ -300,12 +340,30 @@ def tiled_plot_plotnine(
                     title=f"Shooting Mode: {shooting_mode}",
                     x=x_col,
                     y=y_col,
-                    color=hue_col,
+                    color=hue_var,
                 )
                 + theme(figure_size=(12, 8))
             )
             if (kind == "box") and (ref_line_y is not None):
                 p += geom_hline(yintercept=ref_line_y, linetype='dashed', color='black')
+
+        # Standard color assignment
+        color_dict = {
+            "False": "firebrick",
+            "True": "cyan",
+            "pure_bfgs": "violet",
+            "single": "firebrick",
+            "single+bfgs": "darkorange",
+            "single+curriculum": "cyan",
+        }
+
+        # Only add if hue_var is known and values exist
+        unique_hue_vals = data[hue_var].unique()
+        valid_colors = {k: v for k, v in color_dict.items() if k in unique_hue_vals}
+        if valid_colors:
+            p += scale_color_manual(values=valid_colors)
+            if kind in ["bar", "line"]:
+                p += scale_fill_manual(values=valid_colors)
 
         # Apply axis scalign and coordinate zooming if specified
         if yscale == "log":
@@ -396,24 +454,26 @@ def exclude_loss_val_outside_iqr(
         hyperparam_groups: list[str],
         iqr_multiplier: float = 1.5,
 ) -> pd.DataFrame:
-    # Step 1: get loss_val at the starting epoch
-    start_vals = df[df.epoch == df.epoch.min()]
+    group_keys = hyperparam_groups + ["multistart_job"]
 
-    # Step 2: compute and apply IQR filtering mask per group
+    # Step 1: Get first logged epoch per run
+    start_vals = df.groupby(group_keys, group_keys=False).apply(
+        lambda g: g[g.epoch == g.epoch.min()]
+    ).reset_index(drop=True)
+
+    # Step 2: Apply IQR filter on starting loss_val, per hyperparameter group
     def iqr_filter(group):
-        q1 = group['loss_val'].quantile(0.25)
-        q3 = group['loss_val'].quantile(0.75)
+        q1 = group["loss_val"].quantile(0.25)
+        q3 = group["loss_val"].quantile(0.75)
         iqr = q3 - q1
         lower = q1 - iqr_multiplier * iqr
         upper = q3 + iqr_multiplier * iqr
-        # Determine if the group's starting value is within IQR bounds
-        return group[(group['loss_val'] >= lower) & (group['loss_val'] <= upper)]
+        return group[(group["loss_val"] >= lower) & (group["loss_val"] <= upper)]
 
     filtered_start_vals = start_vals.groupby(hyperparam_groups, group_keys=False).apply(iqr_filter)
 
-    # Step 3: get valid hyperparam combinations to keep
-    valid_combinations = filtered_start_vals[hyperparam_groups + ["multistart_job"]].drop_duplicates()
+    # Step 3: Keep full run data for those runs
+    valid_combinations = filtered_start_vals[group_keys].drop_duplicates()
+    filtered_df = df.merge(valid_combinations, on=group_keys, how='inner')
 
-    # Step 4: filter the full dataset using valid hyperparam combinations
-    filtered_df = df.merge(valid_combinations, on=hyperparam_groups + ["multistart_job"], how='inner')
     return filtered_df

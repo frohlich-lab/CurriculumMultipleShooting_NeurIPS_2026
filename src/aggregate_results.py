@@ -63,6 +63,10 @@ for dynamical_model in DYNAMICAL_MODEL:
         continue
     else:
         results_df = df_dict[dynamical_model]
+        # Ensure missing values are represented as the string "None"
+        for col in ["optimiser", "second_opt", "mlpexp_target"]:
+            if col in results_df.columns:
+                results_df[col] = results_df[col].fillna("None").astype(str)
         # Add dynamical model specific parameters/metrics
         metrics_model = metrics + dynamic_param_labels[dynamical_model]
 
@@ -77,13 +81,57 @@ for dynamical_model in DYNAMICAL_MODEL:
         )
         del results_df
 
+        def classify_strategy(row):
+            if row["shooting_mode"] != "single":
+                return "other"  # or skip entirely
+            if row["optimiser"] == "None" and row["second_opt"] != "None":
+                return "pure_bfgs"
+            elif row["curriculum_learning"]:
+                return "single+curriculum"
+            else:
+                return "single"
+
+        results_df_filtered["strategy"] = results_df_filtered.apply(classify_strategy, axis=1)
+        strategy_order = ["pure_bfgs", "single", "single+bfgs", "single+curriculum", "other"]
+
+        results_df_filtered["strategy"] = pd.Categorical(
+            results_df_filtered["strategy"],
+            categories=strategy_order,
+            ordered=True
+        )
+
         # Get dataframe with start and final ADAM epoch losses
-        start_epoch_df, final_epoch_df = compute_epoch_subset(
+        start_epoch_df, adam_final_epoch_df, bfgs_final_epoch_df = compute_epoch_subset(
             df=results_df_filtered,
             metrics=metrics_model,
             group_cols=hyperparam_groups,
-            max_epochs=N_EPOCHS_ADAM
         )
+
+        final_epoch_df = pd.concat(
+            [df for df in [adam_final_epoch_df, bfgs_final_epoch_df] if df is not None],
+            axis=0
+        )
+
+        # After computing final_epoch_df via concat
+        final_epoch_df["strategy_phase"] = final_epoch_df["strategy"]
+
+
+        # Override only for post-ADAM BFGS runs
+        final_epoch_df.loc[
+            (final_epoch_df["curriculum_stage"] == -1)
+            & (final_epoch_df["optimiser"] == "adam")
+            & (final_epoch_df["curriculum_learning"] == False),
+            "strategy_phase"
+        ] = "single+bfgs"
+
+        final_epoch_df["strategy"] = final_epoch_df["strategy_phase"]
+        final_epoch_df.drop(columns=["strategy_phase"], inplace=True)
+        final_epoch_df["strategy"] = pd.Categorical(
+            final_epoch_df["strategy"],
+            categories=strategy_order,
+            ordered=True
+        )
+        final_epoch_df = final_epoch_df.reset_index().drop(columns=["index"])
 
         col_param = "multiple_shooting_penalty" if final_epoch_df.multiple_shooting_penalty.nunique() > 1 \
             else "shooting_window_length"
@@ -103,7 +151,7 @@ for dynamical_model in DYNAMICAL_MODEL:
                 kind="box",
                 x_col="multistart_deviation",
                 y_col=metric,
-                hue_col="curriculum_learning",
+                hue_col={"single": "strategy", "multiple": "curriculum_learning"},
                 fig_dir=fig_subdir,
                 plot_name=f"final_{metric}_boxplot",
                 y_limits=(-5, 10) if metric in ["loss_train", "loss_val"] else None,  # with plotnine, y_limits for log-scaled axes must be specified in log-space
@@ -113,10 +161,23 @@ for dynamical_model in DYNAMICAL_MODEL:
 
 
         # Plot average metric profiles across settings
-        log_epochs = results_df_filtered[~results_df_filtered[log_metrics[0]].isna()].epoch.unique()
+        log_epochs_adam = results_df_filtered[
+            results_df_filtered[log_metrics].notna().any(axis=1)
+        ].epoch.unique()
+
+        log_epochs_bfgs = results_df_filtered[
+            results_df_filtered["epoch"] > 3999
+            ].epoch.unique()
+        log_epochs = np.sort(np.unique(np.concatenate([log_epochs_adam, log_epochs_bfgs])))
+
         results_df_reduced = results_df_filtered[results_df_filtered.epoch.isin(log_epochs)].copy()
-        loss_df_reduced = results_df_reduced[hyperparam_groups + ["multistart_job", "epoch"] + metrics_model].copy()
-        hessian_df = results_df_reduced[hyperparam_groups + ["multistart_job", "epoch"] + log_metrics].copy()
+        loss_df_reduced = results_df_reduced[
+            hyperparam_groups + ["multistart_job", "epoch", "strategy"] + metrics_model
+        ].copy()
+        hessian_df = results_df_reduced[
+            hyperparam_groups + ["multistart_job", "epoch", "strategy"] + log_metrics
+        ].copy()
+        hessian_df = hessian_df[hessian_df.epoch.isin(log_epochs_adam)]
         del results_df_reduced
 
         # Boxplot of hessian metrics across settings (final recorded log-epoch)
@@ -128,7 +189,7 @@ for dynamical_model in DYNAMICAL_MODEL:
                 kind="box",
                 x_col="multistart_deviation",
                 y_col=log_metric,
-                hue_col="curriculum_learning",
+                hue_col={"single": "strategy", "multiple": "curriculum_learning"},
                 fig_dir=fig_subdir,
                 plot_name=f"final_{log_metric}_boxplot",
                 # y_limits=(-5, 10),  # with plotnine, y_limits for log-scaled axes must be specified in log-space
@@ -154,7 +215,7 @@ for dynamical_model in DYNAMICAL_MODEL:
                 kind='line',
                 x_col='epoch',
                 y_col=model_metric,
-                hue_col='curriculum_learning',
+                hue_col={"single": "strategy", "multiple": "curriculum_learning"},
                 style_col='multistart_deviation',
                 yscale='log',
                 xscale='log',
@@ -173,7 +234,7 @@ for dynamical_model in DYNAMICAL_MODEL:
                 kind='line',
                 x_col='epoch',
                 y_col=log_metric,
-                hue_col='curriculum_learning',
+                hue_col={"single": "strategy", "multiple": "curriculum_learning"},
                 style_col='multistart_deviation',
                 yscale='log',
                 xscale='log',
@@ -183,7 +244,11 @@ for dynamical_model in DYNAMICAL_MODEL:
 
 
         # Compute the fraction of runs that achieve a final validation loss below a given threshold (here 1e-2)
-        fractions = compute_success_fraction(df=final_epoch_df, threshold=2e-2, group_cols=hyperparam_groups)
+        fractions = compute_success_fraction(
+            df=final_epoch_df,
+            threshold=2e-2,
+            group_cols=hyperparam_groups + ["strategy"]
+        )
         tiled_plot_plotnine(
             df=fractions,
             row_col="output_reg",
@@ -191,16 +256,42 @@ for dynamical_model in DYNAMICAL_MODEL:
             kind="bar",
             x_col="multistart_deviation",
             y_col="fraction_below_0.02",
-            hue_col="curriculum_learning",
+            hue_col={"single": "strategy", "multiple": "curriculum_learning"},
             fig_dir=fig_subdir,
             plot_name="fraction_below_0.02",
             y_limits=(0, 1)
         )
 
-        # Combine info from start and final epochs
-        merged = start_epoch_df[hyperparam_groups + ["multistart_job", "loss_train", "loss_val"]].merge(
-            final_epoch_df[hyperparam_groups + ["multistart_job", "loss_train", "loss_val"]],
+        # Match multistart jobs with known 'single+bfgs' strategy
+        single_bfgs_jobs = final_epoch_df[
+            final_epoch_df["strategy"] == "single+bfgs"
+            ][hyperparam_groups + ["multistart_job"]].drop_duplicates()
+
+        start_epoch_df = start_epoch_df.merge(
+            single_bfgs_jobs.assign(strategy_phase="single+bfgs"),
             on=hyperparam_groups + ["multistart_job"],
+            how="left"
+        )
+
+        # Use assigned value if present, fallback to original
+        start_epoch_df["strategy"] = start_epoch_df["strategy_phase"].fillna(start_epoch_df["strategy"])
+        start_epoch_df.drop(columns=["strategy_phase"], inplace=True)
+
+        # Re-cast to categorical
+        start_epoch_df["strategy"] = pd.Categorical(
+            start_epoch_df["strategy"],
+            categories=strategy_order,
+            ordered=True
+        )
+
+        # Combine info from start and final epochs
+        merged = start_epoch_df[
+            hyperparam_groups + ["multistart_job", "strategy", "loss_train", "loss_val"]
+        ].merge(
+            final_epoch_df[
+                hyperparam_groups + ["multistart_job", "strategy", "loss_train", "loss_val"]
+            ],
+            on=hyperparam_groups + ["multistart_job", "strategy"],
             how="left",
         ).rename(
             columns={
@@ -220,7 +311,7 @@ for dynamical_model in DYNAMICAL_MODEL:
         # merged = merged[(merged.loss_val_starting_epoch < 1e10) & (merged.loss_val_final_epoch < 1e10)]
 
         # Correlation analysis: loss_val at starting and final ADAM epochs; final ADAM loss_train and loss_val
-        summary_df = compute_loss_correlations(merged, hyperparam_groups)
+        summary_df = compute_loss_correlations(merged, hyperparam_groups + ["strategy"])
         for y_col in ["corr_start_vs_final", "corr_train_vs_val"]:
             tiled_plot_plotnine(
                 df=summary_df,
@@ -229,7 +320,7 @@ for dynamical_model in DYNAMICAL_MODEL:
                 kind="bar",
                 x_col="multistart_deviation",
                 y_col=y_col,
-                hue_col="curriculum_learning",
+                hue_col={"single": "strategy", "multiple": "curriculum_learning"},
                 fig_dir=fig_subdir,
                 plot_name=y_col,
                 y_limits=(-1, 1)
@@ -242,7 +333,7 @@ for dynamical_model in DYNAMICAL_MODEL:
             tolerance_params = compute_fraction_params_within_tolerance(
                 final_epoch_df,
                 true_dynamic_parameters["lotka_volterra"],
-                hyperparam_groups=hyperparam_groups,
+                hyperparam_groups=hyperparam_groups + ["strategy"],
                 tolerance=tolerance
             )
             tiled_plot_plotnine(
@@ -252,7 +343,7 @@ for dynamical_model in DYNAMICAL_MODEL:
                 kind="bar",
                 x_col="multistart_deviation",
                 y_col="fraction_within_tolerance",
-                hue_col="curriculum_learning",
+                hue_col={"single": "strategy", "multiple": "curriculum_learning"},
                 fig_dir=fig_subdir,
                 plot_name=f"fraction_within_tolerance{tolerance}",
             )
