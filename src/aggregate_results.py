@@ -82,7 +82,7 @@ for dynamical_model in DYNAMICAL_MODEL:
             df=results_df_filtered,
             metrics=metrics_model,
             group_cols=hyperparam_groups,
-            max_epochs=N_EPOCHS_ADAM
+            max_epochs=N_EPOCHS_ADAM[0]
         )
 
         col_param = "multiple_shooting_penalty" if final_epoch_df.multiple_shooting_penalty.nunique() > 1 \
