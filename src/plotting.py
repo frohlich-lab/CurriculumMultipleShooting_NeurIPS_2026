@@ -85,13 +85,15 @@ def tiled_plot_plotnine(
     style_col: Optional[str] = None,
     plot_fmt: Optional[str] = "png",
 ):
-    for activation_fn_name, max_lrate in itt.product(
+    for activation_fn_name, max_lrate, multiple_shooting_penalty in itt.product(
         sorted(df.activation_fn_name.unique()),
         sorted(df.max_lrate.unique()),
+        sorted(df.multiple_shooting_penalty.unique())
     ):
         data = df[
             (df.activation_fn_name == activation_fn_name) &
-            (df.max_lrate == max_lrate)
+            (df.max_lrate == max_lrate) &
+            (df.multiple_shooting_penalty == multiple_shooting_penalty)
         ].copy()
 
         # Preprocessing
@@ -195,6 +197,24 @@ def tiled_plot_plotnine(
             if (kind == "box") and (ref_line_y is not None):
                 p += p9.geom_hline(yintercept=ref_line_y, linetype='dashed', color='black')
 
+        # Standard color assignment
+        color_dict = {
+            "bfgs": "violet",
+            "single": "firebrick",
+            "single_bfgs": "darkviolet",
+            "single_CL": "darkorange",
+            "multiple": "darkgreen",
+            "multiple_CL": "springgreen",
+        }
+
+        # Only add if hue_var is known and values exist
+        unique_hue_vals = data[hue_col].unique()
+        valid_colors = {k: v for k, v in color_dict.items() if k in unique_hue_vals}
+        if valid_colors:
+            p += p9.scale_color_manual(values=valid_colors)
+            if kind in ["bar", "line"]:
+                p += p9.scale_fill_manual(values=valid_colors)
+
         # Apply axis scalign and coordinate zooming if specified
         if yscale == "log":
             p += p9.scale_y_log10()
@@ -208,7 +228,7 @@ def tiled_plot_plotnine(
 
         # Save or show
         if save_plots:
-            path = fig_dir / f"{plot_name}__{activation_fn_name}__{max_lrate}.{plot_fmt}"
+            path = fig_dir / f"{plot_name}__{activation_fn_name}__{max_lrate}__{multiple_shooting_penalty}.{plot_fmt}"
             p.save(str(path), dpi=300, verbose=False)
         else:
             p.show()

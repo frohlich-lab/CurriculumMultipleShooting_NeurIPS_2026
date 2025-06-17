@@ -3,7 +3,7 @@ import itertools as itt
 from src.generate_run_configs import generate_param_combinations
 from src.common import data_dir, TRAINING_RESULTS, AGGREGATION_PLOTS, PLOT_TYPES
 from src.model_training.training_configuration import (
-    DYNAMICAL_MODEL, N_STARTS, EXPERIMENT_NAME, MLP_ACTIVATIONS, MAX_LEARNING_RATES,
+    DYNAMICAL_MODEL, N_STARTS, EXPERIMENT_NAME, MLP_ACTIVATIONS, MAX_LEARNING_RATES, MULTIPLE_SHOOTING_PENALTIES,
 )
 
 # Container if needed
@@ -158,11 +158,12 @@ rule aggregate_results:
             experiment_name=EXPERIMENT_NAME,
             dynamical_model=DYNAMICAL_MODEL,
             filename=[
-                f"{plot_type}__{activation_fn_name}__{max_lrate}"
+                f"{plot_type}__{activation_fn_name}__{max_lrate}__{multiple_shooting_penalty}"
                 for plot_type in PLOT_TYPES
-                for activation_fn_name, max_lrate in itt.product(
+                for activation_fn_name, max_lrate, multiple_shooting_penalty in itt.product(
                     MLP_ACTIVATIONS,
-                    MAX_LEARNING_RATES
+                    MAX_LEARNING_RATES,
+                    MULTIPLE_SHOOTING_PENALTIES
                 )
             ]
         )

@@ -95,8 +95,7 @@ for dynamical_model in DYNAMICAL_MODEL:
             axis=0
         )
 
-        col_param = "multiple_shooting_penalty" if final_epoch_df.multiple_shooting_penalty.nunique() > 1 \
-            else "shooting_window_length"
+        col_param = "shooting_window_length"
 
         # Boxplot of final model metrics across settings
         for metric in metrics_model:

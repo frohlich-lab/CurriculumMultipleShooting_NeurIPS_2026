@@ -120,6 +120,7 @@ def generate_param_combinations(n_starts: int) -> List[Dict]:
             params["num_epochs_adam"] = 0
             params["shooting_mode"] = "single"
             params["shooting_window_length"] = 0
+            params["num_curriculum_steps"] = 0
 
         if "bfgs" in params.get("training_scheme"):
             params["num_epochs_bfgs"] = N_EPOCHS_BFGS
