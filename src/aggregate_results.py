@@ -3,7 +3,7 @@ import numpy as np
 
 from src.common import dynamic_param_labels, plots_dir, true_dynamic_parameters
 from src.model_training.training_configuration import DYNAMICAL_MODEL, EXPERIMENT_NAME, N_EPOCHS_ADAM, N_STARTS
-from src.utils import *
+from src.aggregation_utils import *
 
 
 hyperparam_groups = [
@@ -12,7 +12,7 @@ hyperparam_groups = [
     "use_bias", "use_final_bias",
     "activation_fn_name",
     "optimiser", "max_lrate", "lrate_span", "lrate_decay", "warmup_fct", "opt_steps", "opt_mult", "opt_sched_type",
-    "use_early_stop",
+    "restart_opt_curriculum",
     "mlp_reg_exp", "mlp_reg_strength", "output_reg",
     "shooting_mode", "shooting_window_length", "shooting_iv_init",
     "multiple_shooting_penalty",
