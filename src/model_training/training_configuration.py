@@ -163,7 +163,7 @@ OUTPUT_REG = {
 
 # Shooting parameters (shooting mode is decided by TRAINING_SCHEMES)
 SHOOTING_WINDOW_LENGTHS = {
-    # 6,  # 13 windows
+    6,  # 13 windows
     # # 7,
     8,  # 9 windows
     # 10,
@@ -190,7 +190,7 @@ MULTIPLE_SHOOTING_PENALTIES = {
 
 # Curriculum learning (decided by TRAINING_SCHEMES)
 NUM_CURRICULUM_STEPS = {
-    5,   # matches Homotopy paper and corresponding multiple+CL
+    # 5,   # matches Homotopy paper and corresponding multiple+CL
     9
 }
 
