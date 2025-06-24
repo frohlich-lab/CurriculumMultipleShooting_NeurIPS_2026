@@ -199,7 +199,6 @@ def initialise_wandb(
         "loss_train": "min",
         "loss_val": "min",
         "learning_rate": None,
-        "patience_counter": None,
     }
 
     # Add optional Hessian metrics -- both UDE and MLP
