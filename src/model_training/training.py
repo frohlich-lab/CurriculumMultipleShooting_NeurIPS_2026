@@ -19,6 +19,7 @@ from diffrax import SaveAt
 from jaxtyping import Array, Float, PyTree
 from pathlib import Path
 from src.common import TRAINING_RESULTS
+from src.model_training.losses import get_hessian
 from src.model_training.training_util import (
     check_and_progress_curriculum,
     get_save_epochs,
@@ -37,7 +38,6 @@ from src.model_training.training_util import (
 )
 from src.model_training.optimistix_training import train_optimistix
 from src.model_training.fides_training import train_fides
-from src.model_training.hessian import get_hessian
 from src.ude_problem import UDEProblem
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
