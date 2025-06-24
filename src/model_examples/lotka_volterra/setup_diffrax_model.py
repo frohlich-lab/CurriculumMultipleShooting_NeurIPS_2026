@@ -7,10 +7,7 @@ from src.model_training.model_util import (
     process_mechanistic_params,
 )
 from src.model_examples.base import BaseUDEFunction
-from src.model_examples.utils import (
-    load_training_validation_csv,
-    get_result_plot_generic,
-)
+from src.model_examples.utils import load_training_validation_csv
 from jaxtyping import Array
 from typing import Optional, Tuple, Union
 
@@ -76,27 +73,4 @@ def get_training_validation_data():
         validation_file="Validation_data.csv",
         columns=["u1", "u2"],
         time_col="t",
-    )
-
-
-def get_result_plot(prob, u0, t_save, t_span, data):
-    """Wrapper around :func:`get_result_plot_generic` for Lotka-Volterra."""
-
-    def _pred_transform(ys):
-        return ys[:, :2]
-
-    def _data_transform(d):
-        return d
-
-    labels = ["prey", "predator"]
-
-    return get_result_plot_generic(
-        prob,
-        u0,
-        t_save,
-        t_span,
-        data,
-        _pred_transform,
-        _data_transform,
-        labels,
     )

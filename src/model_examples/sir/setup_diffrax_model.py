@@ -7,10 +7,7 @@ from src.model_training.model_util import (
     process_mechanistic_params,
 )
 from src.model_examples.base import BaseUDEFunction
-from src.model_examples.utils import (
-    load_training_validation_csv,
-    get_result_plot_generic,
-)
+from src.model_examples.utils import load_training_validation_csv
 from jaxtyping import Array
 from typing import Optional, Union
 
@@ -101,42 +98,6 @@ def sir_base_loss_masked(solution: jnp.ndarray, data, mask: jnp.ndarray):
 
 
 # UTILS - DATA AND PLOTTING
-def get_result_plot(prob, u0, t_save, t_span, data):
-    """Wrapper around :func:`get_result_plot_generic` for the SIR model."""
-
-    def _pred_transform(ys):
-        return jnp.stack(
-            [
-                jnp.log(jnp.abs(ys[:, 1] + ys[:, 3])),
-                jnp.log(jnp.abs(ys[:, 2])),
-            ],
-            axis=1,
-        )
-
-    def _data_transform(d):
-        infected, dead, recovered = d[:, 0], d[:, 1], d[:, 2]
-        return jnp.stack(
-            [
-                jnp.log(infected),
-                jnp.log(jnp.abs(recovered + dead)),
-            ],
-            axis=1,
-        )
-
-    labels = ["Infected", "Recovered + dead"]
-
-    return get_result_plot_generic(
-        prob,
-        u0,
-        t_save,
-        t_span,
-        data,
-        _pred_transform,
-        _data_transform,
-        labels,
-    )
-
-
 def get_training_validation_data():
     """Load SIR training and validation data from CSV files."""
     return load_training_validation_csv(

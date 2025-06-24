@@ -2,7 +2,7 @@ import diffrax
 import os
 import pandas as pd
 import jax.numpy as jnp
-from typing import Callable, List, Tuple
+from typing import List, Tuple
 
 
 def _load_csv_data(
@@ -35,49 +35,3 @@ def load_training_validation_csv(
     )
 
     return train_data, t_save_train, t_span_train, val_data, t_save_val, t_span_val
-
-
-def get_result_plot_generic(
-    prob,
-    u0: jnp.ndarray,
-    t_save: diffrax.SaveAt,
-    t_span: List[float],
-    data: jnp.ndarray,
-    pred_transform: Callable[[jnp.ndarray], jnp.ndarray],
-    data_transform: Callable[[jnp.ndarray], jnp.ndarray],
-    labels: List[str],
-):
-    """Generate prediction and observation data frames for plotting."""
-    sol = prob.solve_single_shooting(diffrax.Tsit5(), u0, t_save, t_span)
-    pred_vals = pred_transform(sol.ys)
-    obs_vals = data_transform(data)
-
-    df_pred = pd.concat(
-        [
-            pd.DataFrame(
-                {
-                    "time": sol.ts,
-                    "value": pred_vals[:, i],
-                    "id": labels[i],
-                    "datasource": "model",
-                }
-            )
-            for i in range(pred_vals.shape[1])
-        ]
-    )
-
-    df_obs = pd.concat(
-        [
-            pd.DataFrame(
-                {
-                    "time": sol.ts,
-                    "value": obs_vals[:, i],
-                    "id": labels[i],
-                    "datasource": "observed",
-                }
-            )
-            for i in range(obs_vals.shape[1])
-        ]
-    )
-
-    return df_pred, df_obs
