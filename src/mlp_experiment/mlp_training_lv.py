@@ -93,6 +93,14 @@ def mlp_train(
 
     # Generate log-spaced epochs
     log_epochs = generate_log_epochs(n_epochs=n_epochs, num_samples=100, min_dist=5)
+    # Add first and final epochs
+    log_epochs = jnp.unique(
+        jnp.sort(
+            jnp.concatenate(
+                [log_epochs, jnp.array([0, n_epochs - 1])]
+            )
+        )
+    )
 
     # Training loop
     for epoch in range(n_epochs + 1):
