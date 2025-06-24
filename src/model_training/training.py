@@ -20,6 +20,7 @@ from jaxtyping import Array, Float, PyTree
 from pathlib import Path
 from src.common import TRAINING_RESULTS
 from src.model_training.losses import get_hessian
+from src.model_training.model_util import process_mechanistic_params
 from src.model_training.training_util import (
     check_and_progress_curriculum,
     get_save_epochs,
@@ -32,7 +33,6 @@ from src.model_training.training_util import (
     max_grad_norm,
     get_hessian_metrics,
     MetricHandler,
-    transform_dynamic_params,
     augment_u0
 )
 from src.model_training.optimistix_training import train_optimistix
@@ -478,8 +478,9 @@ def train(
                         "max_grad_norm": max_grad_norm(grads),
                         # Dynamic parameters
                         **{
-                            param: transform_dynamic_params(
-                                inference_model.func.dynamic_parameters, conf
+                            param: process_mechanistic_params(
+                                inference_model.func.dynamic_parameters,
+                                inference_model.func.options
                             )[i]
                             for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
                         },
@@ -602,7 +603,9 @@ def train(
         wandb.log(
             {
                 **{
-                    f"final_{param}_ADAM": transform_dynamic_params(model.func.dynamic_parameters, conf)[i]
+                    f"final_{param}_ADAM": process_mechanistic_params(
+                        model.func.dynamic_parameters, model.func.options
+                    )[i]
                     for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
                 },
                 "final_epoch": epoch,
@@ -635,8 +638,9 @@ def train(
                             else len(training_data),
                         # Dynamic parameters
                         **{
-                            param: transform_dynamic_params(
-                                best_model.func.dynamic_parameters, conf
+                            param: process_mechanistic_params(
+                                best_model.func.dynamic_parameters,
+                                best_model.func.options
                             )[i]
                             for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
                         },
@@ -676,8 +680,6 @@ def train(
                 t_span_val=t_span_val,
                 validation_data=validation_data,
                 last_valid_index=last_valid_index,
-                frozen_mechanistic=conf.freeze_mechanistic_params_optx,
-                frozen_nn=conf.freeze_nn_optx,
                 zero_out_mlp=False,
                 wandb_log=True,
                 wandb_log_final=True,

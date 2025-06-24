@@ -10,7 +10,8 @@ from diffrax import SaveAt
 from functools import partial
 from jaxtyping import Array, PyTree
 from src.common import Conf, dynamic_param_labels
-from src.model_training.training_util import transform_dynamic_params, prep_bfgs_training
+from src.model_training.model_util import process_mechanistic_params
+from src.model_training.training_util import prep_bfgs_training
 from src.ude_problem import UDEProblem
 from types import SimpleNamespace
 from typing import Callable, List, Optional, Union
@@ -155,8 +156,8 @@ def train_fides(
         wandb.log(
             {
                 **{
-                    f"final_{param}_BFGS": transform_dynamic_params(
-                        model.func.dynamic_parameters, conf
+                    f"final_{param}_BFGS": process_mechanistic_params(
+                        model.func.dynamic_parameters, model.func.options
                     )[i]
                     for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
                 },
@@ -174,8 +175,8 @@ def train_fides(
                 "loss_val": loss_val,
                 # Dynamic parameters
                 **{
-                    param: transform_dynamic_params(
-                        model.func.dynamic_parameters, conf
+                    param: process_mechanistic_params(
+                        model.func.dynamic_parameters, model.func.options
                     )[i]
                     for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
                 },

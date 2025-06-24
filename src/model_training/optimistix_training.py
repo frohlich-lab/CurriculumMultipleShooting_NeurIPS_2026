@@ -9,7 +9,9 @@ from src.common import Conf, dynamic_param_labels
 from diffrax import SaveAt
 from jaxlib.xla_extension import XlaRuntimeError
 from jaxtyping import Array, PyTree
-from src.model_training.training_util import transform_dynamic_params, prep_bfgs_training
+
+from src.model_training.model_util import process_mechanistic_params
+from src.model_training.training_util import prep_bfgs_training
 from src.ude_problem import UDEProblem
 from types import SimpleNamespace
 from typing import Callable, List, Optional, Union
@@ -28,10 +30,13 @@ def train_optimistix(
         epoch: int,
         num_epochs: int,
         u0_val: object,
-        t_save_windows: Array, masks: Array, training_data: jnp.ndarray,
-        t_save_val: Union[SaveAt, Array], t_span_val: List, validation_data: jnp.ndarray,
+        t_save_windows: Array,
+        masks: Array,
+        training_data: jnp.ndarray,
+        t_save_val: Union[SaveAt, Array],
+        t_span_val: List,
+        validation_data: jnp.ndarray,
         last_valid_index: int,
-        frozen_mechanistic: bool = False, frozen_nn: bool = False,
         zero_out_mlp: bool = False,
         wandb_log: bool = True,
         wandb_log_final: bool = True,
@@ -77,8 +82,6 @@ def train_optimistix(
             max_steps=num_epochs,
             starting_epoch=epoch,
             conf=conf,
-            frozen_mechanistic=frozen_mechanistic,
-            frozen_nn=frozen_nn,
             wandb_log=wandb_log,
             wandb_log_final=wandb_log_final,
         )
@@ -103,7 +106,6 @@ def optx_solve(
         f_struct, aux_struct,
         options, tags, max_steps,
         starting_epoch, conf,
-        frozen_mechanistic, frozen_nn,
         wandb_log: bool = True,
         wandb_log_final: bool = True,
 ):
@@ -155,9 +157,9 @@ def optx_solve(
                         "loss_val": loss_val,
                         # Dynamic parameters
                         **{
-                            param: transform_dynamic_params(
-                                eqx.combine(y, args[0])  # params + static = model
-                                .func.dynamic_parameters, conf
+                            param: process_mechanistic_params(
+                                eqx.combine(y, args[0]).func.dynamic_parameters,
+                                eqx.combine(y, args[0]).func.options
                             )[i]
                             for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
                         },
@@ -176,8 +178,9 @@ def optx_solve(
         wandb.log(
             {
                 **{
-                    f"final_{param}_BFGS": transform_dynamic_params(
-                        eqx.combine(y, args[0]).func.dynamic_parameters, conf
+                    f"final_{param}_BFGS": process_mechanistic_params(
+                        eqx.combine(y, args[0]).func.dynamic_parameters,
+                        eqx.combine(y, args[0]).func.options
                     )[i]
                     for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
                 },

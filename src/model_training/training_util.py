@@ -342,15 +342,6 @@ class MetricHandler:
         return self.should_break
 
 
-def transform_dynamic_params(dynamic_parameters: jnp.ndarray, conf: Conf) -> jnp.ndarray:
-    if conf.dynamic_params_scale == "log10":
-        return jnp.power(10, dynamic_parameters)
-    elif conf.dynamic_params_scale == "linear":
-        return dynamic_parameters
-    else:
-        raise ValueError(f"Unknown dynamic parameter scale: {conf.dynamic_params_scale}!")
-
-
 def generate_epochs_dict(epochs_list):
     # Validate that the list has an even number of elements
     if len(epochs_list) % 2 != 0:
