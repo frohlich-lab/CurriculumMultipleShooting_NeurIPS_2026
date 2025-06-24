@@ -63,14 +63,14 @@ def compute_discontinuity_penalty(
     between the last state of each shooting window and the first state of the next.
     """
     if solutions.shape[0] > 1:  # valid for MS or for MS+CL before last stage
-        sse = get_masked_mse(
+        discontinuity_mse = get_masked_mse(
             solutions[:-1, :, :state_dimension],  # endpoint
             solutions[1:, :, :state_dimension],  # startpoint
             masks[:-1].astype(int) & masks[1:].astype(int)
         )
     else:  # for MS+CL final CL stage (single valid window)
-        sse = 0
-    return reg_strength * sse
+        discontinuity_mse = 0
+    return reg_strength * discontinuity_mse
 
 
 def _init_glorot(
