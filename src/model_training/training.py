@@ -1,12 +1,8 @@
 import diffrax
 import equinox as eqx
-import jax
 import jax.numpy as jnp
-import jax.tree_util as jtu
-# import matplotlib.pyplot as plt
 import optax
 import pandas as pd
-# import subprocess
 import wandb
 import warnings
 
@@ -26,8 +22,8 @@ from src.common import TRAINING_RESULTS
 from src.model_training.training_util import (
     check_and_progress_curriculum,
     get_save_epochs,
-    # generate_incremental_arrays,
     generate_log_epochs,
+    get_filter_spec,
     get_opt_opt_state_params,
     get_scheduler,
     initialise_wandb,
@@ -108,7 +104,7 @@ def get_fit_dfs(
                               "prey": sol.ys[i, :, 0],
                               "predator": sol.ys[i, :, 1],
                               }).assign(window=i + 1)
-                for i in range(sol.ys.shape[0])  # shooting-window/batch (unused) dimension
+                for i in range(sol.ys.shape[0])  # shooting-window dimension
             ])
         elif prob.dynamical_model == "sir":
             df_pred_train = pd.concat([
@@ -116,7 +112,7 @@ def get_fit_dfs(
                               "Infected": jnp.log(jnp.absolute(sol.ys[i, :, 1] + sol.ys[i, :, 3])),
                               "Recovered + dead": jnp.log(jnp.absolute(sol.ys[i, :, 2])),
                               }).assign(window=i + 1)
-                for i in range(sol.ys.shape[0])  # shooting-window/batch (unused) dimension
+                for i in range(sol.ys.shape[0])  # shooting-window dimension
             ])
         else:
             raise ValueError(f"Undefined dynamical model {prob.dynamical_model}.")
@@ -167,6 +163,42 @@ def log_fit_plots(
         )
 
 
+def get_final_train_val_losses(
+        model: UDEProblem,
+        u0_train: jnp.ndarray,
+        t_save_train: Union[SaveAt, Array],
+        t_span_train: List,
+        training_data: jnp.ndarray,
+        u0_val: jnp.ndarray,
+        t_save_val: Union[SaveAt, Array],
+        t_span_val: List,
+        validation_data: jnp.ndarray,
+        loss_dict: Dict[str, Callable],
+) -> Tuple[float, float]:
+    """
+    Computes the final training and validation losses after training with either ADAM or BFGS using the provided
+    initial conditions (u0_train, u0_val). These losses do not include regularisation terms.
+    """
+    params, static = eqx.partition(model, eqx.is_array)
+    final_loss_train, _ = loss_dict["val_loss_fn"](
+        prob_params=params,
+        prob_static=static,
+        u0=u0_train,
+        t_save=t_save_train,
+        t_span=t_span_train,
+        data=training_data,
+    )
+    final_loss_val, _ = loss_dict["val_loss_fn"](
+        prob_params=params,
+        prob_static=static,
+        u0=u0_val,
+        t_save=t_save_val,
+        t_span=t_span_val,
+        data=validation_data
+    )
+    return final_loss_train, final_loss_val
+
+
 # NN OPTIMISATION STEP
 @eqx.filter_jit
 def make_step(
@@ -197,8 +229,6 @@ def make_step(
         shooting_mode=conf.shooting_mode,
     )
     grads = make_grads_finite(grads)
-    # print(grads.func.dynamic_parameters)
-    # print(grads.initial_values)
     # Initialise hessian metrics with NaNs
     hessian_metrics = {
         metric: jnp.nan
@@ -298,28 +328,13 @@ def train(
         save_epochs = model_save_steps_start + midpoints + model_save_steps_end
 
     # Unpack training and validation args
-    u0, training_data, t_save_train, t_span_train = train_args.u0, train_args.data, train_args.t_save, train_args.t_span
+    _, training_data, t_save_train, t_span_train = train_args.u0, train_args.data, train_args.t_save, train_args.t_span
     u0_val, validation_data, t_save_val, t_span_val = val_args.u0, val_args.data, val_args.t_save, val_args.t_span
 
     # Add initial zero as starting condition for the 2-norm of the neural network contribution
     u0_val = augment_u0(u0_val)
     plot_args["u0"] = augment_u0(plot_args["u0"])
-
-    # Create filter_spec allowing for training of mechanistic params only or neural network only
-    filter_spec_freeze_mechanistic = jtu.tree_map(lambda x: eqx.is_array(x), model)
-    # filter_spec which freezes dynamic (mechanistic) parameters
-    filter_spec_freeze_mechanistic = eqx.tree_at(
-        lambda x: x.func.dynamic_parameters,
-        filter_spec_freeze_mechanistic,
-        replace=jax.tree_map(lambda _: False, filter_spec_freeze_mechanistic.func.dynamic_parameters)
-    )
-    # filter_spec which freezes the neural network
-    filter_spec_freeze_nn = jtu.tree_map(lambda x: False, model)
-    filter_spec_freeze_nn = eqx.tree_at(
-        lambda x: x.func.dynamic_parameters,
-        filter_spec_freeze_nn,
-        replace=jax.tree_map(lambda _: True, filter_spec_freeze_nn.func.dynamic_parameters)
-    )
+    u0_train = plot_args["u0"]
 
     # Define colours for plots
     if conf.dynamical_model == "lotka_volterra":
@@ -329,31 +344,36 @@ def train(
     else:
         raise ValueError(f"Undefined dynamical model {conf.dynamical_model}.")
 
-    # Initialise list of result dataframes and define last_valid_index based on shooting mode
-    results_dfs = []
+    # Initialise last_valid_index based on shooting-mode
     if conf.shooting_mode == "multiple":
         num_windows = int(jnp.ceil(len(training_data) / (conf.shooting_window_length - 1)))
         last_valid_index = num_windows
     else:
         last_valid_index = 1
 
-    # STAGE 1: Train with ADAM/ADAM-W -- freeze mechanistic model parameters
+    # Ensure results directory is correctly set up
+    results_save_dir = results_dir / str(conf.experiment_name) / conf.dynamical_model / "train"
+    results_save_dir.mkdir(exist_ok=True, parents=True)
+    results_dfs = []
+
+    # STAGE 1: Train with ADAM/ADAM-W
     if n_epochs > 0:
-        # Initialise CL stage variable
         cl_stage = 1  # initialise CL stage
 
-        # Depending on conf settings, freeze mechanistic params/neural network or keep everything learnable
-        if conf.freeze_mechanistic_params_adam:
-            adam_filter_spec = filter_spec_freeze_mechanistic
-        elif conf.freeze_nn_adam:
-            adam_filter_spec = filter_spec_freeze_nn
-        else:
-            adam_filter_spec = eqx.is_array
-        # Partition model into learnable / static parameters
+        # Partition model into learnable / static parameters depending on configuration
+        adam_filter_spec = get_filter_spec(model, conf, optimiser="adam")
         params, static = eqx.partition(model, adam_filter_spec)
 
-        # Generate regularly log-spaced epochs for early-stopping evaluation + model stat logging - from DMMs
+        # Generate regularly log-spaced epochs for model stat logging - from DMMs
         log_epochs = generate_log_epochs(n_epochs=n_epochs, num_samples=100, min_dist=5)
+        # Add first and final epochs
+        log_epochs = jnp.unique(
+            jnp.sort(
+                jnp.concatenate(
+                    [log_epochs, jnp.array([0, n_epochs - 1])]
+                )
+            )
+        )
 
         # Get schedule
         schedule = get_scheduler(conf=conf, n_epochs=n_epochs)
@@ -364,35 +384,10 @@ def train(
         metric_handler = MetricHandler(patience=5)
         ivs = []
         for nn_epoch in range(n_epochs):
-            # Compute validation loss prior to epoch update
-            if conf.use_dropout:
-                # Get a copy of the model for inference
-                inference_model = model.replace_mlp(
-                    new_mlp=model.func.mlp,
-                    switch_to_inference=True,
-                )
-            else:
-                # no need for difference in training/inference behaviour
-                inference_model = model
-            inference_params, inference_static = eqx.partition(inference_model, adam_filter_spec)
-            # compute validation loss
-            loss_val, _ = loss_dict["val_loss_fn"](
-                prob_params=inference_params,
-                prob_static=inference_static,
-                u0=u0_val,
-                t_save=t_save_val,
-                t_span=t_span_val,
-                data=validation_data,
-            )
-
-            # Keep track of best performing model on validation dataset (and corresponding loss)
-            if loss_val < loss_val_min:
-                best_model = inference_model
-                loss_val_min = loss_val
-
+            # Keep track of initial values for multiple shooting windows
             if conf.shooting_mode == "multiple":
                 ivs.append(params.initial_values)
-
+            # Check curriculum stage update
             if conf.curriculum_learning:
                 t_save_windows, masks, cl_stage, advancing_cl_stage = check_and_progress_curriculum(
                     t_save_windows, masks, nn_epoch, cl_stage, model_save_steps_start, curriculum_params
@@ -402,10 +397,10 @@ def train(
                     print(f"Restarting optimiser at epoch {nn_epoch} for CL stage {cl_stage}")
                     schedule = get_scheduler(conf=conf, n_epochs=n_epochs)
                     opt, opt_state, params = get_opt_opt_state_params(conf, params, schedule)
-
                 # Update last valid window index
                 last_valid_index = curriculum_params[cl_stage]["last_valid_index"]
 
+            # Optionally save model
             if nn_epoch in save_epochs:
                 # Save model at the end of the epoch
                 model_pca_traj_dir = model_save_dir / "pca_traj"
@@ -415,8 +410,13 @@ def train(
                     (conf.__str__() + f"_PCA_{nn_epoch}_CL{cl_stage}.eqx")
                 )
                 print(f"Saving model at epoch {nn_epoch}, CL stage {cl_stage} to {epoch_save_path}")
+                inference_model = model.replace_mlp(
+                    new_mlp=model.func.mlp,
+                    switch_to_inference=True,
+                ) if conf.use_dropout else model
                 inference_model.save(epoch_save_path)
 
+            # Take step
             params, opt_state, loss_train, reg_loss_dict, grads, hessian_metrics = make_step(
                 params=params,
                 static=static,
@@ -438,39 +438,63 @@ def train(
             # Recombine dynamic and static into full model
             model = eqx.combine(params, static)
 
-            partial_results_df = pd.DataFrame(
-                [{
-                    "optimiser": conf.optimiser,
-                    "epoch": epoch+nn_epoch,
-                    # Curriculum stage
-                    "curriculum_stage": cl_stage,
-                    # Losses
-                    "loss_train": loss_train,
-                    "loss_val": loss_val,
-                    # Training metrics
-                    "learning_rate": schedule(nn_epoch),
-                    "num_train_samples": curriculum_params[cl_stage]["length"] if conf.curriculum_learning \
-                        else len(training_data),
-                    "max_grad_norm": max_grad_norm(grads),
-                    # Dynamic parameters
-                    **{
-                        param: transform_dynamic_params(
-                            inference_model.func.dynamic_parameters, conf
-                        )[i]
-                        for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
-                    },
-                    # Initial values
-                    **{
-                        f"iv_{i}_{j}": inference_model.initial_values[i][j]
-                        for i in range(len(inference_model.initial_values))
-                        for j in range(inference_model.func.state_dimension)
-                    },
-                    "data_rescaling": rescaling_args["data_rescaling"],
-                    "time_rescaling": rescaling_args["time_rescaling"],
-                }]
-            )
-            # log loss_train, loss_val, learning rate, param values and grads on log-spaced epochs
-            if (nn_epoch in log_epochs) or (nn_epoch == 0):
+            if nn_epoch in log_epochs:
+                # Compute validation loss prior to epoch update
+                inference_model = model.replace_mlp(
+                    new_mlp=model.func.mlp,
+                    switch_to_inference=True,
+                ) if conf.use_dropout else model
+                inference_params, inference_static = eqx.partition(inference_model, adam_filter_spec)
+
+                # compute validation loss
+                loss_val, _ = loss_dict["val_loss_fn"](
+                    prob_params=inference_params,
+                    prob_static=inference_static,
+                    u0=u0_val,
+                    t_save=t_save_val,
+                    t_span=t_span_val,
+                    data=validation_data,
+                )
+
+                # Keep track of best performing model on validation dataset (and corresponding loss)
+                if loss_val < loss_val_min:
+                    best_model = inference_model
+                    loss_val_min = loss_val
+
+                # Save partial training results
+                partial_results_df = pd.DataFrame(
+                    [{
+                        "optimiser": conf.optimiser,
+                        "epoch": epoch + nn_epoch,
+                        # Curriculum stage
+                        "curriculum_stage": cl_stage,
+                        # Losses
+                        "loss_train": loss_train,
+                        "loss_val": loss_val,
+                        # Training metrics
+                        "learning_rate": schedule(nn_epoch),
+                        "num_train_samples": curriculum_params[cl_stage]["length"] if conf.curriculum_learning \
+                            else len(training_data),
+                        "max_grad_norm": max_grad_norm(grads),
+                        # Dynamic parameters
+                        **{
+                            param: transform_dynamic_params(
+                                inference_model.func.dynamic_parameters, conf
+                            )[i]
+                            for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
+                        },
+                        # Initial values
+                        **{
+                            f"iv_{i}_{j}": inference_model.initial_values[i][j]
+                            for i in range(len(inference_model.initial_values))
+                            for j in range(inference_model.func.state_dimension)
+                        },
+                        "data_rescaling": rescaling_args["data_rescaling"],
+                        "time_rescaling": rescaling_args["time_rescaling"],
+                    }]
+                )
+
+                # Log loss_train, loss_val, learning rate, param values and grads on log-spaced epochs
                 wandb.log(
                     {
                         "loss_train": loss_train,
@@ -535,20 +559,35 @@ def train(
                     f"mlp_reg {reg_loss_dict['mlp_reg'] if reg_loss_dict is not None else 'n/a'} | "
                     f"loss_val {loss_val} | "
                 )
-            elif nn_epoch == n_epochs - 1:
-                # Log final loss values for ADAM training stage
-                wandb.log(
-                    {
-                        "final_loss_train_ADAM": loss_train,
-                        "final_loss_val_ADAM": loss_val,
-                    },
-                    step=epoch+nn_epoch,
-                )
 
-            # Append epoch results to results list with added conf details
-            results_dfs.append(partial_results_df.assign(**conf.__dict__))
+                if nn_epoch == n_epochs - 1:
+                    # Compute final training loss on single-shooting with known u0
+                    final_loss_train, loss_val = get_final_train_val_losses(
+                        model=model,
+                        u0_train=u0_train,
+                        t_save_train=t_save_train,
+                        t_span_train=t_span_train,
+                        training_data=training_data,
+                        u0_val=u0_val,
+                        t_save_val=t_save_val,
+                        t_span_val=t_span_val,
+                        validation_data=validation_data,
+                        loss_dict=loss_dict,
+                    )
+                    partial_results_df["final_loss_train"] = final_loss_train
+                    partial_results_df["final_loss_val"] = loss_val
+                    wandb.log(
+                        {
+                            "final_loss_train_ADAM": final_loss_train,
+                            "final_loss_val_ADAM": loss_val,
+                        },
+                        step=epoch+nn_epoch,
+                    )
 
-        # Update epoch
+                # Append epoch results to results list with added conf details
+                results_dfs.append(partial_results_df.assign(**conf.__dict__))
+
+        # Update epoch tally
         epoch += nn_epoch
 
         # Plot fit (train/val) at end of training -- using best model on validation dataset
@@ -571,25 +610,50 @@ def train(
             step=epoch
         )
 
-        # Skip optimistix altogether if NN training failed due to too many invalid losses
-        if metric_handler.should_break:
-            wandb.finish()
-            return best_model
-
-        # Update epoch
-        epoch += 1
         # Serialise the best ADAM model
         best_model.save(model_save_dir / (conf.__str__() + "_best_ADAM.eqx"))
 
+        # Break if NN training failed due to too many invalid losses
+        if metric_handler.should_break:
+            if len(results_dfs) > 0:
+                # Save partial results anyway
+                results_total = pd.concat(results_dfs)
+            else:
+                # Save CSV with inf stats
+                results_total = pd.DataFrame(
+                    [{
+                        "optimiser": conf.optimiser,
+                        "epoch": epoch,
+                        # Curriculum stage
+                        "curriculum_stage": cl_stage,
+                        # Losses
+                        "loss_train": jnp.inf,
+                        "loss_val": jnp.inf,
+                        # Training metrics
+                        "learning_rate": schedule(nn_epoch),
+                        "num_train_samples": curriculum_params[cl_stage]["length"] if conf.curriculum_learning \
+                            else len(training_data),
+                        # Dynamic parameters
+                        **{
+                            param: transform_dynamic_params(
+                                best_model.func.dynamic_parameters, conf
+                            )[i]
+                            for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
+                        },
+                        "data_rescaling": rescaling_args["data_rescaling"],
+                        "time_rescaling": rescaling_args["time_rescaling"],
+                    }]
+                )
+            results_total.to_csv(TRAINING_RESULTS.format_map(conf.__dict__), index=False)
+            wandb.finish()
+            return best_model
+
+        # Update epoch prior to BFGS training, if any
+        epoch += 1
+
     # Stage 2 - train with BFGS via optimistix/fides
     if max_iter_optx_finetune > 0:  # otherwise end training and return trained model
-        # Setup filter spec
-        if conf.freeze_mechanistic_params_optx:
-            bfgs_filter_spec = filter_spec_freeze_mechanistic
-        elif conf.freeze_nn_optx:
-            bfgs_filter_spec = filter_spec_freeze_nn
-        else:
-            bfgs_filter_spec = eqx.is_array
+        bfgs_filter_spec = get_filter_spec(model, conf, optimiser="bfgs")
 
         wandb_log = True
         if conf.second_opt == "optx":
@@ -640,6 +704,23 @@ def train(
                 wandb_log_final=wandb_log,
             )
 
+        # Compute final training and validation losses
+        final_loss_train_bfgs, final_loss_val_bfgs = get_final_train_val_losses(
+            model=model,
+            u0_train=u0_train,
+            t_save_train=t_save_train,
+            t_span_train=t_span_train,
+            training_data=training_data,
+            u0_val=u0_val,
+            t_save_val=t_save_val,
+            t_span_val=t_span_val,
+            validation_data=validation_data,
+            loss_dict=loss_dict,
+        )
+        # Log final losses
+        partial_results_df["final_loss_train_BFGS"] = final_loss_train_bfgs
+        partial_results_df["final_loss_val_BFGS"] = final_loss_val_bfgs
+
         # Add rescaling info & curriculum stage
         partial_results_df["data_rescaling"] = rescaling_args["data_rescaling"]
         partial_results_df["time_rescaling"] = rescaling_args["time_rescaling"]
@@ -661,23 +742,11 @@ def train(
             plot_subdir=conf.second_opt,
         )
 
-    # Ensure results directory is correctly set up
-    results_save_dir = results_dir / str(conf.experiment_name) / conf.dynamical_model / "train"
-    results_save_dir.mkdir(exist_ok=True, parents=True)
     # Save results dataframe to CSV
     results_total = pd.concat(results_dfs)
     results_total.to_csv(TRAINING_RESULTS.format_map(conf.__dict__), index=False)
 
-    # Get W&B run directory
-    # wandb_stripped_dir = wandb.run.dir.rsplit('/files', 1)[0]
-    # command = f"wandb sync {wandb_stripped_dir}"
     wandb.finish()
-    # TODO check whether we are using online/offline mode on cluster!
-    # # Log everything to W&B after end of run
-    # try:
-    #     _ = subprocess.run(command, shell=True)
-    # except subprocess.CalledProcessError as e:
-    #     raise ValueError(f"Error syncing wandb directory: {e}")
     # Serialise best model overall
     best_model.save(model_save_dir / (conf.__str__() + "_best_final.eqx"))
     return best_model
