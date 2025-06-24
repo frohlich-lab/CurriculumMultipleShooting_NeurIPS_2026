@@ -222,46 +222,42 @@ def initialise_wandb(
             )
 
 
+def get_filter_spec(model: UDEProblem, conf: Conf, optimiser: str = "adam"):
+    # Depending on conf settings, freeze mechanistic params/neural network or keep everything learnable
+    if (
+            ((optimiser == "adam") and conf.freeze_mechanistic_params_adam) or
+            ((optimiser == "bfgs") and conf.freeze_mechanistic_params_optx)
+    ):
+        # Create filter_spec allowing for training of mechanistic params only or neural network only
+        filter_spec_freeze_mechanistic = jtu.tree_map(lambda x: eqx.is_array(x), model)
+        # filter_spec which freezes dynamic (mechanistic) parameters
+        filter_spec_freeze_mechanistic = eqx.tree_at(
+            lambda x: x.func.dynamic_parameters,
+            filter_spec_freeze_mechanistic,
+            replace=jax.tree_map(lambda _: False, filter_spec_freeze_mechanistic.func.dynamic_parameters)
+        )
+        return filter_spec_freeze_mechanistic
+    elif (
+            ((optimiser == "adam") and conf.freeze_nn_adam) or
+            ((optimiser == "bfgs") and conf.freeze_nn_optx)
+    ):
+        # filter_spec which freezes the neural network
+        filter_spec_freeze_nn = jtu.tree_map(lambda x: False, model)
+        filter_spec_freeze_nn = eqx.tree_at(
+            lambda x: x.func.dynamic_parameters,
+            filter_spec_freeze_nn,
+            replace=jax.tree_map(lambda _: True, filter_spec_freeze_nn.func.dynamic_parameters)
+        )
+        return filter_spec_freeze_nn
+    else:
+        return eqx.is_array
+
+
 def make_grads_finite(grads):
     return jax.tree_map(
         lambda x: jnp.where(jnp.isfinite(x), x, jnp.zeros_like(x)),
         grads,
     )
-
-
-def generate_incremental_arrays(
-        data: Array,
-        t_save: Union[diffrax.SaveAt, Array],
-        t_span: List,
-        n_epoch: int,
-        curriculum_params: dict[int, Any]
-):
-    # Initialize the list to store the results
-    incremental_data = []
-    incremental_t_save = []
-    incremental_t_span = []
-    incremental_steps = [curriculum_params[stage]["start"] for stage in sorted(curriculum_params.keys())]
-
-    # Fill the incremental data list with the incremental data
-    for step in sorted(curriculum_params.keys()):
-        length = curriculum_params[step]["length"]
-        start_epoch = curriculum_params[step]["start"]
-        end_epoch = curriculum_params[step]["end"]
-        for _ in range(end_epoch - start_epoch):
-            incremental_data.append(data[:length])
-            incremental_t_save.append(diffrax.SaveAt(ts=t_save.subs.ts[:length]))
-            incremental_t_span.append([np.min(t_save.subs.ts[:length]), np.max(t_save.subs.ts[:length])])
-
-
-    # Add full data for the remaining epochs
-    epochs_filled = len(incremental_data)
-
-    for _ in range(n_epoch - epochs_filled):
-        incremental_data.append(data)
-        incremental_t_save.append(t_save)
-        incremental_t_span.append(t_span)
-
-    return incremental_data, incremental_t_save, incremental_t_span, incremental_steps
 
 
 def max_grad_norm(grads: PyTree) -> Array:
@@ -290,6 +286,15 @@ def generate_log_epochs(n_epochs: int, num_samples: int, min_dist: int) -> np.nd
         np.logspace(0, np.log10(n_epochs), num=num_samples).astype(int)
     )
     return enforce_minimum_spacing(log_epochs, min_dist)
+
+
+def get_save_epochs(num_epochs, num_models):
+    if num_models <= 0 or num_epochs <= 0:
+        return []
+    if num_models == 1:
+        return [num_epochs - 1]
+
+    return [round(i * (num_epochs - 1) / (num_models - 1)) for i in range(num_models)]
 
 
 def get_hessian_metrics(hessian: Array, return_eigs_svs: bool=False) -> Union[tuple[dict, Array, Array], dict]:
@@ -467,43 +472,3 @@ def check_and_progress_curriculum(
         masks = curriculum_params[cl_stage]["mask"]
         advancing_cl_stage = True
     return t_save_windows, masks, cl_stage, advancing_cl_stage
-
-
-def get_save_epochs(num_epochs, num_models):
-    if num_models <= 0 or num_epochs <= 0:
-        return []
-    if num_models == 1:
-        return [num_epochs - 1]
-
-    return [round(i * (num_epochs - 1) / (num_models - 1)) for i in range(num_models)]
-
-
-def get_filter_spec(model: UDEProblem, conf: Conf, optimiser: str = "adam"):
-    # Depending on conf settings, freeze mechanistic params/neural network or keep everything learnable
-    if (
-            ((optimiser == "adam") and conf.freeze_mechanistic_params_adam) or
-            ((optimiser == "bfgs") and conf.freeze_mechanistic_params_optx)
-    ):
-        # Create filter_spec allowing for training of mechanistic params only or neural network only
-        filter_spec_freeze_mechanistic = jtu.tree_map(lambda x: eqx.is_array(x), model)
-        # filter_spec which freezes dynamic (mechanistic) parameters
-        filter_spec_freeze_mechanistic = eqx.tree_at(
-            lambda x: x.func.dynamic_parameters,
-            filter_spec_freeze_mechanistic,
-            replace=jax.tree_map(lambda _: False, filter_spec_freeze_mechanistic.func.dynamic_parameters)
-        )
-        return filter_spec_freeze_mechanistic
-    elif (
-            ((optimiser == "adam") and conf.freeze_nn_adam) or
-            ((optimiser == "bfgs") and conf.freeze_nn_optx)
-    ):
-        # filter_spec which freezes the neural network
-        filter_spec_freeze_nn = jtu.tree_map(lambda x: False, model)
-        filter_spec_freeze_nn = eqx.tree_at(
-            lambda x: x.func.dynamic_parameters,
-            filter_spec_freeze_nn,
-            replace=jax.tree_map(lambda _: True, filter_spec_freeze_nn.func.dynamic_parameters)
-        )
-        return filter_spec_freeze_nn
-    else:
-        return eqx.is_array
