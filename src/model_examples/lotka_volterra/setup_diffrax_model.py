@@ -9,7 +9,7 @@ from src.model_training.model_util import (
 from src.model_examples.base import BaseUDEFunction
 from src.model_examples.utils import load_training_validation_csv
 from jaxtyping import Array
-from typing import Optional, Tuple, Union
+from typing import Tuple, Union
 
 
 
