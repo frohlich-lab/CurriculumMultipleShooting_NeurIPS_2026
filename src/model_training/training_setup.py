@@ -21,7 +21,7 @@ from src.common import (
 )
 from src.model_examples.lotka_volterra import setup_lotka_volterra_model as setup_lv
 from src.model_examples.sir import setup_sir_model as setup_sir
-from src.model_training.model_util import set_weight_bias
+from src.model_training.model_util import bounded_tanh_transform_params, set_weight_bias
 from src.model_training.losses import (
     compute_validation_loss, compute_loss, compute_loss_grad,
     compute_val_loss_optx, compute_loss_optx,
@@ -508,7 +508,6 @@ def load_multistart_dynamic_params(conf: Conf, data_dir: Path) -> jnp.ndarray:
     elif conf.dynamic_params_scale == "linear":
         return jnp.power(10, jnp.array(log_params))
     elif conf.dynamic_params_scale == "bounded_tanh":
-        from src.model_training.training_util import bounded_tanh_transform_params
         return bounded_tanh_transform_params(
             params=jnp.power(10, jnp.array(log_params)),
             **broadcast_bounds(

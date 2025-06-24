@@ -28,7 +28,6 @@ from src.model_training.training_util import (
     get_opt_opt_state_params,
     get_scheduler,
     initialise_wandb,
-    log_plots,
     make_grads_finite,
     max_grad_norm,
     get_hessian_metrics,
@@ -38,6 +37,7 @@ from src.model_training.training_util import (
 )
 from src.model_training.optimistix_training import train_optimistix
 from src.model_training.fides_training import train_fides
+from src.plotting import log_plots
 from src.ude_problem import UDEProblem
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
