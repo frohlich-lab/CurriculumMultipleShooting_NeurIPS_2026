@@ -6,8 +6,8 @@ from src.model_training.model_util import (
     get_masked_mse,
     process_mechanistic_params,
 )
-from src.model_examples.base import BaseUDEFunction
-from src.model_examples.utils import load_training_validation_csv
+from src.model_examples.base_ude_function import BaseUDEFunction
+from src.model_examples.data_loading import load_training_validation_csv
 from jaxtyping import Array
 from typing import Tuple, Union
 

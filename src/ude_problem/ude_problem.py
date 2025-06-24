@@ -10,8 +10,8 @@ from pathlib import Path
 
 from jaxtyping import Array
 from src.common import activation_functions
-from src.model_examples.lotka_volterra.setup_diffrax_model import LotkaVolterra_UDEFunction
-from src.model_examples.sir.setup_diffrax_model import SIR_UDEFunction
+from src.model_examples.lotka_volterra.setup_lotka_volterra_model import LotkaVolterra_UDEFunction
+from src.model_examples.sir.setup_sir_model import SIR_UDEFunction
 from src.ude_problem import CustomDropoutMLP
 from typing import Any, Callable, List, Optional, Union
 

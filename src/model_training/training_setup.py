@@ -19,8 +19,8 @@ from src.common import (
     true_dynamic_parameters,
     u0s
 )
-from src.model_examples.lotka_volterra import setup_diffrax_model as setup_lv
-from src.model_examples.sir import setup_diffrax_model as setup_sir
+from src.model_examples.lotka_volterra import setup_lotka_volterra_model as setup_lv
+from src.model_examples.sir import setup_sir_model as setup_sir
 from src.model_training.model_util import set_weight_bias
 from src.model_training.losses import (
     compute_validation_loss, compute_loss, compute_loss_grad,

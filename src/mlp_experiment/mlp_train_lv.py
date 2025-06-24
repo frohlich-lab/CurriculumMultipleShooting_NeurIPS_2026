@@ -2,7 +2,7 @@ import fire
 import jax.random as jr
 import jax.numpy as jnp
 from jax import config
-import src.model_examples.lotka_volterra.setup_diffrax_model as setup_lv
+import src.model_examples.lotka_volterra.setup_lotka_volterra_model as setup_lv
 
 from src.common import activation_functions, Conf
 from src.mlp_experiment.mlp_training_lv import mlp_train
