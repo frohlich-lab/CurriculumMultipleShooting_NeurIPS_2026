@@ -12,7 +12,7 @@ from jaxtyping import Array
 from typing import Optional, Union
 
 
-class UDEFunction(BaseUDEFunction):
+class SIR_UDEFunction(BaseUDEFunction):
     """
     Class to evaluate right hand side (vector field) of an UDEModel
 

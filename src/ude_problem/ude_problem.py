@@ -10,15 +10,15 @@ from pathlib import Path
 
 from jaxtyping import Array
 from src.common import activation_functions
-from src.model_examples.lotka_volterra.setup_diffrax_model import UDEFunction as UDEFunction_lv
-from src.model_examples.sir.setup_diffrax_model import UDEFunction as UDEFunction_sir
+from src.model_examples.lotka_volterra.setup_diffrax_model import LotkaVolterra_UDEFunction
+from src.model_examples.sir.setup_diffrax_model import SIR_UDEFunction
 from src.ude_problem import CustomDropoutMLP
 from typing import Any, Callable, List, Optional, Union
 
 
 UDE_funcs = {
-    'lotka_volterra': UDEFunction_lv,
-    'sir': UDEFunction_sir,
+    'lotka_volterra': LotkaVolterra_UDEFunction,
+    'sir': SIR_UDEFunction,
 }
 
 
@@ -34,7 +34,7 @@ class UDEProblem(eqx.Module):
         ODE-stepping controller (should not need to be changed).
     """
     dynamical_model: str
-    func: Union[UDEFunction_lv, UDEFunction_sir]
+    func: Union[LotkaVolterra_UDEFunction, SIR_UDEFunction]
     initial_values: Array
 
     def __init__(

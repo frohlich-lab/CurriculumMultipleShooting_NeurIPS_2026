@@ -12,8 +12,7 @@ from jaxtyping import Array
 from typing import Tuple, Union
 
 
-
-class UDEFunction(BaseUDEFunction):
+class LotkaVolterra_UDEFunction(BaseUDEFunction):
     """
     Class to evaluate right hand side (vector field) of an UDEModel
 
