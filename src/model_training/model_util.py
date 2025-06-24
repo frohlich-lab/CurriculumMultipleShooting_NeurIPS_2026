@@ -50,7 +50,6 @@ def regularise_mlp_contribution(
 
 def compute_discontinuity_penalty(
         solutions: Array,
-        # cl_stage: int,
         state_dimension: int,
         reg_strength: float,
         masks: Array,
