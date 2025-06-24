@@ -8,7 +8,8 @@ import wandb
 from dataclasses import replace
 from jaxtyping import Array, Float, PyTree
 from src.common import Conf
-from src.model_training.model_util import regularise_mlp, get_mse
+from src.model_training.base_losses import get_mse
+from src.model_training.regularisation import regularise_mlp
 from src.model_training.training import make_grads_finite
 from src.model_training.training_util import (get_hessian_metrics, generate_log_epochs,
                                               get_opt_opt_state_params, get_scheduler, initialise_wandb)

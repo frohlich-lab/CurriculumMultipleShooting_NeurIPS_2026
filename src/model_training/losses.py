@@ -6,13 +6,12 @@ import jax.numpy as jnp
 from functools import partial
 from jaxtyping import PyTree
 from src.common import Conf
-from src.model_training.model_util import compute_discontinuity_penalty, regularise_mlp, regularise_mlp_contribution
+from src.model_training.regularisation import compute_discontinuity_penalty, regularise_mlp, regularise_mlp_contribution
 from src.model_training.training_util import (get_sol_and_loss_single_shooting,
                                               get_sol_and_loss_multiple_shooting,
                                               get_sol_and_loss_validation)
 from src.ude_problem import UDEProblem
 from typing import Callable, Union
-
 
 
 @eqx.filter_jit
