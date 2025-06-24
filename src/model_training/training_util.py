@@ -17,6 +17,49 @@ from src.ude_problem.ude_problem import UDEProblem
 from typing import Any, Callable, List, Union
 
 
+def augment_u0(u0):
+    """
+    Augment the initial condition(s) with additional zero(es) element to compute
+    network contribution regularisation.
+    """
+    # Dynamically compute the shape for the new zeros array
+    zeros_shape = u0.shape[:-1] + (1,)
+    # Concatenate along the last axis
+    return jnp.concatenate([u0, jnp.zeros(zeros_shape)], axis=-1)
+
+
+# Utilities to prepare for training
+def get_filter_spec(model: UDEProblem, conf: Conf, optimiser: str = "adam"):
+    # Depending on conf settings, freeze mechanistic params/neural network or keep everything learnable
+    if (
+            ((optimiser == "adam") and conf.freeze_mechanistic_params_adam) or
+            ((optimiser == "bfgs") and conf.freeze_mechanistic_params_optx)
+    ):
+        # Create filter_spec allowing for training of mechanistic params only or neural network only
+        filter_spec_freeze_mechanistic = jtu.tree_map(lambda x: eqx.is_array(x), model)
+        # filter_spec which freezes dynamic (mechanistic) parameters
+        filter_spec_freeze_mechanistic = eqx.tree_at(
+            lambda x: x.func.dynamic_parameters,
+            filter_spec_freeze_mechanistic,
+            replace=jax.tree_map(lambda _: False, filter_spec_freeze_mechanistic.func.dynamic_parameters)
+        )
+        return filter_spec_freeze_mechanistic
+    elif (
+            ((optimiser == "adam") and conf.freeze_nn_adam) or
+            ((optimiser == "bfgs") and conf.freeze_nn_optx)
+    ):
+        # filter_spec which freezes the neural network
+        filter_spec_freeze_nn = jtu.tree_map(lambda x: False, model)
+        filter_spec_freeze_nn = eqx.tree_at(
+            lambda x: x.func.dynamic_parameters,
+            filter_spec_freeze_nn,
+            replace=jax.tree_map(lambda _: True, filter_spec_freeze_nn.func.dynamic_parameters)
+        )
+        return filter_spec_freeze_nn
+    else:
+        return eqx.is_array
+
+
 # Scheduler from Fabian's NeuralCoarseGraining
 def get_scheduler(
         conf: Conf,
@@ -222,53 +265,7 @@ def initialise_wandb(
             )
 
 
-def get_filter_spec(model: UDEProblem, conf: Conf, optimiser: str = "adam"):
-    # Depending on conf settings, freeze mechanistic params/neural network or keep everything learnable
-    if (
-            ((optimiser == "adam") and conf.freeze_mechanistic_params_adam) or
-            ((optimiser == "bfgs") and conf.freeze_mechanistic_params_optx)
-    ):
-        # Create filter_spec allowing for training of mechanistic params only or neural network only
-        filter_spec_freeze_mechanistic = jtu.tree_map(lambda x: eqx.is_array(x), model)
-        # filter_spec which freezes dynamic (mechanistic) parameters
-        filter_spec_freeze_mechanistic = eqx.tree_at(
-            lambda x: x.func.dynamic_parameters,
-            filter_spec_freeze_mechanistic,
-            replace=jax.tree_map(lambda _: False, filter_spec_freeze_mechanistic.func.dynamic_parameters)
-        )
-        return filter_spec_freeze_mechanistic
-    elif (
-            ((optimiser == "adam") and conf.freeze_nn_adam) or
-            ((optimiser == "bfgs") and conf.freeze_nn_optx)
-    ):
-        # filter_spec which freezes the neural network
-        filter_spec_freeze_nn = jtu.tree_map(lambda x: False, model)
-        filter_spec_freeze_nn = eqx.tree_at(
-            lambda x: x.func.dynamic_parameters,
-            filter_spec_freeze_nn,
-            replace=jax.tree_map(lambda _: True, filter_spec_freeze_nn.func.dynamic_parameters)
-        )
-        return filter_spec_freeze_nn
-    else:
-        return eqx.is_array
-
-
-def make_grads_finite(grads):
-    return jax.tree_map(
-        lambda x: jnp.where(jnp.isfinite(x), x, jnp.zeros_like(x)),
-        grads,
-    )
-
-
-def max_grad_norm(grads: PyTree) -> Array:
-    # Flatten
-    grads_flat, _ = jax.tree_util.tree_flatten(grads)
-    # Compute L2 norm
-    grad_norms = [jnp.linalg.norm(g) for g in grads_flat]
-    # Return max norm
-    return jnp.max(jnp.array(grad_norms))
-
-
+# Utilities to define epochs for logging and model saving
 def enforce_minimum_spacing(arr: np.ndarray, min_dist: int) -> np.ndarray:
     """
     Filters an input array, arr, and keeps the original items that are at least min_dist apart.
@@ -295,6 +292,23 @@ def get_save_epochs(num_epochs, num_models):
         return [num_epochs - 1]
 
     return [round(i * (num_epochs - 1) / (num_models - 1)) for i in range(num_models)]
+
+
+# Utilities to make training step or compute gradient and hessian metrics
+def make_grads_finite(grads):
+    return jax.tree_map(
+        lambda x: jnp.where(jnp.isfinite(x), x, jnp.zeros_like(x)),
+        grads,
+    )
+
+
+def max_grad_norm(grads: PyTree) -> Array:
+    # Flatten
+    grads_flat, _ = jax.tree_util.tree_flatten(grads)
+    # Compute L2 norm
+    grad_norms = [jnp.linalg.norm(g) for g in grads_flat]
+    # Return max norm
+    return jnp.max(jnp.array(grad_norms))
 
 
 def get_hessian_metrics(hessian: Array, return_eigs_svs: bool=False) -> Union[tuple[dict, Array, Array], dict]:
@@ -329,6 +343,7 @@ def get_hessian_metrics(hessian: Array, return_eigs_svs: bool=False) -> Union[tu
     return (hessian_metrics, eigenvalues, singular_values) if return_eigs_svs else hessian_metrics
 
 
+# Metric handler to check whether to break training loop
 # Tested (tests/test_training.py)
 class MetricHandler:
     def __init__(self, patience=5):
@@ -347,33 +362,7 @@ class MetricHandler:
         return self.should_break
 
 
-def augment_u0(u0):
-    """
-    Augment the initial condition(s) with additional zero(es) element to compute
-    network contribution regularisation.
-    """
-    # Dynamically compute the shape for the new zeros array
-    zeros_shape = u0.shape[:-1] + (1,)
-    # Concatenate along the last axis
-    return jnp.concatenate([u0, jnp.zeros(zeros_shape)], axis=-1)
-
-
-def prep_bfgs_training(model, zero_out_mlp, use_output_reg: bool):
-    # Zero out MLP if needed (mechanistic fit only)
-    if zero_out_mlp:
-        mlp_replacement = set_weight_bias(model.func.mlp, 0.0, jax.random.PRNGKey(0))
-    else:
-        mlp_replacement = model.func.mlp
-
-    # Set dropout behaviour to be deterministic and enable output/neural network contribution regularisation
-    model_bfgs = model.replace_mlp(
-        new_mlp=mlp_replacement,
-        switch_to_inference=True,
-        regularise_network=use_output_reg if (use_output_reg and not model.func.regularise_network) else None
-    )
-    return model_bfgs
-
-
+# Utilities to compute solution and loss for different training schemes
 def get_sol_and_loss_validation(
         prob: UDEProblem,
         u0: Array,
@@ -472,3 +461,19 @@ def check_and_progress_curriculum(
         masks = curriculum_params[cl_stage]["mask"]
         advancing_cl_stage = True
     return t_save_windows, masks, cl_stage, advancing_cl_stage
+
+
+def prep_bfgs_training(model, zero_out_mlp, use_output_reg: bool):
+    # Zero out MLP if needed (mechanistic fit only)
+    if zero_out_mlp:
+        mlp_replacement = set_weight_bias(model.func.mlp, 0.0, jax.random.PRNGKey(0))
+    else:
+        mlp_replacement = model.func.mlp
+
+    # Set dropout behaviour to be deterministic and enable output/neural network contribution regularisation
+    model_bfgs = model.replace_mlp(
+        new_mlp=mlp_replacement,
+        switch_to_inference=True,
+        regularise_network=use_output_reg if (use_output_reg and not model.func.regularise_network) else None
+    )
+    return model_bfgs
