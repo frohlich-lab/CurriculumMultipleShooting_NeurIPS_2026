@@ -3,21 +3,19 @@ import equinox as eqx
 import git
 import itertools as itt
 import jax.numpy as jnp
-import jax.random as jr
+import jax.tree_util as jtu
 import jax
 import matplotlib.pyplot as plt
 import numpy as np
 import optax
 import pandas as pd
-import seaborn as sns
 import wandb
 from diffrax import SaveAt
 
 from jaxtyping import Array, PyTree
 from pathlib import Path
-from scipy.stats import qmc
-from src.common import Conf, dynamic_param_labels, hessian_metrics_wandb, plots_dir, true_dynamic_parameters
-from src.model_training.model_util import bounded_tanh_transform_params, set_weight_bias
+from src.common import Conf, dynamic_param_labels, hessian_metrics_wandb
+from src.model_training.model_util import set_weight_bias
 from src.ude_problem.ude_problem import UDEProblem
 from typing import Any, Callable, List, Union
 
@@ -168,7 +166,7 @@ def initialise_wandb(
             git_commit=repo.head.object.hexsha,
             git_remote_url=repo.remotes.origin.url,
         ),
-        mode="online"
+        mode="offline"
     )
 
     # Define shared metrics
@@ -596,3 +594,34 @@ def get_save_epochs(num_epochs, num_models):
         return [num_epochs - 1]
 
     return [round(i * (num_epochs - 1) / (num_models - 1)) for i in range(num_models)]
+
+
+def get_filter_spec(model: UDEProblem, conf: Conf, optimiser: str = "adam"):
+    # Depending on conf settings, freeze mechanistic params/neural network or keep everything learnable
+    if (
+            ((optimiser == "adam") and conf.freeze_mechanistic_params_adam) or
+            ((optimiser == "bfgs") and conf.freeze_mechanistic_params_optx)
+    ):
+        # Create filter_spec allowing for training of mechanistic params only or neural network only
+        filter_spec_freeze_mechanistic = jtu.tree_map(lambda x: eqx.is_array(x), model)
+        # filter_spec which freezes dynamic (mechanistic) parameters
+        filter_spec_freeze_mechanistic = eqx.tree_at(
+            lambda x: x.func.dynamic_parameters,
+            filter_spec_freeze_mechanistic,
+            replace=jax.tree_map(lambda _: False, filter_spec_freeze_mechanistic.func.dynamic_parameters)
+        )
+        return filter_spec_freeze_mechanistic
+    elif (
+            ((optimiser == "adam") and conf.freeze_nn_adam) or
+            ((optimiser == "bfgs") and conf.freeze_nn_optx)
+    ):
+        # filter_spec which freezes the neural network
+        filter_spec_freeze_nn = jtu.tree_map(lambda x: False, model)
+        filter_spec_freeze_nn = eqx.tree_at(
+            lambda x: x.func.dynamic_parameters,
+            filter_spec_freeze_nn,
+            replace=jax.tree_map(lambda _: True, filter_spec_freeze_nn.func.dynamic_parameters)
+        )
+        return filter_spec_freeze_nn
+    else:
+        return eqx.is_array
