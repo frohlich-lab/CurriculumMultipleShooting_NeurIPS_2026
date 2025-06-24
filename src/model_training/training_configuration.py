@@ -285,7 +285,7 @@ NORMALISE_TIMEPOINTS = {
 
 N_STARTS = 50  # number of multi-starts
 
-N_EPOCHS_ADAM = 4000  # default from UDE paper: 2000 / SIR: 40000-100000
+N_EPOCHS_ADAM = 4000  # default from UDE paper: 200 / SIR: 40000-100000
 N_EPOCHS_BFGS = 10000
 
 EXPERIMENT_NAME = "nemo_udefrozen"
