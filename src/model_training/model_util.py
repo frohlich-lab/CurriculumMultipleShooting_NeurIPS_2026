@@ -16,10 +16,6 @@ def get_masked_mse(pred: Array, data: Array, mask: Array):
     # Masked mean square error - mean is computed only over non-zero terms
     return jnp.sum(jnp.expand_dims(mask, axis=-1) * (pred - data) ** 2) / (jnp.sum(mask) * pred.shape[-1])
 
-def get_masked_sse(pred: Array, data: Array, mask: Array):
-    # Masked sum square error - sum is computed only over non-zero terms
-    return jnp.sum(jnp.expand_dims(mask, axis=-1) * (pred - data) ** 2)
-
 
 # TODO @GiacomoFabrini - add unit test
 def regularise_mlp(
@@ -66,9 +62,8 @@ def compute_discontinuity_penalty(
     Compute the discontinuity penalty by measuring the sum of square errors
     between the last state of each shooting window and the first state of the next.
     """
-    # TODO - If comparing with Development_Docker, reinstate MSE instead of SSE!
     if solutions.shape[0] > 1:  # valid for MS or for MS+CL before last stage
-        sse = get_masked_sse(
+        sse = get_masked_mse(
             solutions[:-1, :, :state_dimension],  # endpoint
             solutions[1:, :, :state_dimension],  # startpoint
             masks[:-1].astype(int) & masks[1:].astype(int)
