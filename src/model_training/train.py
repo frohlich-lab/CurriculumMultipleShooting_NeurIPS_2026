@@ -4,7 +4,6 @@ import jax.numpy as jnp
 
 from dataclasses import replace
 from jax import config
-from pathlib import Path
 from src.common import (
     Conf,
     data_dir,

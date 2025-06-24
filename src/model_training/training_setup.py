@@ -276,8 +276,9 @@ def setup_curriculum_learning(
             # Fill the incremental data list with the incremental data
             for step in range(1, new_num_curriculum_steps + 1):
                 start_epoch = int((step - 1) * (switch_epoch / (new_num_curriculum_steps-1)))
-                end_epoch = int(step * (switch_epoch / (new_num_curriculum_steps-1))) if step < new_num_curriculum_steps \
-                    else n_epoch  # last CL stage lasts until final NN training epoch
+                end_epoch = int(
+                    step * (switch_epoch / (new_num_curriculum_steps-1))
+                ) if step < new_num_curriculum_steps else n_epoch  # last CL stage lasts until final NN training epoch
                 if step == 1:
                     time, mask = generate_ms_time_and_mask(
                         num_windows, shooting_window_length, len(data), t_save

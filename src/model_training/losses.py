@@ -32,7 +32,7 @@ def compute_loss(
         multiple_shooting_penalty: float,
         shooting_mode: str,
         loss_fn: Callable,
-        adjoint: diffrax.AbstractAdjoint = diffrax.RecursiveCheckpointAdjoint() , # default for everything apart from Hessian (DirectAdjoint)
+        adjoint: diffrax.AbstractAdjoint = diffrax.RecursiveCheckpointAdjoint(), # default for everything apart from Hessian (DirectAdjoint)
         max_steps: int = 20000,
 ):
     # Get full UDEProblem
