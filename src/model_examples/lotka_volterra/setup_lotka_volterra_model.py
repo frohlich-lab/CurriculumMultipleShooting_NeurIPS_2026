@@ -1,11 +1,8 @@
 import equinox as eqx
 import jax.numpy as jnp
 
-from src.model_training.model_util import (
-    get_mse,
-    get_masked_mse,
-    process_mechanistic_params,
-)
+from src.model_training.base_losses import get_mse, get_masked_mse
+from src.model_training.model_util import process_mechanistic_params
 from src.model_examples.base_ude_function import BaseUDEFunction
 from src.model_examples.data_loading import load_training_validation_csv
 from jaxtyping import Array
