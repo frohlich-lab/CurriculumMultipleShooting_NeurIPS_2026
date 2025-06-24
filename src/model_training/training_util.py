@@ -5,15 +5,12 @@ import itertools as itt
 import jax.numpy as jnp
 import jax.tree_util as jtu
 import jax
-import matplotlib.pyplot as plt
 import numpy as np
 import optax
-import pandas as pd
 import wandb
 from diffrax import SaveAt
 
 from jaxtyping import Array, PyTree
-from pathlib import Path
 from src.common import Conf, dynamic_param_labels, hessian_metrics_wandb
 from src.model_training.model_util import set_weight_bias
 from src.ude_problem.ude_problem import UDEProblem
@@ -73,11 +70,6 @@ def get_scheduler(
                 "decay_rate": conf.lrate_decay,
                 "end_value": conf.max_lrate * conf.lrate_decay ** n_epochs,  # lower bound when to stop
             }
-            # plt.loglog(
-            #     range(n_epochs),
-            #     [optax.schedules.warmup_exponential_decay_schedule(**schedule)(i) for i in range(n_epochs)]
-            # )
-            # plt.show()
             return optax.schedules.warmup_exponential_decay_schedule(**schedule)
         elif conf.opt_sched_type == "lin":  # Single schedule with linear warmup and decay
             if conf.lrate_decay == 1 and conf.lrate_span == 1 and conf.warmup_fct == 0:
@@ -100,11 +92,6 @@ def get_scheduler(
                 "div_factor": conf.lrate_span,
                 "final_div_factor": decay_factor,
             }
-            # plt.plot(
-            #     range(n_epochs),
-            #     [optax.schedules.linear_onecycle_schedule(**linear_schedule)(i) for i in range(n_epochs)]
-            # )
-            # plt.show()
             return optax.schedules.linear_onecycle_schedule(**linear_schedule)
         else:  # default: cosine annealing
             schedule = {
@@ -114,11 +101,6 @@ def get_scheduler(
                 "decay_steps": n_epochs,
                 "end_value": conf.max_lrate * conf.lrate_decay ** n_epochs,
             }
-            # plt.plot(
-            #     range(n_epochs),
-            #     [optax.sgdr_schedule([schedule])(i) for i in range(n_epochs)]
-            # )
-            # plt.show()
             return optax.sgdr_schedule([schedule])
     else:
         raise ValueError(
