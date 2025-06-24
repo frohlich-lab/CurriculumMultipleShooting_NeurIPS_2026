@@ -342,22 +342,6 @@ class MetricHandler:
         return self.should_break
 
 
-def generate_epochs_dict(epochs_list):
-    # Validate that the list has an even number of elements
-    if len(epochs_list) % 2 != 0:
-        raise ValueError("The epochs list must have an even number of elements.")
-
-    # Create the dictionary
-    epochs_dict = {}
-    num_steps = len(epochs_list) // 2
-
-    for i in range(num_steps):
-        start_epoch = epochs_list[2 * i]
-        end_epoch = epochs_list[2 * i + 1]
-        epochs_dict[i] = {"start": start_epoch, "end": end_epoch}
-    return epochs_dict
-
-
 def augment_u0(u0):
     """
     Augment the initial condition(s) with additional zero(es) element to compute
