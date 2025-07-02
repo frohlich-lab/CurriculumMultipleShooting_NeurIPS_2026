@@ -7,7 +7,8 @@ DYNAMICAL_MODEL = {
 MLP_WIDTHS = {
     # 1,
     5,  # UDE paper -> activation changed to RBF, max_lrate to 1e-1
-    # 10,
+    10,
+    20,
     # 50
 }
 
@@ -37,9 +38,9 @@ USE_FINAL_BIASES = {
 MLP_ACTIVATIONS = {
     # "tanh",
     # "relu",
-    # "swish",
+    "swish",
     # "gelu",
-    "rbf"
+    # "rbf"
 }
 
 
@@ -147,10 +148,10 @@ MLP_REG_STRENGTHS = {
 OUTPUT_REG = {
     0,
     # changed with 1e-6 premultiplier given issues with snakemake small wildcards
-    # 1e0, # corresponds to 1e-6
-    # 1e1,  # corresponds to 1e-5
-    # 1e2,  # corresponds to 1e-4
-    # 1e3,  # corresponds to 1e-3
+    1e0, # corresponds to 1e-6
+    1e1,  # corresponds to 1e-5
+    1e2,  # corresponds to 1e-4
+    1e3,  # corresponds to 1e-3
     # 1e-2,
     # 1e-1,
     # 1e0,
@@ -191,7 +192,7 @@ MULTIPLE_SHOOTING_PENALTIES = {
 
 # Curriculum learning (decided by TRAINING_SCHEMES)
 NUM_CURRICULUM_STEPS = {
-    # 5,   # matches Homotopy paper and corresponding multiple+CL
+    5,   # matches Homotopy paper and corresponding multiple+CL
     9
 }
 
@@ -212,8 +213,8 @@ DYNAMIC_PARAMS_SCALES = {
 
 MULTISTART_DEVIATIONS = {
     0,
-    # 1,
-    # 2
+    1,
+    2
 }
 
 DYNAMIC_PARAMS_PERTURB_METHODS = {
@@ -242,12 +243,12 @@ SECOND_OPTS = {
 
 # Option to freeze the mechanistic parameters and only train the neural network component
 FREEZE_MECHANISTIC_PARAMS_ADAM = {
-    True,
-    # False
+    # True,
+    False
 }
 FREEZE_MECHANISTIC_PARAMS_OPTX= {
-    True,
-    # False
+    # True,
+    False
 }
 
 FREEZE_NN_ADAM= {
@@ -283,9 +284,9 @@ NORMALISE_TIMEPOINTS = {
     # False,
 }
 
-N_STARTS = 50  # number of multi-starts
+N_STARTS = 10  # number of multi-starts
 
 N_EPOCHS_ADAM = 4000  # default from UDE paper: 200 / SIR: 40000-100000
 N_EPOCHS_BFGS = 10000
 
-EXPERIMENT_NAME = "nemo_udefrozen"
+EXPERIMENT_NAME = "nemo_072025"
