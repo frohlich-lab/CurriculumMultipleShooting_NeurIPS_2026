@@ -252,10 +252,8 @@ def setup_curriculum_learning(
                 raise ValueError("Number of steps must be positive!")
 
             # Compute curriculum stage metrics
-            base_length =  int(len(data) / num_curriculum_steps)
             for step in range(1, num_curriculum_steps + 1):
-                length = step*base_length if step != num_curriculum_steps \
-                    else len(data)
+                length = int(len(data) * (step / num_curriculum_steps))
                 start_epoch = int((step - 1) * (switch_epoch / num_curriculum_steps))
                 end_epoch = int(step * (switch_epoch / num_curriculum_steps)) if step < num_curriculum_steps \
                     else n_epoch  # last CL stage lasts until final NN training epoch
