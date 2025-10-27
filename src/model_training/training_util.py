@@ -442,9 +442,11 @@ def get_sol_and_loss_multiple_shooting(
         last_valid_index: int,
         max_steps: int = 20000
 ):
+    ivs = prob.initial_values[:last_valid_index]
+    ivs = ivs.at[0].set(jax.lax.stop_gradient(ivs[0]))
     sol = prob.solve_multiple_shooting(
         diffrax.Tsit5(),
-        prob.initial_values[:last_valid_index],
+        ivs,
         t_save_windows[:last_valid_index],
         adjoint,
         max_steps
