@@ -231,6 +231,7 @@ class UDEProblem(eqx.Module):
             ),
             args=u0,
             saveat=diffrax.SaveAt(ts=t_save),
+            throw=False,
             stepsize_controller=controller,
             adjoint=adjoint,
             max_steps=max_steps

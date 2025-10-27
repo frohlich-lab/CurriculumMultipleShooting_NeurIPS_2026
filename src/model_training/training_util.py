@@ -10,6 +10,7 @@ import optax
 import wandb
 from diffrax import SaveAt
 
+from functools import partial
 from jaxtyping import Array, PyTree
 from src.common import Conf, dynamic_param_labels, hessian_metrics_wandb
 from src.model_training.model_util import set_weight_bias
@@ -403,12 +404,32 @@ def get_sol_and_loss_single_shooting(
         adjoint,
         max_steps
     )
-    loss = loss_fn(
-        solution=sol.ys,
-        data=data,
-        mask=masks.squeeze()
+    operand = dict(solution=sol.ys, data=data, mask=masks.squeeze())
+    return sol, jax.lax.cond(
+        sol.result == diffrax.RESULTS.max_steps_reached,
+        lambda _: jnp.nan,
+        lambda op: loss_fn(**op),
+        operand
     )
-    return sol, loss
+
+
+def loss_multiple_shooting(
+        prob,
+        loss_fn: Callable,
+        sol,
+        data,
+        masks,
+        last_valid_index,
+):
+    losses = jnp.array([
+        loss_fn(
+            solution=sol.ys[i, :, :prob.func.state_dimension],
+            data=data,
+            mask=masks[i]
+        )
+        for i in range(last_valid_index)
+    ])
+    return jnp.mean(losses)
 
 
 def get_sol_and_loss_multiple_shooting(
@@ -428,15 +449,24 @@ def get_sol_and_loss_multiple_shooting(
         adjoint,
         max_steps
     )
-    losses = jnp.array([
-        loss_fn(
-            solution=sol.ys[i, :, :prob.func.state_dimension],
-            data=data,
-            mask=masks[i]
-        )
-        for i in range(last_valid_index)
-    ])
-    return sol, jnp.mean(losses)
+    any_max_steps = jnp.any(sol.result == diffrax.RESULTS.max_steps_reached)
+    loss_multiple_shooting_partial = partial(
+        loss_multiple_shooting,
+        prob=prob,
+        loss_fn=loss_fn,
+        last_valid_index=last_valid_index,
+    )
+    operand = dict(
+        sol=sol,
+        data=data,
+        masks=masks,
+    )
+    return sol, jax.lax.cond(
+        any_max_steps,
+        lambda _: jnp.nan,
+        lambda op: loss_multiple_shooting_partial(**op),
+        operand
+    )
 
 
 def check_and_progress_curriculum(
