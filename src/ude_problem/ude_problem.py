@@ -125,6 +125,7 @@ class UDEProblem(eqx.Module):
             y0=jnp.concatenate(
                 [
                     jax.lax.stop_gradient(u0[:self.func.state_dimension]),
+                    # u0[:self.func.state_dimension],  # enables learning initial value for single-shooting
                     self.get_augmented_state_variables(),  # only update initial value for augmentation vars
                     jax.lax.stop_gradient(self.get_auxiliary_output_variable()),
                 ],
