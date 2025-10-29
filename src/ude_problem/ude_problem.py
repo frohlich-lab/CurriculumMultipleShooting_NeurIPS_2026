@@ -126,7 +126,9 @@ class UDEProblem(eqx.Module):
                 [
                     jax.lax.stop_gradient(u0[:self.func.state_dimension]),
                     self.get_augmented_state_variables(),  # only update initial value for augmentation vars
-                    jax.lax.stop_gradient(self.get_auxiliary_output_variable()),
+                    jax.lax.stop_gradient(
+                        self.get_auxiliary_output_variable()
+                    ),  # freeze network regularisation initial value
                 ],
                 axis=0
             ),
@@ -224,8 +226,9 @@ class UDEProblem(eqx.Module):
             y0=jnp.concatenate(
                 [
                     u0[:self.func.state_delimiter],  # state vars + potential augmentation - learnable
-                    jax.lax.stop_gradient(u0[-1:jnp.newaxis]),  # do NOT update network regularisation IV
-                    # u0[-1:jnp.newaxis],  # alternative, NOT USED: update network regularisation initial value
+                    jax.lax.stop_gradient(
+                        u0[-1:jnp.newaxis]
+                    ),  # freeze network regularisation initial value
                 ],
                 axis=0
             ),
