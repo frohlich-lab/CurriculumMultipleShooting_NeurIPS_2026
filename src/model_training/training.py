@@ -32,6 +32,7 @@ from src.model_training.training_util import (
     make_grads_finite,
     max_grad_norm,
     get_hessian_metrics,
+    build_hessian_index_mask,
     MetricHandler,
     augment_u0
 )
@@ -214,6 +215,7 @@ def make_step(
         loss_grad_fn: Callable,
         compute_hessian_metrics: bool,
         base_loss_fn: Callable,
+        active_idx: Array,
 ):
     (loss_value, reg_loss_dict), grads = loss_grad_fn(
         prob_params=params,
@@ -239,6 +241,7 @@ def make_step(
         hessian_metrics = get_hessian_metrics(
             get_hessian(params, static, args, conf, base_loss_fn),
             return_eigs_svs=False,
+            active_idx=active_idx,
         )
     updates, opt_state = opt.update(grads, opt_state, params)
     params = eqx.apply_updates(params, updates)
@@ -363,6 +366,7 @@ def train(
         # Partition model into learnable / static parameters depending on configuration
         adam_filter_spec = get_filter_spec(model, conf, optimiser="adam")
         params, static = eqx.partition(model, adam_filter_spec)
+        active_hessian_idx = build_hessian_index_mask(model, conf, adam_filter_spec)
 
         # Generate regularly log-spaced epochs for model stat logging - from DMMs
         log_epochs = generate_log_epochs(n_epochs=n_epochs, num_samples=100, min_dist=5)
@@ -430,6 +434,7 @@ def train(
                 loss_grad_fn=loss_dict["loss_grad_fn"],
                 compute_hessian_metrics=(conf.compute_hessian_metrics and (nn_epoch in log_epochs)),
                 base_loss_fn=loss_dict["base_loss_fn"],
+                active_idx=active_hessian_idx,
             )
 
             if metric_handler.check_whether_should_break(loss_train):

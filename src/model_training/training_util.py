@@ -11,11 +11,12 @@ import wandb
 from diffrax import SaveAt
 
 from functools import partial
+from jax.flatten_util import ravel_pytree
 from jaxtyping import Array, PyTree
 from src.common import Conf, dynamic_param_labels, hessian_metrics_wandb
 from src.model_training.model_util import set_weight_bias
 from src.ude_problem.ude_problem import UDEProblem
-from typing import Any, Callable, List, Union
+from typing import Callable, List, Union, Optional
 
 
 def augment_u0(u0):
@@ -311,22 +312,72 @@ def max_grad_norm(grads: PyTree) -> Array:
     return jnp.max(jnp.array(grad_norms))
 
 
-def get_hessian_metrics(hessian: Array, return_eigs_svs: bool=False) -> Union[tuple[dict, Array, Array], dict]:
-    hessian_trace = jnp.trace(hessian)
-    hessian_diag = hessian * jnp.eye(hessian.shape[0])
+def build_hessian_index_mask(model: UDEProblem, conf: Conf, filter_spec: PyTree):
+    # Use precomputed ADAM filter_spec to initialise all-keeping mask_tree
+    arrays_tree  = eqx.filter(model, filter_spec)
+    mask_tree = jtu.tree_map(lambda x: jnp.ones_like(x, dtype=bool), arrays_tree)
+
+    state_dim = int(model.func.state_dimension)
+    # Compute indices of parameters to exclude from Hessian computation (False)
+    if conf.shooting_mode == "single":
+        init_mask = jnp.concatenate(
+            [
+                jnp.zeros((state_dim,), dtype=bool),  # freeze physical state initials
+                jnp.ones((conf.node_augmentation,),   dtype=bool),   # train augmented initials
+                jnp.zeros((1,),  dtype=bool),   # freeze network contribution regularisation
+            ],
+            axis=0
+        )
+    elif conf.shooting_mode == "multiple":
+        state_delim = int(model.func.state_delimiter)  # number of (state + augmented) variables
+        n_windows = int(jnp.shape(model.initial_values)[0])
+
+        # Freeze network contribution initial value for every window
+        per_win_mask = jnp.concatenate(
+            [jnp.ones((state_delim,), dtype=bool), jnp.array([False], dtype=bool)], axis=0
+        )
+        init_mask = jnp.tile(per_win_mask[None, :], (n_windows, 1))
+
+        # Freeze the first window's state variables (not augmented variables)
+        init_mask = init_mask.at[0, :state_dim].set(False)
+    else:
+        raise ValueError(f"Unknown shooting_mode: {conf.shooting_mode}")
+
+    # Update mask_tree and ravel parameter & mask with same structure
+    mask_tree = eqx.tree_at(lambda x: x.initial_values, mask_tree, init_mask)
+    theta0, _   = ravel_pytree(arrays_tree)   # flattened params
+    mask_vec, _ = ravel_pytree(mask_tree)     # flattened bools, aligned 1:1
+
+    # Return indices to keep (active) for Hessian computation
+    active_idx = jnp.nonzero(jnp.asarray(mask_vec, dtype=jnp.bool_))[0].astype(jnp.int32)
+    return jnp.asarray(active_idx)
+
+
+def get_hessian_metrics(
+        hessian: Array,
+        return_eigs_svs: bool = False,
+        active_idx: Optional[Array] = None
+) -> Union[tuple[dict, Array, Array], dict]:
+    if active_idx is not None:
+        unfrozen_hessian = hessian[jnp.ix_(active_idx, active_idx)]
+    else:
+        unfrozen_hessian = hessian
+    # Compute metrics on the reduced Hessian
+    hessian_trace = jnp.trace(unfrozen_hessian)
+    hessian_diag = unfrozen_hessian * jnp.eye(unfrozen_hessian.shape[0])
     max_abs_diag = jnp.max(jnp.abs(hessian_diag))
     frob_diag = jnp.linalg.norm(hessian_diag)
-    frob_off_diag = jnp.linalg.norm(hessian - hessian_diag)
-    max_abs_off_diag = jnp.max(jnp.abs(hessian - hessian_diag))
+    frob_off_diag = jnp.linalg.norm(unfrozen_hessian - hessian_diag)
+    max_abs_off_diag = jnp.max(jnp.abs(unfrozen_hessian - hessian_diag))
     frob_ratio_off_to_diag = frob_off_diag / frob_diag
 
     # Compute singular values and eigenvalues
     singular_values = jnp.linalg.svd(
-        hessian,
+        unfrozen_hessian,
         hermitian=True,  # hermitian + real = symmetric
         compute_uv=False  # only return singular values
     )
-    eigenvalues, _ = jnp.linalg.eigh(hessian)
+    eigenvalues, _ = jnp.linalg.eigh(unfrozen_hessian)
     hessian_metrics = {
         "hessian_trace": hessian_trace,
         "max_abs_diagonal_element": max_abs_diag,
@@ -360,6 +411,18 @@ class MetricHandler:
         else:
             self.counter = 0
         return self.should_break
+
+
+def freeze_ivs(ivs, state_dim):
+    # Freeze initial values of state variables in first shooting window
+    ivs = ivs.at[0, :state_dim].set(
+        jax.lax.stop_gradient(ivs[0, :state_dim])
+    )
+    # Freeze network contribution regularisation initial value in all windows
+    ivs = ivs.at[:, -1].set(
+        jax.lax.stop_gradient(ivs[:, -1])
+    )
+    return ivs
 
 
 # Utilities to compute solution and loss for different training schemes
@@ -397,9 +460,12 @@ def get_sol_and_loss_single_shooting(
         masks: Array,
         max_steps: int = 20000
 ):
+    # Freeze state variables + network contribution regularisation and convert to 1D array
+    ivs = freeze_ivs(prob.initial_values, prob.func.state_dimension)[0]
+
     sol = prob.solve_single_shooting(
         diffrax.Tsit5(),
-        prob.initial_values[0],  # pass 1D array
+        ivs,
         t_save_windows[0],
         adjoint,
         max_steps
@@ -442,8 +508,9 @@ def get_sol_and_loss_multiple_shooting(
         last_valid_index: int,
         max_steps: int = 20000
 ):
-    ivs = prob.initial_values[:last_valid_index]
-    ivs = ivs.at[0].set(jax.lax.stop_gradient(ivs[0]))
+    # Freeze state variables (first window) + network contribution regularisation (everywhere)
+    ivs = freeze_ivs(prob.initial_values[:last_valid_index], prob.func.state_dimension)
+
     sol = prob.solve_multiple_shooting(
         diffrax.Tsit5(),
         ivs,

@@ -95,10 +95,10 @@ class UDEProblem(eqx.Module):
                 self.initial_values = initial_values
 
 
-    def get_augmented_state_variables(self):
+    def get_internal_augmented_vars(self):
         return self.initial_values[:, self.func.state_dimension:self.func.state_delimiter][0]
 
-    def get_auxiliary_output_variable(self):
+    def get_auxiliary_output_reg_var(self):
         return self.initial_values[:, self.func.state_delimiter:jnp.newaxis][0]
 
 
@@ -122,16 +122,7 @@ class UDEProblem(eqx.Module):
             t0,
             t1,
             1e-6,
-            y0=jnp.concatenate(
-                [
-                    jax.lax.stop_gradient(u0[:self.func.state_dimension]),
-                    self.get_augmented_state_variables(),  # only update initial value for augmentation vars
-                    jax.lax.stop_gradient(
-                        self.get_auxiliary_output_variable()
-                    ),  # freeze network regularisation initial value
-                ],
-                axis=0
-            ),
+            y0=u0,
             args=u0,
             saveat=diffrax.SaveAt(ts=t_save),
             throw=False,
@@ -168,8 +159,8 @@ class UDEProblem(eqx.Module):
             y0=jnp.concatenate(
                 [
                     u0[:self.func.state_dimension],
-                    self.get_augmented_state_variables(),  # insert trained, internal augmentation variables
-                    self.get_auxiliary_output_variable(),
+                    self.get_internal_augmented_vars(),  # plug in the trained augmentation variables
+                    u0[-1:],
                 ],
                 axis=0
             ),
@@ -223,15 +214,7 @@ class UDEProblem(eqx.Module):
             t0=t_save[0],
             t1=t_save[-1],
             dt0=1e-6,
-            y0=jnp.concatenate(
-                [
-                    u0[:self.func.state_delimiter],  # state vars + potential augmentation - learnable
-                    jax.lax.stop_gradient(
-                        u0[-1:jnp.newaxis]
-                    ),  # freeze network regularisation initial value
-                ],
-                axis=0
-            ),
+            y0=u0,
             args=u0,
             saveat=diffrax.SaveAt(ts=t_save),
             throw=False,
