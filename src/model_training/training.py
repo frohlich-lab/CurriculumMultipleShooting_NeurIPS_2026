@@ -481,12 +481,19 @@ def train(
                         "num_train_samples": curriculum_params[cl_stage]["length"] if conf.curriculum_learning \
                             else len(training_data),
                         "max_grad_norm": max_grad_norm(grads),
-                        # Dynamic parameters
+                        # Dynamic parameters: raw and rescaled
+                        **{
+                            f"raw_{param}": process_mechanistic_params(
+                                inference_model.func.dynamic_parameters,
+                                inference_model.func.options
+                            )[i]
+                            for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
+                        },
                         **{
                             param: process_mechanistic_params(
                                 inference_model.func.dynamic_parameters,
                                 inference_model.func.options
-                            )[i]
+                            )[i]/rescaling_args["time_rescaling"]  # ensure actual parameters are properly rescaled
                             for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
                         },
                         # Initial values
@@ -751,7 +758,9 @@ def train(
 
     # Save results dataframe to CSV
     results_total = pd.concat(results_dfs)
-    results_total.to_csv(TRAINING_RESULTS.format_map(conf.__dict__), index=False)
+    train_results_filename = TRAINING_RESULTS.format_map(conf.__dict__)
+    print(f"Saving run results to {train_results_filename}...")
+    results_total.to_csv(train_results_filename, index=False)
 
     wandb.finish()
     # Serialise best model overall

@@ -165,11 +165,11 @@ def fetch_result_df_dict(
                         df=df,
                         attributes_to_fix=attributes_to_fix,
                     )
-                    # If timepoints have been normalised, rescale dynamic parameters
-                    if hyperparam_config["normalise_timepoints"]:
-                        for dynamic_param in dynamic_param_labels[hyperparam_config["dynamical_model"]]:
-                            if (dynamic_param in cleaned_df.columns) and ("time_rescaling" in cleaned_df.columns):
-                                cleaned_df[dynamic_param] /= cleaned_df["time_rescaling"]
+                    # # If timepoints have been normalised, rescale dynamic parameters -> moved to training
+                    # if hyperparam_config["normalise_timepoints"]:
+                    #     for dynamic_param in dynamic_param_labels[hyperparam_config["dynamical_model"]]:
+                    #         if (dynamic_param in cleaned_df.columns) and ("time_rescaling" in cleaned_df.columns):
+                    #             cleaned_df[dynamic_param] /= cleaned_df["time_rescaling"]
 
                     dfs[hyperparam_config["dynamical_model"]].append(
                         cleaned_df
