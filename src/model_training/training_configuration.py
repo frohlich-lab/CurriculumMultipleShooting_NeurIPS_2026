@@ -188,9 +188,10 @@ MULTIPLE_SHOOTING_PENALTIES =  {
         1e-1,
         1e0,
         1e1,
-        1e2
+        1e2,
+        1e3
     ),
-    "central_value": 0,
+    "central_value": 10,
 }
 
 # Batch size -- unused, only for window-batch, DISABLED
@@ -303,7 +304,7 @@ NORMALISE_TIMEPOINTS = {
 
 N_STARTS = 100  # number of multi-starts
 
-N_EPOCHS_ADAM = 4000  # default from UDE paper: 200 / SIR: 40000-100000
+N_EPOCHS_ADAM = 6000  # default from UDE paper: 200 / SIR: 40000-100000
 N_EPOCHS_BFGS = 10000
 
 EXPERIMENT_NAME = "multipleCL_ls_07112025"
