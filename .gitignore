@@ -23,3 +23,4 @@ src/models/*
 /models
 *.sh
 *.hdf5
+/results/data
