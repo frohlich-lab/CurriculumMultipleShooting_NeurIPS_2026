@@ -4,6 +4,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pandas as pd
+import time
 import wandb
 
 from diffrax import SaveAt
@@ -65,9 +66,11 @@ def train_fides(
         max_diffrax_steps: int = 20000
 ) -> tuple[UDEProblem, SimpleNamespace, UDEProblem, float, float, int, Optional[pd.DataFrame]]:
 
-    model_fides = prep_bfgs_training(model, zero_out_mlp, bool(conf.output_reg or conf.mlp_reg_strength))
+    # Initialise variables
+    opt_wall_duration, opt_process_duration, iterations = jnp.nan, jnp.nan, 0
 
-    # Split model_optx in learnable params and static component
+    # Prepare model and split into learnable/static components
+    model_fides = prep_bfgs_training(model, zero_out_mlp, bool(conf.output_reg or conf.mlp_reg_strength))
     params, static = eqx.partition(model_fides, filter_spec)
 
     flat_params, unflatten_params = jax.flatten_util.ravel_pytree(params)
@@ -96,12 +99,18 @@ def train_fides(
     )
 
     try:
-        # Optimise
+        # Optimise (and time)
+        wall_t0, process_t0 = time.perf_counter(), time.process_time()
         opt_f, opt_x, opt_grad, opt_hess = fides_opt.minimize(
             np.array(flat_params)  # move flat_params to numpy array to avoid JAX immutability
         )
+        wall_t1, process_t1 = time.perf_counter(), time.process_time()
+        opt_wall_duration, opt_process_duration = wall_t1 - wall_t0, process_t1 - process_t0
+        iterations = fides_opt.iteration
+
         # Unflatten optimised parameters into UDEProblem-like opt_params
         opt_params = unflatten_params(opt_x)
+    # TODO - does this do anything or can we safely remove it?
     except eqx.EquinoxRuntimeError:
         print("Could not optimise with fides - exceeded max_steps -> using initial params.")
         opt_params = params
@@ -180,6 +189,9 @@ def train_fides(
                     )[i]
                     for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
                 },
+                "bfgs_iterations": iterations,
+                "bfgs_wall_duration": opt_wall_duration,
+                "bfgs_process_duration": opt_process_duration,
             }]
         )
 

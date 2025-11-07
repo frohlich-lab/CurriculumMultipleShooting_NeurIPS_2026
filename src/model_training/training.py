@@ -3,6 +3,7 @@ import equinox as eqx
 import jax.numpy as jnp
 import optax
 import pandas as pd
+import time
 import wandb
 import warnings
 
@@ -305,15 +306,21 @@ def train(
         # if not properly set, set to default value of UDE
         conf = replace(conf, training_setting="UDE")
 
-    # Initialise wandb and define metrics
-    initialise_wandb(
-        conf=conf,
-        model=model,
-    )
+    WANDB_LOG = False
+
+    if WANDB_LOG:
+        # Initialise wandb and define metrics
+        initialise_wandb(
+            conf=conf,
+            model=model,
+        )
 
     # Initialise variables
     epoch, nn_epoch = 0, 0
     best_model, mse_val_min = model, jnp.inf
+    overall_wall_t0, overall_process_t0 = time.perf_counter(), time.process_time()
+    adam_wall_duration, adam_process_duration = jnp.nan, jnp.nan
+    steady_epoch_times_mean, steady_epoch_times_std = jnp.nan, jnp.nan
 
     if not conf.curriculum_learning:
         if n_epochs > 0:
@@ -387,6 +394,8 @@ def train(
         # Training loop
         metric_handler = MetricHandler(patience=5)
         ivs = []
+        epoch_wall_times, epoch_process_times = [], []
+
         for nn_epoch in range(n_epochs):
             # Keep track of initial values for multiple shooting windows
             if conf.shooting_mode == "multiple":
@@ -420,6 +429,8 @@ def train(
                 ) if conf.use_dropout else model
                 inference_model.save(epoch_save_path)
 
+            wall_t0, process_t0 = time.perf_counter(), time.process_time()
+
             # Take step
             params, opt_state, loss_train, reg_loss_dict, grads, hessian_metrics = make_step(
                 params=params,
@@ -436,6 +447,14 @@ def train(
                 base_loss_fn=loss_dict["base_loss_fn"],
                 active_idx=active_hessian_idx,
             )
+
+            jnp.asarray(loss_train).block_until_ready()
+
+            wall_t1, process_t1 = time.perf_counter(), time.process_time()
+            epoch_wall_time = wall_t1 - wall_t0
+            epoch_process_time = process_t1 - process_t0
+            epoch_wall_times.append(epoch_wall_time)
+            epoch_process_times.append(epoch_process_time)
 
             if metric_handler.check_whether_should_break(loss_train):
                 break
@@ -519,66 +538,76 @@ def train(
                         },
                         "data_rescaling": rescaling_args["data_rescaling"],
                         "time_rescaling": rescaling_args["time_rescaling"],
+                        "wall_time": epoch_wall_time,
+                        "process_time": epoch_process_time,
                     }]
                 )
 
-                # Log loss_train, mse_train, mse_val, learning rate, param values and grads on log-spaced epochs
-                wandb.log(
-                    {
-                        "loss_train": loss_train,
-                        "mse_train": mse_train,
-                        "mse_val": mse_val,
-                        "learning_rate": schedule(nn_epoch),
-                        "num_train_samples": curriculum_params[cl_stage]["length"] if conf.curriculum_learning \
-                            else len(training_data),
-                        "max_grad_norm": max_grad_norm(grads),
-                    },
-                    step=epoch+nn_epoch
-                )
-
-                if conf.compute_hessian_metrics:
-                    # Log Hessian metrics
+                if WANDB_LOG:
+                    # Log loss_train, mse_train, mse_val, learning rate, param values and grads on log-spaced epochs
                     wandb.log(
                         {
-                            **hessian_metrics
+                            "loss_train": loss_train,
+                            "mse_train": mse_train,
+                            "mse_val": mse_val,
+                            "learning_rate": schedule(nn_epoch),
+                            "num_train_samples": curriculum_params[cl_stage]["length"] if conf.curriculum_learning \
+                                else len(training_data),
+                            "max_grad_norm": max_grad_norm(grads),
                         },
                         step=epoch+nn_epoch
                     )
+
+                if conf.compute_hessian_metrics:
                     # Add Hessian metrics to partial results
                     partial_results_df = partial_results_df.assign(**hessian_metrics)
 
+                    if WANDB_LOG:
+                        # Log Hessian metrics
+                        wandb.log(
+                            {
+                                **hessian_metrics
+                            },
+                            step=epoch + nn_epoch
+                        )
+
                 # Log discontinuity penalty if applied
                 if (conf.multiple_shooting_penalty > 0) and (conf.shooting_mode == "multiple"):
-                    wandb.log(
-                        {
-                            "discontinuity_penalty": reg_loss_dict["discontinuity_penalty"]
-                        },
-                        step=epoch+nn_epoch
-                    )
                     partial_results_df = partial_results_df.assign(
                         discontinuity_penalty=reg_loss_dict["discontinuity_penalty"],
                     )
+                    if WANDB_LOG:
+                        wandb.log(
+                            {
+                                "discontinuity_penalty": reg_loss_dict["discontinuity_penalty"]
+                            },
+                            step=epoch + nn_epoch
+                        )
+
                 # Log regularisation term if applied
                 if conf.mlp_reg_strength > 0:
-                    wandb.log(
-                        {
-                            "regularisation_loss": reg_loss_dict["mlp_reg"]
-                        },
-                        step=epoch+nn_epoch
-                    )
                     partial_results_df = partial_results_df.assign(
                         mlp_reg=reg_loss_dict["mlp_reg"]
                     )
+                    if WANDB_LOG:
+                        wandb.log(
+                            {
+                                "regularisation_loss": reg_loss_dict["mlp_reg"]
+                            },
+                            step=epoch + nn_epoch
+                        )
+
                 if conf.output_reg > 0:
-                    wandb.log(
-                        {
-                            "output_regularisation_loss": reg_loss_dict["nn_contrib_reg"],
-                        },
-                        step=epoch+nn_epoch
-                    )
                     partial_results_df = partial_results_df.assign(
                         nn_contrib_reg=reg_loss_dict["nn_contrib_reg"]
                     )
+                    if WANDB_LOG:
+                        wandb.log(
+                            {
+                                "output_regularisation_loss": reg_loss_dict["nn_contrib_reg"],
+                            },
+                            step=epoch + nn_epoch
+                        )
 
                 print(
                     f"epoch {nn_epoch} | "
@@ -606,13 +635,15 @@ def train(
                     )
                     partial_results_df["final_mse_train"] = final_mse_train
                     partial_results_df["final_mse_val"] = final_mse_val
-                    wandb.log(
-                        {
-                            "final_mse_train_ADAM": final_mse_train,
-                            "final_mse_val_ADAM": final_mse_val,
-                        },
-                        step=epoch+nn_epoch,
-                    )
+
+                    if WANDB_LOG:
+                        wandb.log(
+                            {
+                                "final_mse_train_ADAM": final_mse_train,
+                                "final_mse_val_ADAM": final_mse_val,
+                            },
+                            step=epoch+nn_epoch,
+                        )
 
                 # Append epoch results to results list with added conf details
                 results_dfs.append(partial_results_df.assign(**conf.__dict__))
@@ -628,28 +659,43 @@ def train(
             plot_name="optax", plot_subdir="optax",
         )
 
-        # Log final values of mechanistic parameters + final epoch value
-        wandb.log(
-            {
-                **{
-                    f"final_{param}_ADAM": process_mechanistic_params(
-                        model.func.dynamic_parameters, model.func.options
-                    )[i]
-                    for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
+        if WANDB_LOG:
+            # Log final values of mechanistic parameters + final epoch value
+            wandb.log(
+                {
+                    **{
+                        f"final_{param}_ADAM": process_mechanistic_params(
+                            model.func.dynamic_parameters, model.func.options
+                        )[i]
+                        for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
+                    },
+                    "final_epoch": epoch,
                 },
-                "final_epoch": epoch,
-            },
-            step=epoch
-        )
+                step=epoch
+            )
+
+        overall_wall_t1, overall_process_t1 = time.perf_counter(), time.process_time()
+        adam_wall_duration = overall_wall_t1 - overall_wall_t0
+        adam_process_duration = overall_process_t1 - overall_process_t0
 
         # Serialise the best ADAM model
         best_model.save(model_save_dir / (conf.__str__() + "_best_ADAM.eqx"))
+
+        # Compute mean/standard deviation of epoch process times
+        if len(epoch_process_times) >= 2:
+            steady = epoch_process_times[1:]  # discard epoch 0 (JIT compile)
+            steady_epoch_times_mean = float(jnp.mean(jnp.array(steady)))
+            steady_epoch_times_std = float(jnp.std(jnp.array(steady)))
+            print(steady_epoch_times_mean, steady_epoch_times_std)
 
         # Break if NN training failed due to too many invalid losses
         if metric_handler.should_break:
             if len(results_dfs) > 0:
                 # Save partial results anyway
-                results_total = pd.concat(results_dfs)
+                results_total = pd.concat(results_dfs).assign(
+                    mean_adam_epoch_time=steady_epoch_times_mean,
+                    std_adam_epoch_time=steady_epoch_times_std
+                )
             else:
                 # Save CSV with inf stats
                 results_total = pd.DataFrame(
@@ -689,7 +735,6 @@ def train(
     if max_iter_optx_finetune > 0:  # otherwise end training and return trained model
         bfgs_filter_spec = get_filter_spec(model, conf, optimiser="bfgs")
 
-        wandb_log = True
         if conf.second_opt == "optx":
             model, sol, static, _, mse_val, epoch, partial_results_df = train_optimistix(
                 model=model,
@@ -711,8 +756,7 @@ def train(
                 validation_data=validation_data,
                 last_valid_index=last_valid_index,
                 zero_out_mlp=False,
-                wandb_log=True,
-                wandb_log_final=True,
+                wandb_log=WANDB_LOG
             )
         else:
             model, sol, static, _, mse_val, epoch, partial_results_df = train_fides(
@@ -733,7 +777,8 @@ def train(
                 loss_fn=loss_dict["loss_fn"],
                 val_loss_fn=loss_dict["val_loss_fn"],
                 zero_out_mlp=False,
-                wandb_log_final=wandb_log,
+                # TODO: check wandb_log attributes between fides and optimistix!
+                wandb_log_final=WANDB_LOG,
             )
 
         # Compute final training and validation losses
@@ -758,7 +803,7 @@ def train(
         partial_results_df["time_rescaling"] = rescaling_args["time_rescaling"]
         partial_results_df["curriculum_stage"] = -1  # to distinguish from valid values
 
-        if wandb_log: # if not, partial_results will be None
+        if WANDB_LOG: # if not, partial_results will be None
             results_dfs.append(partial_results_df.assign(**conf.__dict__))
 
         # Update best_model
@@ -775,12 +820,19 @@ def train(
         )
 
     # Save results dataframe to CSV
-    results_total = pd.concat(results_dfs)
+    results_total = pd.concat(results_dfs).assign(
+        mean_adam_epoch_time=steady_epoch_times_mean,
+        std_adam_epoch_time=steady_epoch_times_std,
+        adam_wall_duration=adam_wall_duration,
+        adam_process_duration=adam_process_duration,
+    )
     train_results_filename = TRAINING_RESULTS.format_map(conf.__dict__)
     print(f"Saving run results to {train_results_filename}...")
     results_total.to_csv(train_results_filename, index=False)
 
-    wandb.finish()
+    if WANDB_LOG:
+        wandb.finish()
+
     # Serialise best model overall
     best_model.save(model_save_dir / (conf.__str__() + "_best_final.eqx"))
     return best_model

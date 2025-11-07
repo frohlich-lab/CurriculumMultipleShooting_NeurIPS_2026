@@ -3,6 +3,7 @@ import jax
 import jax.numpy as jnp
 import optimistix as optx
 import pandas as pd
+import time
 import wandb
 
 from src.common import Conf, dynamic_param_labels
@@ -39,7 +40,6 @@ def train_optimistix(
         last_valid_index: int,
         zero_out_mlp: bool = False,
         wandb_log: bool = True,
-        wandb_log_final: bool = True,
         max_diffrax_steps: int = 20000
 ) -> tuple[UDEProblem, SimpleNamespace, UDEProblem, float, float, int, Optional[pd.DataFrame]]:
 
@@ -83,7 +83,6 @@ def train_optimistix(
             starting_epoch=epoch,
             conf=conf,
             wandb_log=wandb_log,
-            wandb_log_final=wandb_log_final,
         )
     except XlaRuntimeError as e:
         print(f"Optimistix ran into error: {e}")
@@ -107,7 +106,6 @@ def optx_solve(
         options, tags, max_steps,
         starting_epoch, conf,
         wandb_log: bool = True,
-        wandb_log_final: bool = True,
 ):
     # Initialise loss variables
     loss_train, loss_val = jnp.inf, jnp.inf
@@ -127,11 +125,14 @@ def optx_solve(
 
     iteration = 1
     results_dfs = []
+    # Start timing
+    wall_t0, process_t0 = time.perf_counter(), time.process_time()
+
     while not (done or iteration > max_steps):
         # print(f"Evaluating point {y} with value {fn(y, args)}.")
         y, state, aux = step(y=y, state=state)
         # Log training and validation loss + params and grads every 5 optimistix iterations
-        if wandb_log and (iteration % 5 == 0):
+        if iteration % 10 == 0:
             loss_train = fn_train(y, args)[0]
             loss_val = fn_val(y, args_val)[0]
             # Include some logging (not automatic as in fides)
@@ -139,13 +140,6 @@ def optx_solve(
                 f"epoch {starting_epoch+iteration} | "
                 f"loss_train: {loss_train} | "
                 f"loss_val: {loss_val}"
-            )
-            wandb.log(
-                {
-                    "loss_train": loss_train,
-                    "loss_val": loss_val,
-                },
-                step=starting_epoch+iteration
             )
             results_dfs.append(
                 pd.DataFrame(
@@ -166,15 +160,28 @@ def optx_solve(
                     }]
                 )
             )
+            if wandb_log:
+                wandb.log(
+                    {
+                        "loss_train": loss_train,
+                        "loss_val": loss_val,
+                    },
+                    step=starting_epoch + iteration
+                )
         iteration += 1
         done, result = terminate(y=y, state=state)
+
+    # Stop timing
+    wall_t1, process_t1 = time.perf_counter(), time.process_time()
+    opt_wall_duration, opt_process_duration = wall_t1 - wall_t0, process_t1 - process_t0
+
     if result != optx.RESULTS.successful:
         print(f"Oh no! Got error {result}.")
     y, _, _ = solver.postprocess(fn_train, y, aux, args, options, state, tags, result)
     # print(f"Found solution {y} with value {fn(y, args)}.")
 
     # Log final training and validation loss terms + dynamic parameter values for final BFGS fine-tuning (third stage)
-    if wandb_log_final:
+    if wandb_log:
         wandb.log(
             {
                 **{
@@ -197,7 +204,11 @@ def optx_solve(
             "termination_reason": result,
         },
     }
-    if wandb_log:
-        return SimpleNamespace(**sol), pd.concat(results_dfs), fn_train(y, args)[0], fn_val(y, args_val)[0]
-    else:
-        return SimpleNamespace(**sol), None, fn_train(y, args)[0], fn_val(y, args_val)[0]
+
+    optx_results_df = pd.concat(results_dfs).assign(
+        iterations=iteration,
+        bfgs_wall_duration=opt_wall_duration,
+        bfgs_process_duration=opt_process_duration
+    )
+
+    return SimpleNamespace(**sol), optx_results_df, fn_train(y, args)[0], fn_val(y, args_val)[0]
