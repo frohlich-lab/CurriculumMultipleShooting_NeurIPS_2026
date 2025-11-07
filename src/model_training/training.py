@@ -164,7 +164,7 @@ def log_fit_plots(
         )
 
 
-def get_final_train_val_losses(
+def get_train_val_mse(
         model: UDEProblem,
         u0_train: jnp.ndarray,
         t_save_train: Union[SaveAt, Array],
@@ -177,11 +177,11 @@ def get_final_train_val_losses(
         loss_dict: Dict[str, Callable],
 ) -> Tuple[float, float]:
     """
-    Computes the final training and validation losses after training with either ADAM or BFGS using the provided
-    initial conditions (u0_train, u0_val). These losses do not include regularisation terms.
+    Computes both training and validation single-shooting MSE using the provided initial conditions (u0_train, u0_val).
+    These losses do not include any regularisation terms.
     """
     params, static = eqx.partition(model, eqx.is_array)
-    final_loss_train, _ = loss_dict["val_loss_fn"](
+    mse_train, _ = loss_dict["val_loss_fn"](
         prob_params=params,
         prob_static=static,
         u0=u0_train,
@@ -189,7 +189,7 @@ def get_final_train_val_losses(
         t_span=t_span_train,
         data=training_data,
     )
-    final_loss_val, _ = loss_dict["val_loss_fn"](
+    mse_val, _ = loss_dict["val_loss_fn"](
         prob_params=params,
         prob_static=static,
         u0=u0_val,
@@ -197,7 +197,7 @@ def get_final_train_val_losses(
         t_span=t_span_val,
         data=validation_data
     )
-    return final_loss_train, final_loss_val
+    return mse_train, mse_val
 
 
 # NN OPTIMISATION STEP
@@ -313,7 +313,7 @@ def train(
 
     # Initialise variables
     epoch, nn_epoch = 0, 0
-    best_model, loss_val_min = model, jnp.inf
+    best_model, mse_val_min = model, jnp.inf
 
     if not conf.curriculum_learning:
         if n_epochs > 0:
@@ -449,22 +449,36 @@ def train(
                     new_mlp=model.func.mlp,
                     switch_to_inference=True,
                 ) if conf.use_dropout else model
-                inference_params, inference_static = eqx.partition(inference_model, adam_filter_spec)
 
-                # compute validation loss
-                loss_val, _ = loss_dict["val_loss_fn"](
-                    prob_params=inference_params,
-                    prob_static=inference_static,
-                    u0=u0_val,
-                    t_save=t_save_val,
-                    t_span=t_span_val,
-                    data=validation_data,
+                # compute train and val MSE
+                mse_train, mse_val = get_train_val_mse(
+                    model=inference_model,
+                    u0_train=u0_train,
+                    t_save_train=t_save_train,
+                    t_span_train=t_span_train,
+                    training_data=training_data,
+                    u0_val=u0_val,
+                    t_save_val=t_save_val,
+                    t_span_val=t_span_val,
+                    validation_data=validation_data,
+                    loss_dict=loss_dict,
                 )
 
+                # inference_params, inference_static = eqx.partition(inference_model, adam_filter_spec)
+
+                # mse_val, _ = loss_dict["val_loss_fn"](
+                #     prob_params=inference_params,
+                #     prob_static=inference_static,
+                #     u0=u0_val,
+                #     t_save=t_save_val,
+                #     t_span=t_span_val,
+                #     data=validation_data,
+                # )
+
                 # Keep track of best performing model on validation dataset (and corresponding loss)
-                if loss_val < loss_val_min:
+                if mse_val < mse_val_min:
                     best_model = inference_model
-                    loss_val_min = loss_val
+                    mse_val_min = mse_val
 
                 # Save partial training results
                 partial_results_df = pd.DataFrame(
@@ -475,7 +489,8 @@ def train(
                         "curriculum_stage": cl_stage,
                         # Losses
                         "loss_train": loss_train,
-                        "loss_val": loss_val,
+                        "mse_train": mse_train,
+                        "mse_val": mse_val,
                         # Training metrics
                         "learning_rate": schedule(nn_epoch),
                         "num_train_samples": curriculum_params[cl_stage]["length"] if conf.curriculum_learning \
@@ -507,11 +522,12 @@ def train(
                     }]
                 )
 
-                # Log loss_train, loss_val, learning rate, param values and grads on log-spaced epochs
+                # Log loss_train, mse_train, mse_val, learning rate, param values and grads on log-spaced epochs
                 wandb.log(
                     {
                         "loss_train": loss_train,
-                        "loss_val": loss_val,
+                        "mse_train": mse_train,
+                        "mse_val": mse_val,
                         "learning_rate": schedule(nn_epoch),
                         "num_train_samples": curriculum_params[cl_stage]["length"] if conf.curriculum_learning \
                             else len(training_data),
@@ -570,12 +586,13 @@ def train(
                     f"nn_contrib_reg {reg_loss_dict['nn_contrib_reg'] if reg_loss_dict is not None else 'n/a'} | "
                     f"discontinuity_penalty {reg_loss_dict['discontinuity_penalty'] if reg_loss_dict is not None else 'n/a'} | "
                     f"mlp_reg {reg_loss_dict['mlp_reg'] if reg_loss_dict is not None else 'n/a'} | "
-                    f"loss_val {loss_val} | "
+                    f"mse_train {mse_train} | "
+                    f"mse_val {mse_val} | "
                 )
 
                 if nn_epoch == n_epochs - 1:
                     # Compute final training loss on single-shooting with known u0
-                    final_loss_train, loss_val = get_final_train_val_losses(
+                    final_mse_train, final_mse_val = get_train_val_mse(
                         model=model,
                         u0_train=u0_train,
                         t_save_train=t_save_train,
@@ -587,12 +604,12 @@ def train(
                         validation_data=validation_data,
                         loss_dict=loss_dict,
                     )
-                    partial_results_df["final_loss_train"] = final_loss_train
-                    partial_results_df["final_loss_val"] = loss_val
+                    partial_results_df["final_mse_train"] = final_mse_train
+                    partial_results_df["final_mse_val"] = final_mse_val
                     wandb.log(
                         {
-                            "final_loss_train_ADAM": final_loss_train,
-                            "final_loss_val_ADAM": loss_val,
+                            "final_mse_train_ADAM": final_mse_train,
+                            "final_mse_val_ADAM": final_mse_val,
                         },
                         step=epoch+nn_epoch,
                     )
@@ -643,7 +660,8 @@ def train(
                         "curriculum_stage": cl_stage,
                         # Losses
                         "loss_train": jnp.inf,
-                        "loss_val": jnp.inf,
+                        "mse_train": jnp.inf,
+                        "mse_val": jnp.inf,
                         # Training metrics
                         "learning_rate": schedule(nn_epoch),
                         "num_train_samples": curriculum_params[cl_stage]["length"] if conf.curriculum_learning \
@@ -673,7 +691,7 @@ def train(
 
         wandb_log = True
         if conf.second_opt == "optx":
-            model, sol, static, _, loss_val, epoch, partial_results_df = train_optimistix(
+            model, sol, static, _, mse_val, epoch, partial_results_df = train_optimistix(
                 model=model,
                 filter_spec=bfgs_filter_spec,
                 conf=conf,
@@ -697,7 +715,7 @@ def train(
                 wandb_log_final=True,
             )
         else:
-            model, sol, static, _, loss_val, epoch, partial_results_df = train_fides(
+            model, sol, static, _, mse_val, epoch, partial_results_df = train_fides(
                 model=model,
                 filter_spec=bfgs_filter_spec,
                 conf=conf,
@@ -719,7 +737,7 @@ def train(
             )
 
         # Compute final training and validation losses
-        final_loss_train_bfgs, final_loss_val_bfgs = get_final_train_val_losses(
+        final_mse_train_bfgs, final_mse_val_bfgs = get_train_val_mse(
             model=model,
             u0_train=u0_train,
             t_save_train=t_save_train,
@@ -732,8 +750,8 @@ def train(
             loss_dict=loss_dict,
         )
         # Log final losses
-        partial_results_df["final_loss_train_BFGS"] = final_loss_train_bfgs
-        partial_results_df["final_loss_val_BFGS"] = final_loss_val_bfgs
+        partial_results_df["final_mse_train_bfgs"] = final_mse_train_bfgs
+        partial_results_df["final_mse_val_bfgs"] = final_mse_val_bfgs
 
         # Add rescaling info & curriculum stage
         partial_results_df["data_rescaling"] = rescaling_args["data_rescaling"]
@@ -744,7 +762,7 @@ def train(
             results_dfs.append(partial_results_df.assign(**conf.__dict__))
 
         # Update best_model
-        if loss_val < loss_val_min:
+        if mse_val < mse_val_min:
             best_model = model
 
         # Log plots again after further training with optimistix/BFGS
