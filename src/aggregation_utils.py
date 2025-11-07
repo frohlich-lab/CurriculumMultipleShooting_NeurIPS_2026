@@ -1,10 +1,12 @@
+import h5py
 import numpy as np
 import os
 import pandas as pd
 
+from pathlib import Path
 from src.common import TRAINING_RESULTS, dynamic_param_labels
 from src.generate_run_configs import generate_param_combinations
-from typing import Union
+from typing import Tuple, Union
 
 
 def clean_results(df: pd.DataFrame, attributes_to_fix: list[str]):
@@ -219,3 +221,218 @@ def exclude_loss_val_outside_iqr(
     filtered_df = df.merge(valid_combinations, on=group_keys, how='inner')
 
     return filtered_df
+
+
+def write_results_hdf5(
+    results_df: pd.DataFrame,
+    out_path: Path,
+    scan_attributes: list[str],
+    deviation_col: str = "multistart_deviation",
+    job_col: str = "multistart_job",
+    epoch_col: str = "epoch",
+) -> Path:
+    """
+    Writes results into HDF5 with hierarchy:
+        /<scan_attr>/<scan_value>/<multistart_deviation>/job_<id>/arrays/{epoch, metric1, metric2, ...}
+    """
+
+    def _compute_central_values(df: pd.DataFrame, scan_attributes: list[str]) -> dict[str, object]:
+        """
+        Determine the central value of each scan attribute as the most frequent (mode).
+        Falls back to median for numeric columns if mode is not defined.
+        """
+        central = {}
+        for attr in scan_attributes:
+            col = df[attr]
+            try:
+                mode_val = col.mode(dropna=True).iloc[0]  # central values = most frequent for that attribute
+                central[attr] = mode_val
+            except Exception:
+                # fallback to median if no mode (e.g. continuous numeric)
+                if pd.api.types.is_numeric_dtype(col):
+                    central[attr] = float(col.median())
+                else:
+                    central[attr] = col.dropna().iloc[0] if not col.dropna().empty else np.nan
+        return central
+
+    def _split_constants_global(df: pd.DataFrame, cols: list[str]) -> tuple[dict, list[str]]:
+        """Find columns that are constant across the ENTIRE df."""
+        consts, varying = {}, []
+        for c in cols:
+            if c not in df.columns:
+                continue
+            n_unique = df[c].nunique(dropna=False)
+            if n_unique <= 1:
+                consts[c] = df[c].iloc[0] if n_unique == 1 else np.nan
+            else:
+                varying.append(c)
+        return consts, varying
+
+    exclude = {epoch_col, job_col, deviation_col} | set(scan_attributes)
+    metrics = [
+        c for c in results_df.columns
+        if c not in exclude and pd.api.types.is_numeric_dtype(results_df[c])
+    ]
+
+    out_path = Path(out_path)
+    if out_path.exists():
+        out_path.unlink()
+
+    with h5py.File(out_path, "w") as h5:
+        meta = h5.require_group("meta")
+        meta.attrs["metrics_requested"] = np.array(metrics, dtype=h5py.string_dtype())
+        meta.attrs["scan_attributes"] = np.array(scan_attributes, dtype=h5py.string_dtype())
+        meta.attrs["job_col"] = job_col
+        meta.attrs["epoch_col"] = epoch_col
+        meta.attrs["deviation_col"] = deviation_col
+
+        # Get globally constant (not scanned) parameters
+        g_consts, base_metrics = _split_constants_global(results_df, metrics)
+        # Save constants once at /meta as hp_* and record which final metrics will be recorded
+        for k, v in g_consts.items():
+            meta.attrs[f"hp_{k}"] = v if not isinstance(v, str) else np.array(v, dtype=h5py.string_dtype())
+        meta.attrs["metrics_written"] = np.array(base_metrics, dtype=h5py.string_dtype())
+
+        # Get central values
+        central_values = _compute_central_values(results_df, scan_attributes)
+
+        # Build trees for each scan attribute
+        for scan_attr in scan_attributes:
+            top = h5.require_group(str(scan_attr))
+
+            # Determine other scan attributes (not currently scanned)
+            other_attrs = [attr for attr in scan_attributes if attr != scan_attr]
+
+            # Build a master Boolean mask to subset to central values for all other attributes
+            mask = np.logical_and.reduce([
+                (results_df[attr] == central_values[attr]) for attr in other_attrs
+            ])
+
+            # Iterate across values for the given scan hyperparameter
+            for val in results_df[scan_attr].drop_duplicates().tolist():
+                # Refine master mask by subsetting to value at hand
+                attr_mask = mask & (results_df[scan_attr] == val)
+                df_val = results_df[attr_mask].copy()
+
+                val_grp = top.require_group(str(val))
+                # Preserve raw value
+                try:
+                    val_grp.attrs["value_raw"] = val
+                except TypeError:
+                    val_grp.attrs["value_raw"] = str(val)
+
+                if deviation_col not in df_val.columns:
+                    raise KeyError(f"Expected '{deviation_col}' column in results.")
+
+                # Group by multistart_deviation
+                for dev in df_val[deviation_col].drop_duplicates().tolist():
+                    df_dev = df_val[df_val[deviation_col] == dev].copy()
+                    dev_grp = val_grp.require_group(f"multistart_deviation={dev}")
+                    # Preserve raw deviation
+                    try:
+                        dev_grp.attrs["deviation_raw"] = dev
+                    except TypeError:
+                        dev_grp.attrs["deviation_raw"] = str(dev)
+
+                    if job_col not in df_dev.columns:
+                        raise KeyError(f"Expected '{job_col}' column in results.")
+
+                    for job_id in sorted(df_dev[job_col].dropna().unique().tolist()):
+                        df_job = df_dev[df_dev[job_col] == job_id].copy()
+                        job_grp = dev_grp.require_group(f"job_{int(job_id)}")
+
+                        if epoch_col not in df_job.columns:
+                            raise KeyError(f"Expected '{epoch_col}' column in results.")
+
+                        # Deduplicate epochs (keep last per epoch)
+                        df_job_dedup = df_job.sort_values(epoch_col).drop_duplicates(epoch_col, keep="last")
+
+                        # Arrays only: epochs + globally-varying metrics (constants removed)
+                        arr_grp = job_grp.require_group("arrays")
+                        job_sorted = df_job_dedup.sort_values(epoch_col)
+
+                        # epoch vector
+                        epochs = pd.to_numeric(job_sorted[epoch_col], errors="coerce").astype("Int64").to_numpy()
+                        if "epoch" in arr_grp:
+                            del arr_grp["epoch"]
+                        arr_grp.create_dataset("epoch", data=epochs)
+
+                        # metrics vectors (only those that vary globally)
+                        for m in base_metrics:
+                            series = pd.to_numeric(job_sorted[m], errors="coerce").to_numpy()
+                            if m in arr_grp:
+                                del arr_grp[m]
+                            arr_grp.create_dataset(m, data=series)
+
+    return out_path
+
+
+def read_metric_trajectory(
+    h5_path: str,
+    scan_attr: str,
+    scan_value: Union[str, int, float],
+    multistart_deviation: Union[str, int, float],
+    job_id: int,
+    metric: str,
+    y_only: bool = False,
+) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+    """
+    Read (epochs, metric) arrays from an HDF5 results file with layout:
+      /<scan_attr>/<scan_value>/<multistart_deviation>/job_<id>/arrays/{epoch, <metric>}
+
+    Args
+    ----
+    h5_path : str
+        Path to the HDF5 file.
+    scan_attr : str
+        Name of the scan attribute (top-level group).
+    scan_value : str|int|float
+        Value of the scan attribute (group under scan_attr).
+    multistart_deviation : str|int|float
+        Deviation value (group under scan_value).
+    job_id : int
+        Multistart job id (expects group 'job_<id>').
+    metric : str
+        Name of the metric dataset inside the 'arrays' group.
+    y_only : bool
+        If True, return only the metric array (Y). Otherwise, return (epochs, Y).
+
+    Returns
+    -------
+    np.ndarray or (np.ndarray, np.ndarray)
+        If y_only=True, returns metric array (Y). Otherwise (epochs, Y).
+    """
+    with h5py.File(h5_path, "r") as h5:
+        # /<scan_attr>
+        if scan_attr not in h5:
+            raise KeyError(f"Scan attribute '{scan_attr}' not found. Available: {list(h5.keys())}")
+        g_scan = h5[scan_attr]
+
+        # /<scan_attr>/<scan_value>
+        g_val = g_scan[str(scan_value)]
+
+        # /<scan_attr>/<scan_value>/<multistart_deviation>
+        g_dev = g_val[f"multistart_deviation={multistart_deviation}"]
+
+        # /.../job_<id>
+        job_key = f"job_{int(job_id)}"
+        if job_key not in g_dev:
+            # Offer a hint if they passed a string like 'job_1'
+            alt = [n for n in g_dev.keys() if n.startswith("job_")]
+            raise KeyError(f"Job group '{job_key}' not found under {g_dev.name}. Available jobs: {alt}")
+        g_job = g_dev[job_key]
+
+        # /.../arrays
+        if "arrays" not in g_job:
+            raise KeyError(f"Group 'arrays' not found under {g_job.name}.")
+        arr = g_job["arrays"]
+
+        if "epoch" not in arr:
+            raise KeyError(f"'epoch' dataset not found under {arr.name}.")
+        epochs = np.array(arr["epoch"][:])
+
+        if metric not in arr:
+            raise KeyError(f"Metric '{metric}' not found under {arr.name}. Available: {list(arr.keys())}")
+        y = np.array(arr[metric][:])
+
+    return y if y_only else (epochs, y)

@@ -1,9 +1,20 @@
-import itertools as itt
+# import itertools as itt
 
 from src.generate_run_configs import generate_param_combinations
-from src.common import data_dir, TRAINING_RESULTS, AGGREGATION_PLOTS, PLOT_TYPES
+from src.common import (
+    data_dir,
+    # AGGREGATION_PLOTS,
+    OUTPUT_HDF5,
+    # PLOT_TYPES,
+    TRAINING_RESULTS
+)
 from src.model_training.training_configuration import (
-    DYNAMICAL_MODEL, N_STARTS, EXPERIMENT_NAME, MLP_ACTIVATIONS, MAX_LEARNING_RATES, MULTIPLE_SHOOTING_PENALTIES,
+    DYNAMICAL_MODEL,
+    N_STARTS,
+    EXPERIMENT_NAME,
+    # MLP_ACTIVATIONS,
+    # MAX_LEARNING_RATES,
+    # MULTIPLE_SHOOTING_PENALTIES,
 )
 
 # Container if needed
@@ -47,20 +58,11 @@ rule train_udes:
         dynamical_model =  "[a-zA-Z_]+",
         mlp_layer_width = "[0-9]+",
         mlp_depth = "[0-9]+",
-        init_scale = "[0-9.]+",
-        use_bias = "True|False",
-        use_final_bias = "True|False",
         activation_fn_name = "[a-z]+",
         training_scheme = "bfgs|single|single_bfgs|single_CL|multiple|multiple_CL",
         optimiser = "[a-z]+|None",
         num_epochs_adam = "[0-9]+",
         max_lrate = "[0-9.]+",
-        lrate_span = "[0-9.]+",
-        lrate_decay = "[0-9.]+",
-        warmup_fct = "[0-9.]+",
-        opt_steps = "[0-9]+",
-        opt_mult = "[0-9.]+",
-        opt_sched_type = "lin|exp|cos",
         mlp_reg_exp = "[0-9.]+",
         mlp_reg_strength = "[0-9.]+",
         output_reg = "[0-9.]+",
@@ -70,8 +72,6 @@ rule train_udes:
         multiple_shooting_penalty = "[0-9.]+",
         curriculum_learning = "True|False",
         num_curriculum_steps = "[0-9]+",
-        max_curriculum_epochs = "[0-9]+",
-        restart_opt_curriculum = "True|False",
         dynamic_params_scale = "linear|log10|None",
         multistart_deviation = "[0-9.]+",
         multistart_job = "[0-9]+",
@@ -84,7 +84,6 @@ rule train_udes:
         normalise_timepoints = "True|False",
         training_setting = "UDE|MLP",
         mlpexp_target = "[a-zA-Z_]+",
-        experiment_name = "[0-9a-zA-Z_]+"
     retries: 1
     resources:
         mem="8GB",
@@ -98,20 +97,11 @@ rule train_udes:
                 "dynamical_model",
                 "mlp_layer_width",
                 "mlp_depth",
-                "init_scale",
-                "use_bias",
-                "use_final_bias",
                 "activation_fn_name",
                 "training_scheme",
                 "optimiser",
                 "num_epochs_adam",
                 "max_lrate",
-                "lrate_span",
-                "lrate_decay",
-                "warmup_fct",
-                "opt_steps",
-                "opt_mult",
-                "opt_sched_type",
                 "mlp_reg_exp",
                 "mlp_reg_strength",
                 "output_reg",
@@ -121,8 +111,6 @@ rule train_udes:
                 "multiple_shooting_penalty",
                 "curriculum_learning",
                 "num_curriculum_steps",
-                "max_curriculum_epochs",
-                "restart_opt_curriculum",
                 "dynamic_params_scale",
                 "multistart_deviation",
                 "multistart_job",
@@ -135,9 +123,8 @@ rule train_udes:
                 "normalise_timepoints",
                 "training_setting",
                 "mlpexp_target",
-                "experiment_name"
             )
-        )
+        ) + ' --experiment_name={EXPERIMENT_NAME}'
 
 
 rule aggregate_results:
@@ -154,19 +141,24 @@ rule aggregate_results:
         ]
     output:
         expand(
-            AGGREGATION_PLOTS,
+            OUTPUT_HDF5,
             experiment_name=EXPERIMENT_NAME,
             dynamical_model=DYNAMICAL_MODEL,
-            filename=[
-                f"{plot_type}__{activation_fn_name}__{max_lrate}__{multiple_shooting_penalty}"
-                for plot_type in PLOT_TYPES
-                for activation_fn_name, max_lrate, multiple_shooting_penalty in itt.product(
-                    MLP_ACTIVATIONS,
-                    MAX_LEARNING_RATES,
-                    MULTIPLE_SHOOTING_PENALTIES
-                )
-            ]
         )
+        # expand(
+        #     AGGREGATION_PLOTS,
+        #     experiment_name=EXPERIMENT_NAME,
+        #     dynamical_model=DYNAMICAL_MODEL,
+        #     filename=[
+        #         f"{plot_type}__{activation_fn_name}__{max_lrate}__{multiple_shooting_penalty}"
+        #         for plot_type in PLOT_TYPES
+        #         for activation_fn_name, max_lrate, multiple_shooting_penalty in itt.product(
+        #             MLP_ACTIVATIONS,
+        #             MAX_LEARNING_RATES,
+        #             MULTIPLE_SHOOTING_PENALTIES
+        #         )
+        #     ]
+        # )
     retries: 1
     resources:
         mem="32GB",

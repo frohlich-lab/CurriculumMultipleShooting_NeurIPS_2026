@@ -173,6 +173,7 @@ PLOT_TYPES = [
     "corr_start_vs_final",
     "corr_train_vs_val"
 ]
+OUTPUT_HDF5 = str(results_dir / "{experiment_name}" / "{dynamical_model}" / "{experiment_name}__results.hdf5")
 
 def rbf(x):
     """
