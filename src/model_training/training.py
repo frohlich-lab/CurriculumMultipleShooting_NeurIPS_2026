@@ -651,14 +651,6 @@ def train(
         # Update epoch tally
         epoch += nn_epoch
 
-        # Plot fit (train/val) at end of training -- using best model on validation dataset
-        log_fit_plots(
-            model=best_model, **plot_args,
-            conf=conf,
-            colors=colors, epoch=epoch,
-            plot_name="optax", plot_subdir="optax",
-        )
-
         if WANDB_LOG:
             # Log final values of mechanistic parameters + final epoch value
             wandb.log(
@@ -672,6 +664,13 @@ def train(
                     "final_epoch": epoch,
                 },
                 step=epoch
+            )
+            # Plot fit (train/val) at end of training -- using best model on validation dataset
+            log_fit_plots(
+                model=best_model, **plot_args,
+                conf=conf,
+                colors=colors, epoch=epoch,
+                plot_name="optax", plot_subdir="optax",
             )
 
         overall_wall_t1, overall_process_t1 = time.perf_counter(), time.process_time()
@@ -725,7 +724,8 @@ def train(
                     }]
                 )
             results_total.to_csv(TRAINING_RESULTS.format_map(conf.__dict__), index=False)
-            wandb.finish()
+            if WANDB_LOG:
+                wandb.finish()
             return best_model
 
         # Update epoch prior to BFGS training, if any
@@ -806,18 +806,19 @@ def train(
         if WANDB_LOG: # if not, partial_results will be None
             results_dfs.append(partial_results_df.assign(**conf.__dict__))
 
+            # Log plots again after further training with optimistix/BFGS
+            log_fit_plots(
+                model=model, **plot_args,
+                conf=conf,
+                colors=colors, epoch=epoch + sol.stats["num_steps"],
+                plot_name=conf.second_opt,
+                plot_subdir=conf.second_opt,
+            )
+
         # Update best_model
         if mse_val < mse_val_min:
             best_model = model
 
-        # Log plots again after further training with optimistix/BFGS
-        log_fit_plots(
-            model=model, **plot_args,
-            conf=conf,
-            colors=colors, epoch=epoch+sol.stats["num_steps"],
-            plot_name=conf.second_opt,
-            plot_subdir=conf.second_opt,
-        )
 
     # Save results dataframe to CSV
     results_total = pd.concat(results_dfs).assign(
