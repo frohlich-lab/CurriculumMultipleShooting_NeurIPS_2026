@@ -141,7 +141,7 @@ def prune_config(run_config: dict):
         run_config["max_curriculum_epochs"] = 0
         run_config["restart_opt_curriculum"] = False
 
-    if run_config.get("curriculum_learning", False) and run_config.get("shooting_mode", None) == "multiple":
+    if (not run_config.get("curriculum_learning", False)) and run_config.get("shooting_mode", None) == "multiple":
         run_config["num_curriculum_steps"] = 5  # set to default value, will be overwritten by number of windows
 
     # TODO - think this through - we might want to try width 5 without RBF or viceversa RBF with another width
