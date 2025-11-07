@@ -160,7 +160,7 @@ OUTPUT_REG = {
         1e2,
         1e3  # add 5e2=500
     ),
-    "central_value": 1e-1,
+    "central_value": 1e0,
 }
 
 
