@@ -12,12 +12,15 @@ from typing import List, Optional, Union
 # TODO @GiacomoFabrini - review these based on experiments!
 unwanted_fields = [
     "dynamical_model",
-    "final_activation_fn_name",
+    "init_scale", "use_bias", "use_final_bias", "final_activation_fn_name",
     "use_dropout", "input_dropout_rate", "hidden_dropout_rate",  # might need
+    "lrate_span", "lrate_decay", "warmup_fct", "opt_steps", "opt_mult", "opt_sched_type",
+    "max_curriculum_epochs", "restart_opt_curriculum",
     "dynamic_params_lb", "dynamic_params_ub",
     "freeze_mechanistic_params_adam", "freeze_mechanistic_params_optx",  # might need
     "freeze_nn_adam", "freeze_nn_optx",  # might need
     "save_plots",
+    "experiment_name"
 ]
 
 
@@ -106,6 +109,20 @@ class Conf(dict):
             if field.name not in unwanted_fields
         )
         return '__'.join(map(str, values))
+
+
+# Define attributes for Linear Scans
+scan_attributes = [
+    "mlp_layer_width",
+    "mlp_depth",
+    "max_lrate",
+    "mlp_reg_strength",
+    "output_reg",
+    "shooting_window_length",
+    "multiple_shooting_penalty",
+    "num_curriculum_steps",
+    "node_augmentation",
+]
 
 
 @dataclasses.dataclass
