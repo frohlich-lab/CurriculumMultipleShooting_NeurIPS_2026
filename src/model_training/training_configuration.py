@@ -5,19 +5,21 @@ DYNAMICAL_MODEL = {
 
 # MLP
 MLP_WIDTHS = {
-    # 1,
-    5,  # UDE paper -> activation changed to RBF, max_lrate to 1e-1
-    10,
-    20,
-    # 50
+    "range": (
+        # 5,  # UDE paper -> activation changed to RBF, max_lrate to 1e-1
+        10,
+        # 20,
+    ),
+    "central_value": 10,
 }
 
 MLP_DEPTHS = {
-    # 1,
-    2,
-    # 3,
-    # 5,
-    # 10
+    "range": (
+        # 1,
+        2,
+        # 5
+    ),
+    "central_value": 2,
 }
 
 INIT_SCALES = {
@@ -63,10 +65,10 @@ HIDDEN_DROPOUT_RATES = {
 
 TRAINING_SCHEMES = {
     # "bfgs",
-    "single",
-    "single_bfgs",
-    "single_CL",
-    "multiple",
+    # "single",
+    # "single_bfgs",
+    # "single_CL",
+    # "multiple",
     "multiple_CL",
 }
 
@@ -77,49 +79,34 @@ OPTIMISERS = {
 }
 
 MAX_LEARNING_RATES = {
-    1e-1,
-    # 1e-2,
-    # 1e-3,
+    "range": (
+        1e-3,
+        5e-2,
+        1e-2,
+        5e-1,
+        1e-1,
+    ),
+    "central_value": 1e-2,
 }
 
 LEARNING_RATE_SPANS = {
     1e0,  # initial learning rate = max learning rate
-    # 1e1,
-    # 1e2,
-    # 1e3,
 }
 
 LEARNING_RATE_DECAYS = {
     0.9**0,  # 1.0  -> no decay
-    # 0.999,
-    # 0.9**1,
-    # 0.9**2,
-    # 0.9**3,
 }
 
 WARMUP_FCTS = {
-    # 0.4,
-    # 0.2,
-    # 0.1,
-    # 0.025,  # 100 warmup epochs for 4000 training epochs
-    # 0.05,
-    # 1e-2,
-    # 1e-3,
     0,  # -> no warmup; in combination with lrate_span=1 and decay=1 this results in a constant lr schedule
 }
 
 OPT_STEPS = {
     0,  # -> defaults to a single schedule
-    # 1,
-    # 2,
-    # 10,
 }
 
 OPT_MULT = {
     0,  # -> defaults to a single schedule
-    # 1,
-    # 2,
-    # 3,
 }
 
 OPT_SCHED_TYPES = {
@@ -131,45 +118,60 @@ OPT_SCHED_TYPES = {
 
 # Regularisation
 MLP_REG_EXPS = {
-    1.0,
+    1.0,  # L1
     # 2.0,
 }
 
 MLP_REG_STRENGTHS = {
-    0,
-    # 1e1,
-    # 1e2,
-    # 1e3,
-    # 1e4,
-    # 1e5,
-    # 1e6,
+    "range": (
+        0,
+        # 1e-1,
+        # 1e0,
+        # 1e1,
+        # 1e2
+    ),
+    "central_value": 0,
 }
+
+# OUTPUT_REG = {
+#     0,
+#     # changed with 1e-6 premultiplier given issues with snakemake small wildcards
+#     1e0, # corresponds to 1e-6
+#     1e1,  # corresponds to 1e-5
+#     1e2,  # corresponds to 1e-4
+#     1e3,  # corresponds to 1e-3
+#     # 1e-2,
+#     # 1e-1,
+#     # 1e0,
+#     # 1e1,
+#     # 1e2,
+#     # 1e3,
+#     # 1e4,
+#     # 1e5,
+#     # 1e6,
+# }
 
 OUTPUT_REG = {
-    0,
-    # changed with 1e-6 premultiplier given issues with snakemake small wildcards
-    1e0, # corresponds to 1e-6
-    1e1,  # corresponds to 1e-5
-    1e2,  # corresponds to 1e-4
-    1e3,  # corresponds to 1e-3
-    # 1e-2,
-    # 1e-1,
-    # 1e0,
-    # 1e1,
-    # 1e2,
-    # 1e3,
-    # 1e4,
-    # 1e5,
-    # 1e6,
+    "range": (
+        0,
+        1e-1,
+        1e0,
+        1e1,
+        1e2,
+        1e3  # add 5e2=500
+    ),
+    "central_value": 1e-1,
 }
 
+
 # Shooting parameters (shooting mode is decided by TRAINING_SCHEMES)
-SHOOTING_WINDOW_LENGTHS = {
-    6,  # 13 windows
-    # # 7,
-    8,  # 9 windows
-    # 10,
-    14,  # 5 windows
+SHOOTING_WINDOW_LENGTHS =  {
+    "range": (
+        6,  # 13 windows
+        8,  # 9 windows
+        14  # 5 windows
+    ),
+    "central_value": 8,
 }
 
 SHOOTING_IV_INITS = {
@@ -178,11 +180,17 @@ SHOOTING_IV_INITS = {
     # "ru",  # random uniform
 }
 
-MULTIPLE_SHOOTING_PENALTIES = {
-    0.0,
-    # 1e-1,
-    # 1e-2,
-    2e-3,
+MULTIPLE_SHOOTING_PENALTIES =  {
+    "range": (
+        0,
+        1e-3,  # note: 2e-3 used to work decently
+        1e-2,
+        1e-1,
+        1e0,
+        1e1,
+        1e2
+    ),
+    "central_value": 0,
 }
 
 # Batch size -- unused, only for window-batch, DISABLED
@@ -191,9 +199,13 @@ MULTIPLE_SHOOTING_PENALTIES = {
 # }
 
 # Curriculum learning (decided by TRAINING_SCHEMES)
-NUM_CURRICULUM_STEPS = {
-    5,   # matches Homotopy paper and corresponding multiple+CL
-    9
+NUM_CURRICULUM_STEPS =  {
+    "range": (
+        3,
+        5,   # matches Homotopy paper and corresponding multiple+CL
+        9
+    ),
+    "central_value": 5,
 }
 
 MAX_CURRICULUM_EPOCHS = {
@@ -225,8 +237,13 @@ DYNAMIC_PARAMS_PERTURB_METHODS = {
 
 # Node augmentation
 NODE_AUGMENTATIONS = {
-    0,
-    # 1,
+    "range": (
+        0,
+        # 1,
+        # 2,
+        # 3
+    ),
+    "central_value": 0,
 }
 
 # Hessian Options
@@ -237,8 +254,8 @@ COMPUTE_HESSIAN_METRICS = {
 
 # Second optimiser (classical)
 SECOND_OPTS = {
-    # "fides",
-    "optx",
+    "fides",
+    # "optx",
 }
 
 # Option to freeze the mechanistic parameters and only train the neural network component
@@ -284,9 +301,9 @@ NORMALISE_TIMEPOINTS = {
     # False,
 }
 
-N_STARTS = 10  # number of multi-starts
+N_STARTS = 100  # number of multi-starts
 
 N_EPOCHS_ADAM = 4000  # default from UDE paper: 200 / SIR: 40000-100000
 N_EPOCHS_BFGS = 10000
 
-EXPERIMENT_NAME = "nemo_072025"
+EXPERIMENT_NAME = "multipleCL_ls_07112025"
