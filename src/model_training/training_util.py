@@ -15,7 +15,7 @@ from jaxtyping import Array, PyTree
 from src.common import Conf, dynamic_param_labels, hessian_metrics_wandb
 from src.model_training.model_util import set_weight_bias
 from src.ude_problem.ude_problem import UDEProblem
-from typing import Callable, List, Union, Optional
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 
 def augment_u0(u0):
@@ -574,3 +574,39 @@ def prep_bfgs_training(model, zero_out_mlp, use_output_reg: bool):
         regularise_network=use_output_reg if (use_output_reg and not model.func.regularise_network) else None
     )
     return model_bfgs
+
+
+def get_train_val_mse(
+        model: UDEProblem,
+        u0_train: jnp.ndarray,
+        t_save_train: Union[SaveAt, Array],
+        t_span_train: List,
+        training_data: jnp.ndarray,
+        u0_val: jnp.ndarray,
+        t_save_val: Union[SaveAt, Array],
+        t_span_val: List,
+        validation_data: jnp.ndarray,
+        loss_dict: Dict[str, Callable],
+) -> Tuple[float, float]:
+    """
+    Computes both training and validation single-shooting MSE using the provided initial conditions (u0_train, u0_val).
+    These losses do not include any regularisation terms.
+    """
+    params, static = eqx.partition(model, eqx.is_array)
+    mse_train, _ = loss_dict["val_loss_fn"](
+        prob_params=params,
+        prob_static=static,
+        u0=u0_train,
+        t_save=t_save_train,
+        t_span=t_span_train,
+        data=training_data,
+    )
+    mse_val, _ = loss_dict["val_loss_fn"](
+        prob_params=params,
+        prob_static=static,
+        u0=u0_val,
+        t_save=t_save_val,
+        t_span=t_span_val,
+        data=validation_data
+    )
+    return mse_train, mse_val

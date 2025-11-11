@@ -7,15 +7,14 @@ import pandas as pd
 import time
 import wandb
 
-from diffrax import SaveAt
 from functools import partial
-from jaxtyping import Array, PyTree
+from jaxtyping import PyTree
 from src.common import Conf, dynamic_param_labels
 from src.model_training.model_util import process_mechanistic_params
 from src.model_training.training_util import prep_bfgs_training
 from src.ude_problem import UDEProblem
 from types import SimpleNamespace
-from typing import Callable, List, Optional, Union
+from typing import Callable, Optional
 
 
 
@@ -55,16 +54,14 @@ def train_fides(
         loss_grad_fn: Callable,
         epoch: int,
         max_iter: int,
-        u0_val: object,
         t_save_windows: jnp.ndarray, masks: jnp.ndarray, training_data: jnp.ndarray,
-        t_save_val: Union[SaveAt, Array], t_span_val: List, validation_data: jnp.ndarray,
         last_valid_index: int,
         loss_fn: Callable,
-        val_loss_fn: Callable,
+        rescaling_args: dict,
         zero_out_mlp: bool = False,
-        wandb_log_final: bool = False,
+        wandb_log: bool = False,
         max_diffrax_steps: int = 20000
-) -> tuple[UDEProblem, SimpleNamespace, UDEProblem, float, float, int, Optional[pd.DataFrame]]:
+) -> tuple[UDEProblem, SimpleNamespace, UDEProblem, int, Optional[pd.DataFrame]]:
 
     # Initialise variables
     opt_wall_duration, opt_process_duration, iterations = jnp.nan, jnp.nan, 0
@@ -166,17 +163,6 @@ def train_fides(
         max_steps=max_diffrax_steps
     )
 
-    # Compute validation loss
-    loss_val, _ = val_loss_fn(
-        prob_params=opt_params,
-        prob_static=static,
-        u0=u0_val,
-        t_save=t_save_val,
-        t_span=t_span_val,
-        data=validation_data,
-        max_steps=2*max_diffrax_steps  # simulates for 2x the number of timepoints
-    )
-
     # Get final model
     model = eqx.combine(opt_params, static)
 
@@ -189,12 +175,19 @@ def train_fides(
             "epoch": epoch + sol.stats["num_steps"],
             # Losses
             "loss_train": loss_train,
-            "loss_val": loss_val,
             # Dynamic parameters
             **{
-                param: process_mechanistic_params(
-                    model.func.dynamic_parameters, model.func.options
+                f"raw_{param}": process_mechanistic_params(
+                    model.func.dynamic_parameters,
+                    model.func.options
                 )[i]
+                for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
+            },
+            **{
+                param: process_mechanistic_params(
+                    model.func.dynamic_parameters,
+                    model.func.options
+                )[i] / rescaling_args["time_rescaling"]  # ensure actual parameters are properly rescaled
                 for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
             },
             "bfgs_iterations": iterations,
@@ -203,23 +196,23 @@ def train_fides(
         }]
     )
 
-    # Update epoch
-    epoch += sol.stats["num_steps"]
-
-    # Log final training and validation loss terms + dynamic parameter values for final BFGS fine-tuning (third stage)
-    if wandb_log_final:
+    # Log final training and validation loss terms + dynamic parameter values (rescaled)
+    if wandb_log:
         wandb.log(
             {
                 **{
                     f"final_{param}_BFGS": process_mechanistic_params(
-                        model.func.dynamic_parameters, model.func.options
-                    )[i]
+                        model.func.dynamic_parameters,
+                        model.func.options
+                    )[i] / rescaling_args["time_rescaling"]
                     for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
                 },
                 "final_loss_train_BFGS": loss_train,
-                "final_loss_val_BFGS": loss_val,
             },
             step=epoch + sol.stats["num_steps"]
         )
 
-    return model, sol, static, loss_train, loss_val, epoch, fides_results_df  # last can be None
+    # Update epoch
+    epoch += sol.stats["num_steps"]
+
+    return model, sol, static, epoch, fides_results_df  # last can be None

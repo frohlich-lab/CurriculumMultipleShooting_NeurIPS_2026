@@ -37,10 +37,11 @@ def train_optimistix(
         t_span_val: List,
         validation_data: jnp.ndarray,
         last_valid_index: int,
+        rescaling_args: dict,
         zero_out_mlp: bool = False,
         wandb_log: bool = True,
         max_diffrax_steps: int = 20000
-) -> tuple[UDEProblem, SimpleNamespace, UDEProblem, float, float, int, Optional[pd.DataFrame]]:
+) -> tuple[UDEProblem, SimpleNamespace, UDEProblem, int, Optional[pd.DataFrame]]:
 
     # Define options and tags for BFGS solver
     options = {
@@ -73,7 +74,7 @@ def train_optimistix(
 
     # Optimistix solve
     try:
-        sol, results_df, loss_train, loss_val = optx_solve(
+        sol, results_df = optx_solve(
             y=params, solver=solver,
             fn_train=loss_optx, fn_val=val_loss_optx, args=args, args_val=args_val,
             f_struct=f_struct, aux_struct=aux_struct,
@@ -81,6 +82,7 @@ def train_optimistix(
             max_steps=num_epochs,
             starting_epoch=epoch,
             conf=conf,
+            rescaling_args=rescaling_args,
             wandb_log=wandb_log,
         )
     except Exception as e:
@@ -88,14 +90,13 @@ def train_optimistix(
         # If there is an error, we return the current model and stats
         sol = SimpleNamespace(value=params, stats={"num_steps": 0, "termination_reason": "error"})
         results_df = None
-        loss_train, loss_val = jnp.inf, jnp.inf
 
     # Get final model
     model = eqx.combine(sol.value, static)
     # Update epoch
     epoch += sol.stats["num_steps"]
 
-    return model, sol, static, loss_train, loss_val, epoch, results_df  # last can be None
+    return model, sol, static, epoch, results_df
 
 
 def optx_solve(
@@ -104,10 +105,11 @@ def optx_solve(
         f_struct, aux_struct,
         options, tags, max_steps,
         starting_epoch, conf,
+        rescaling_args,
         wandb_log: bool = True,
 ):
     # Initialise loss variables
-    loss_train, loss_val = jnp.inf, jnp.inf
+    loss_train, mse_val = jnp.inf, jnp.inf
     aux = None
 
     # These arguments are always fixed throughout interactive solves.
@@ -133,12 +135,12 @@ def optx_solve(
         # Log training and validation loss + params and grads every 5 optimistix iterations
         if iteration % 10 == 0:
             loss_train = fn_train(y, args)[0]
-            loss_val = fn_val(y, args_val)[0]
+            mse_val = fn_val(y, args_val)[0]
             # Include some logging (not automatic as in fides)
             print(
                 f"epoch {starting_epoch+iteration} | "
                 f"loss_train: {loss_train} | "
-                f"loss_val: {loss_val}"
+                f"mse_val: {mse_val}"
             )
             results_dfs.append(
                 pd.DataFrame(
@@ -147,13 +149,20 @@ def optx_solve(
                         "epoch": starting_epoch + iteration,
                         # Losses
                         "loss_train": loss_train,
-                        "loss_val": loss_val,
+                        "mse_val": mse_val,
                         # Dynamic parameters
                         **{
                             param: process_mechanistic_params(
                                 eqx.combine(y, args[0]).func.dynamic_parameters,
                                 eqx.combine(y, args[0]).func.options
                             )[i]
+                            for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
+                        },
+                        **{
+                            param: process_mechanistic_params(
+                                eqx.combine(y, args[0]).func.dynamic_parameters,
+                                eqx.combine(y, args[0]).func.options
+                            )[i] / rescaling_args["time_rescaling"]  # ensure actual parameters are properly rescaled
                             for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
                         },
                     }]
@@ -163,7 +172,7 @@ def optx_solve(
                 wandb.log(
                     {
                         "loss_train": loss_train,
-                        "loss_val": loss_val,
+                        "mse_val": mse_val,
                     },
                     step=starting_epoch + iteration
                 )
@@ -179,7 +188,7 @@ def optx_solve(
     y, _, _ = solver.postprocess(fn_train, y, aux, args, options, state, tags, result)
     # print(f"Found solution {y} with value {fn(y, args)}.")
 
-    # Log final training and validation loss terms + dynamic parameter values for final BFGS fine-tuning (third stage)
+    # Log final training and validation loss terms + dynamic parameter values (rescaled)
     if wandb_log:
         wandb.log(
             {
@@ -187,11 +196,11 @@ def optx_solve(
                     f"final_{param}_BFGS": process_mechanistic_params(
                         eqx.combine(y, args[0]).func.dynamic_parameters,
                         eqx.combine(y, args[0]).func.options
-                    )[i]
+                    )[i] / rescaling_args["time_rescaling"]
                     for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
                 },
                 "final_loss_train_BFGS": loss_train,
-                "final_loss_val_BFGS": loss_val,
+                "final_mse_val_BFGS": mse_val,
             },
             step=starting_epoch + iteration
         )
@@ -210,4 +219,4 @@ def optx_solve(
         bfgs_process_duration=opt_process_duration
     )
 
-    return SimpleNamespace(**sol), optx_results_df, fn_train(y, args)[0], fn_val(y, args_val)[0]
+    return SimpleNamespace(**sol), optx_results_df

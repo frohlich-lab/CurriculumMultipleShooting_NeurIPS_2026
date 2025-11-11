@@ -25,6 +25,7 @@ from src.model_training.model_util import process_mechanistic_params
 from src.model_training.training_util import (
     check_and_progress_curriculum,
     get_save_epochs,
+    get_train_val_mse,
     generate_log_epochs,
     get_filter_spec,
     get_opt_opt_state_params,
@@ -163,42 +164,6 @@ def log_fit_plots(
             plot_dir=plot_dir,
             plot_fmt="svg",
         )
-
-
-def get_train_val_mse(
-        model: UDEProblem,
-        u0_train: jnp.ndarray,
-        t_save_train: Union[SaveAt, Array],
-        t_span_train: List,
-        training_data: jnp.ndarray,
-        u0_val: jnp.ndarray,
-        t_save_val: Union[SaveAt, Array],
-        t_span_val: List,
-        validation_data: jnp.ndarray,
-        loss_dict: Dict[str, Callable],
-) -> Tuple[float, float]:
-    """
-    Computes both training and validation single-shooting MSE using the provided initial conditions (u0_train, u0_val).
-    These losses do not include any regularisation terms.
-    """
-    params, static = eqx.partition(model, eqx.is_array)
-    mse_train, _ = loss_dict["val_loss_fn"](
-        prob_params=params,
-        prob_static=static,
-        u0=u0_train,
-        t_save=t_save_train,
-        t_span=t_span_train,
-        data=training_data,
-    )
-    mse_val, _ = loss_dict["val_loss_fn"](
-        prob_params=params,
-        prob_static=static,
-        u0=u0_val,
-        t_save=t_save_val,
-        t_span=t_span_val,
-        data=validation_data
-    )
-    return mse_train, mse_val
 
 
 # NN OPTIMISATION STEP
@@ -713,10 +678,17 @@ def train(
                             else len(training_data),
                         # Dynamic parameters
                         **{
-                            param: process_mechanistic_params(
+                            f"raw_{param}": process_mechanistic_params(
                                 best_model.func.dynamic_parameters,
                                 best_model.func.options
                             )[i]
+                            for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
+                        },
+                        **{
+                            param: process_mechanistic_params(
+                                best_model.func.dynamic_parameters,
+                                best_model.func.options
+                            )[i] / rescaling_args["time_rescaling"]  # ensure actual parameters are properly rescaled
                             for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
                         },
                         "data_rescaling": rescaling_args["data_rescaling"],
@@ -736,7 +708,7 @@ def train(
         bfgs_filter_spec = get_filter_spec(model, conf, optimiser="bfgs")
 
         if conf.second_opt == "optx":
-            model, sol, static, _, mse_val, epoch, partial_results_df = train_optimistix(
+            model, sol, static, epoch, partial_results_df = train_optimistix(
                 model=model,
                 filter_spec=bfgs_filter_spec,
                 conf=conf,
@@ -755,30 +727,27 @@ def train(
                 t_span_val=t_span_val,
                 validation_data=validation_data,
                 last_valid_index=last_valid_index,
+                rescaling_args=rescaling_args,
                 zero_out_mlp=False,
                 wandb_log=WANDB_LOG
             )
         else:
-            model, sol, static, _, mse_val, epoch, partial_results_df = train_fides(
+            model, sol, static, epoch, partial_results_df = train_fides(
                 model=model,
                 filter_spec=bfgs_filter_spec,
                 conf=conf,
                 loss_grad_fn=loss_dict["loss_grad_fn"],
                 epoch=epoch,
                 max_iter=max_iter_optx_finetune,
-                u0_val=u0_val,
                 t_save_windows=t_save_windows,
                 masks=masks,
                 training_data=training_data,
-                t_save_val=t_save_val,
-                t_span_val=t_span_val,
-                validation_data=validation_data,
                 last_valid_index=last_valid_index,
                 loss_fn=loss_dict["loss_fn"],
-                val_loss_fn=loss_dict["val_loss_fn"],
+                rescaling_args=rescaling_args,
                 zero_out_mlp=False,
                 # TODO: check wandb_log attributes between fides and optimistix!
-                wandb_log_final=WANDB_LOG,
+                wandb_log=WANDB_LOG
             )
 
         # Compute final training and validation losses
@@ -803,7 +772,9 @@ def train(
         partial_results_df["time_rescaling"] = rescaling_args["time_rescaling"]
         partial_results_df["curriculum_stage"] = -1  # to distinguish from valid values
 
-        results_dfs.append(partial_results_df.assign(**conf.__dict__))
+        protected = {'optimiser'}
+        conf_dict = {k: v for k, v in conf.__dict__.items() if k not in protected}
+        results_dfs.append(partial_results_df.assign(**conf_dict))
 
         if WANDB_LOG:
             # Log plots again after further training with optimistix/BFGS
@@ -816,7 +787,7 @@ def train(
             )
 
         # Update best_model
-        if mse_val < mse_val_min:
+        if final_mse_val_bfgs < mse_val_min:
             best_model = model
 
 
