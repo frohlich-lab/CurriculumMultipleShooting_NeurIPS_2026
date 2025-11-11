@@ -8,7 +8,6 @@ import wandb
 
 from src.common import Conf, dynamic_param_labels
 from diffrax import SaveAt
-from jaxlib.xla_extension import XlaRuntimeError
 from jaxtyping import Array, PyTree
 
 from src.model_training.model_util import process_mechanistic_params
@@ -84,7 +83,7 @@ def train_optimistix(
             conf=conf,
             wandb_log=wandb_log,
         )
-    except XlaRuntimeError as e:
+    except Exception as e:
         print(f"Optimistix ran into error: {e}")
         # If there is an error, we return the current model and stats
         sol = SimpleNamespace(value=params, stats={"num_steps": 0, "termination_reason": "error"})
