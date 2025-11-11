@@ -413,21 +413,21 @@ def train(
                 # Update last valid window index
                 last_valid_index = curriculum_params[cl_stage]["last_valid_index"]
 
-            # Optionally save model
-            if nn_epoch in save_epochs:
-                # Save model at the end of the epoch
-                model_pca_traj_dir = model_save_dir / "pca_traj"
-                model_pca_traj_dir.mkdir(exist_ok=True, parents=True)
-                epoch_save_path = (
-                    model_pca_traj_dir /
-                    (conf.__str__() + f"_PCA_{nn_epoch}_CL{cl_stage}.eqx")
-                )
-                print(f"Saving model at epoch {nn_epoch}, CL stage {cl_stage} to {epoch_save_path}")
-                inference_model = model.replace_mlp(
-                    new_mlp=model.func.mlp,
-                    switch_to_inference=True,
-                ) if conf.use_dropout else model
-                inference_model.save(epoch_save_path)
+            # # Optionally save model
+            # if nn_epoch in save_epochs:
+            #     # Save model at the end of the epoch
+            #     model_pca_traj_dir = model_save_dir / "pca_traj"
+            #     model_pca_traj_dir.mkdir(exist_ok=True, parents=True)
+            #     epoch_save_path = (
+            #         model_pca_traj_dir /
+            #         (conf.__str__() + f"_PCA_{nn_epoch}_CL{cl_stage}.eqx")
+            #     )
+            #     print(f"Saving model at epoch {nn_epoch}, CL stage {cl_stage} to {epoch_save_path}")
+            #     inference_model = model.replace_mlp(
+            #         new_mlp=model.func.mlp,
+            #         switch_to_inference=True,
+            #     ) if conf.use_dropout else model
+            #     inference_model.save(epoch_save_path)
 
             wall_t0, process_t0 = time.perf_counter(), time.process_time()
 
