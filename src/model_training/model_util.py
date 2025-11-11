@@ -2,7 +2,7 @@ import equinox as eqx
 import jax.numpy as jnp
 import jax.nn as jnn
 import jax.random as jr
-import jax.tree_util as jtu
+import jax.tree
 import numpy as np
 
 from jaxtyping import Array
@@ -25,11 +25,11 @@ def _is_linear(x):
 
 
 def _get_bias(m):
-    return [x.bias for x in jtu.tree_leaves(m, is_leaf=_is_linear) if _is_linear(x)]
+    return [x.bias for x in jax.tree.leaves(m, is_leaf=_is_linear) if _is_linear(x)]
 
 
 def _get_weight(m):
-    return [x.weight for x in jtu.tree_leaves(m, is_leaf=_is_linear) if _is_linear(x)]
+    return [x.weight for x in jax.tree.leaves(m, is_leaf=_is_linear) if _is_linear(x)]
 
 
 def set_weight_bias(

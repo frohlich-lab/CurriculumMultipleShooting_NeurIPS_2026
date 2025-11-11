@@ -3,7 +3,6 @@ import equinox as eqx
 import git
 import itertools as itt
 import jax.numpy as jnp
-import jax.tree_util as jtu
 import jax
 import numpy as np
 import optax
@@ -38,12 +37,12 @@ def get_filter_spec(model: UDEProblem, conf: Conf, optimiser: str = "adam"):
             ((optimiser == "bfgs") and conf.freeze_mechanistic_params_optx)
     ):
         # Create filter_spec allowing for training of mechanistic params only or neural network only
-        filter_spec_freeze_mechanistic = jtu.tree_map(lambda x: eqx.is_array(x), model)
+        filter_spec_freeze_mechanistic = jax.tree.map(lambda x: eqx.is_array(x), model)
         # filter_spec which freezes dynamic (mechanistic) parameters
         filter_spec_freeze_mechanistic = eqx.tree_at(
             lambda x: x.func.dynamic_parameters,
             filter_spec_freeze_mechanistic,
-            replace=jax.tree_map(lambda _: False, filter_spec_freeze_mechanistic.func.dynamic_parameters)
+            replace=jax.tree.map(lambda _: False, filter_spec_freeze_mechanistic.func.dynamic_parameters)
         )
         return filter_spec_freeze_mechanistic
     elif (
@@ -51,11 +50,11 @@ def get_filter_spec(model: UDEProblem, conf: Conf, optimiser: str = "adam"):
             ((optimiser == "bfgs") and conf.freeze_nn_optx)
     ):
         # filter_spec which freezes the neural network
-        filter_spec_freeze_nn = jtu.tree_map(lambda x: False, model)
+        filter_spec_freeze_nn = jax.tree.map(lambda x: False, model)
         filter_spec_freeze_nn = eqx.tree_at(
             lambda x: x.func.dynamic_parameters,
             filter_spec_freeze_nn,
-            replace=jax.tree_map(lambda _: True, filter_spec_freeze_nn.func.dynamic_parameters)
+            replace=jax.tree.map(lambda _: True, filter_spec_freeze_nn.func.dynamic_parameters)
         )
         return filter_spec_freeze_nn
     else:
@@ -297,7 +296,7 @@ def get_save_epochs(num_epochs, num_models):
 
 # Utilities to make training step or compute gradient and hessian metrics
 def make_grads_finite(grads):
-    return jax.tree_map(
+    return jax.tree.map(
         lambda x: jnp.where(jnp.isfinite(x), x, jnp.zeros_like(x)),
         grads,
     )
@@ -315,7 +314,7 @@ def max_grad_norm(grads: PyTree) -> Array:
 def build_hessian_index_mask(model: UDEProblem, conf: Conf, filter_spec: PyTree):
     # Use precomputed ADAM filter_spec to initialise all-keeping mask_tree
     arrays_tree  = eqx.filter(model, filter_spec)
-    mask_tree = jtu.tree_map(lambda x: jnp.ones_like(x, dtype=bool), arrays_tree)
+    mask_tree = jax.tree.map(lambda x: jnp.ones_like(x, dtype=bool), arrays_tree)
 
     state_dim = int(model.func.state_dimension)
     # Compute indices of parameters to exclude from Hessian computation (False)
