@@ -75,6 +75,29 @@ def train_fides(
 
     flat_params, unflatten_params = jax.flatten_util.ravel_pytree(params)
 
+    # Compute gradient at starting parameters to get starting gradient sup-norm
+    _, flat_grads = fides_loss_grad(
+        flat_params,
+        unflatten_params,
+        loss_grad_fn,
+        static,
+        t_save_windows,
+        masks,
+        training_data,
+        last_valid_index,
+        conf.mlp_reg_exp,
+        conf.mlp_reg_strength,
+        conf.output_reg,
+        conf.multiple_shooting_penalty,
+        conf.shooting_mode,
+        max_diffrax_steps
+    )
+    inv_grad_supnorm = 1 / jnp.linalg.norm(flat_grads, ord=jnp.inf)
+
+    # Initialise BFGS Hessian with rescaled identity matrix as per Rackauckas et al.
+    # ref: https://github.com/ChrisRackauckas/universal_differential_equations/blob/master/LotkaVolterra/scenario_1.jl#L118
+    initial_hessian = 0.01 * inv_grad_supnorm * np.eye(flat_params.shape[0])
+
     fides_opt = fides.Optimizer(
         partial(
             fides_loss_grad,
@@ -102,7 +125,8 @@ def train_fides(
         # Optimise (and time)
         wall_t0, process_t0 = time.perf_counter(), time.process_time()
         opt_f, opt_x, opt_grad, opt_hess = fides_opt.minimize(
-            np.array(flat_params)  # move flat_params to numpy array to avoid JAX immutability
+            np.array(flat_params),  # move flat_params to numpy array to avoid JAX immutability
+            hess0=initial_hessian,
         )
         wall_t1, process_t1 = time.perf_counter(), time.process_time()
         opt_wall_duration, opt_process_duration = wall_t1 - wall_t0, process_t1 - process_t0
@@ -159,7 +183,29 @@ def train_fides(
     # create optimistix-like sol object, where value contains the optimised prob_params (dynamic part of the model)
     sol = SimpleNamespace(value=opt_params, stats={"num_steps": fides_opt.iteration})
 
-    fides_results_df = None
+    fides_results_df = pd.DataFrame(
+        [{
+            "optimiser": "fides_BFGS",
+            "epoch": epoch + sol.stats["num_steps"],
+            # Losses
+            "loss_train": loss_train,
+            "loss_val": loss_val,
+            # Dynamic parameters
+            **{
+                param: process_mechanistic_params(
+                    model.func.dynamic_parameters, model.func.options
+                )[i]
+                for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
+            },
+            "bfgs_iterations": iterations,
+            "bfgs_wall_duration": opt_wall_duration,
+            "bfgs_process_duration": opt_process_duration,
+        }]
+    )
+
+    # Update epoch
+    epoch += sol.stats["num_steps"]
+
     # Log final training and validation loss terms + dynamic parameter values for final BFGS fine-tuning (third stage)
     if wandb_log_final:
         wandb.log(
@@ -175,27 +221,5 @@ def train_fides(
             },
             step=epoch + sol.stats["num_steps"]
         )
-        fides_results_df = pd.DataFrame(
-            [{
-                "optimiser": "fides_BFGS",
-                "epoch": epoch + sol.stats["num_steps"],
-                # Losses
-                "loss_train": loss_train,
-                "loss_val": loss_val,
-                # Dynamic parameters
-                **{
-                    param: process_mechanistic_params(
-                        model.func.dynamic_parameters, model.func.options
-                    )[i]
-                    for i, param in enumerate(dynamic_param_labels[conf.dynamical_model])
-                },
-                "bfgs_iterations": iterations,
-                "bfgs_wall_duration": opt_wall_duration,
-                "bfgs_process_duration": opt_process_duration,
-            }]
-        )
-
-    # Update epoch
-    epoch += sol.stats["num_steps"]
 
     return model, sol, static, loss_train, loss_val, epoch, fides_results_df  # last can be None
