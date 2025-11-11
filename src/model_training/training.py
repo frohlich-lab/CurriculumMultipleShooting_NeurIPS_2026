@@ -803,9 +803,9 @@ def train(
         partial_results_df["time_rescaling"] = rescaling_args["time_rescaling"]
         partial_results_df["curriculum_stage"] = -1  # to distinguish from valid values
 
-        if WANDB_LOG: # if not, partial_results will be None
-            results_dfs.append(partial_results_df.assign(**conf.__dict__))
+        results_dfs.append(partial_results_df.assign(**conf.__dict__))
 
+        if WANDB_LOG:
             # Log plots again after further training with optimistix/BFGS
             log_fit_plots(
                 model=model, **plot_args,
