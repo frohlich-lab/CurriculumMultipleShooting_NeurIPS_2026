@@ -295,11 +295,37 @@ def get_save_epochs(num_epochs, num_models):
 
 
 # Utilities to make training step or compute gradient and hessian metrics
-def make_grads_finite(grads):
-    return jax.tree.map(
-        lambda x: jnp.where(jnp.isfinite(x), x, jnp.zeros_like(x)),
-        grads,
-    )
+def make_grads_finite(grads, strategy: str = "zero", threshold: float = 1e10):
+    """
+    Clean or norm-clip gradients depending on the strategy.
+
+    Args:
+        grads: PyTree of gradients.
+        strategy (str): Either "zero" (replace non-finite values with zero)
+                        or "clip" (clip gradient norms to the given threshold).
+        threshold (float): Norm threshold for clipping.
+
+    Returns:
+        PyTree of processed gradients.
+    """
+    if strategy == "zero":
+        # Replace non-finite gradients with zeros
+        return jax.tree.map(
+            lambda x: jnp.where(jnp.isfinite(x), x, jnp.zeros_like(x)),
+            grads,
+        )
+    elif strategy == "clip":
+        # Compute global L2 norm of all finite gradients
+        grads_flat, _ = jax.flatten_util.ravel_pytree(grads)
+        grad_norm = jnp.linalg.norm(grads_flat)
+
+        # Compute scaling factor if norm exceeds threshold
+        scale = jnp.minimum(1.0, threshold / (grad_norm + 1e-12))
+
+        # Scale all gradients proportionally
+        return jax.tree.map(lambda x: x * scale, grads)
+    else:
+        raise ValueError(f"Unknown strategy '{strategy}'. Use 'zero' or 'clip'.")
 
 
 def max_grad_norm(grads: PyTree) -> Array:
