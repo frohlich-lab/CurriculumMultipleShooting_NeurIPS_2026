@@ -377,6 +377,7 @@ def initialize_multiple_shooting(
         curriculum_learning: bool = False,
         curriculum_params: Optional[dict[str, tuple]] = None,
         random_seed: int = 0,
+        eps: float = 1e-6,
 ) -> tuple[Array, Array, Array]:
     """
     Initialize auxiliary variables (num_windows, starting and ending points,
@@ -402,6 +403,8 @@ def initialize_multiple_shooting(
         Timepoints and masks for first curriculum learning stage.
     random_seed: int
         Random seed for random initialization.
+    eps: float
+        Small value used to initialize initial values in strategy "z".
     """
     # Pre-compute the number of windows
     num_windows = int(np.ceil(training_horizon / (shooting_window_length - 1)))
@@ -417,7 +420,11 @@ def initialize_multiple_shooting(
         )
 
     if strategy == 'z':
-        return t_save_windows, masks, jnp.zeros((num_windows, effective_state_dimension))
+        # return t_save_windows, masks, jnp.zeros((num_windows, effective_state_dimension))
+        # First window = u0_guess; Remaining windows = eps
+        u0 = jnp.zeros((num_windows, effective_state_dimension)) + eps
+        u0 = u0.at[0].set(u0_guess)
+        return t_save_windows, masks, u0
     # TODO @GiacomoFabrini add an option to initialise with observed initial conditions
     elif strategy == 'g':
         return t_save_windows, masks, jnp.tile(u0_guess, (num_windows, 1))
