@@ -2,7 +2,7 @@ diffrax==0.7.0
 equinox==0.13.2
 fides==0.8.0
 fire==0.6.0
-flax==0.10.4
+flax==0.10.7
 GitPython==3.1.43
 jax==0.6.2
 jaxlib==0.6.2
