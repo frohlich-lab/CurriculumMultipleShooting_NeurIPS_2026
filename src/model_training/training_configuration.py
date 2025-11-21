@@ -167,6 +167,8 @@ OUTPUT_REG = {
 # Shooting parameters (shooting mode is decided by TRAINING_SCHEMES)
 SHOOTING_WINDOW_LENGTHS =  {
     "range": (
+        4,  # 21 windows
+        5,  # 16 windows
         6,  # 13 windows
         8,  # 9 windows
         14  # 5 windows
@@ -204,9 +206,12 @@ NUM_CURRICULUM_STEPS =  {
     "range": (
         3,
         5,   # matches Homotopy paper and corresponding multiple+CL
-        9
+        9,
+        13,
+        16,
+        21
     ),
-    "central_value": 5,
+    "central_value": 9,
 }
 
 MAX_CURRICULUM_EPOCHS = {
