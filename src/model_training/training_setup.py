@@ -373,7 +373,7 @@ def initialize_multiple_shooting(
         training_horizon: int,
         t_save: Union[Array, SaveAt],
         strategy: str,
-        u0_guess: Optional[Tuple],
+        u0_guess: Optional[Array],
         curriculum_learning: bool = False,
         curriculum_params: Optional[dict[str, tuple]] = None,
         random_seed: int = 0,
