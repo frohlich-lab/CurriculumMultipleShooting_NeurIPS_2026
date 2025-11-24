@@ -284,6 +284,7 @@ def train(
     # Initialise variables
     epoch, nn_epoch = 0, 0
     best_model, mse_val_min = model, jnp.inf
+    model_save_steps_start = []
     overall_wall_t0, overall_process_t0 = time.perf_counter(), time.process_time()
     adam_wall_duration, adam_process_duration = jnp.nan, jnp.nan
     steady_epoch_times_mean, steady_epoch_times_std = jnp.nan, jnp.nan

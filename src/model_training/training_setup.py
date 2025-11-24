@@ -275,6 +275,7 @@ def setup_curriculum_learning(
             new_num_curriculum_steps = num_windows
             # Fill the incremental data list with the incremental data
             for step in range(1, new_num_curriculum_steps + 1):
+                time, mask = None, None
                 start_epoch = int((step - 1) * (switch_epoch / (new_num_curriculum_steps-1)))
                 end_epoch = int(
                     step * (switch_epoch / (new_num_curriculum_steps-1))
