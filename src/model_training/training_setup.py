@@ -67,12 +67,6 @@ def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple, u0) ->
     else:
         raise ValueError(f"Unknown dynamical model: {conf.dynamical_model}!")
 
-    val_loss_fn = partial(compute_validation_loss, loss_fn=base_loss_fn)
-    loss_fn = partial(compute_loss, loss_fn=base_loss_fn_masked)
-    loss_grad_fn = partial(compute_loss_grad, loss_fn=base_loss_fn_masked)
-    loss_optx = compute_loss_optx
-    val_loss_optx = compute_val_loss_optx
-
     options = {
         "dynamic_params_scale": conf.dynamic_params_scale,
         "bounded_tanh_params": broadcast_bounds(
@@ -111,6 +105,12 @@ def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple, u0) ->
         "data_rescaling": data_rescaling,
         "time_rescaling": time_rescaling,
     }
+
+    val_loss_fn = partial(compute_validation_loss, loss_fn=base_loss_fn)
+    loss_fn = partial(compute_loss, loss_fn=base_loss_fn_masked, rescaling_args=rescaling_args)
+    loss_grad_fn = partial(compute_loss_grad, loss_fn=base_loss_fn_masked, rescaling_args=rescaling_args)
+    loss_optx = partial(compute_loss_optx, rescaling_args=rescaling_args)
+    val_loss_optx = compute_val_loss_optx
 
     # Pack arguments to return
     train_args = TrainValArgs(data=train_data, t_save=t_save_train, t_span=t_span_train, u0=u0_train)

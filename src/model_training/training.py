@@ -182,6 +182,7 @@ def make_step(
         compute_hessian_metrics: bool,
         base_loss_fn: Callable,
         active_idx: Array,
+        rescaling_args: dict[str, float],
 ):
     (loss_value, reg_loss_dict), grads = loss_grad_fn(
         prob_params=params,
@@ -205,7 +206,7 @@ def make_step(
     if compute_hessian_metrics:
         args = (t_save_windows, masks, input_data, last_valid_index)
         hessian_metrics = get_hessian_metrics(
-            get_hessian(params, static, args, conf, base_loss_fn),
+            get_hessian(params, static, args, conf, base_loss_fn, rescaling_args),
             return_eigs_svs=False,
             active_idx=active_idx,
         )
@@ -411,6 +412,7 @@ def train(
                 compute_hessian_metrics=(conf.compute_hessian_metrics and (nn_epoch in log_epochs)),
                 base_loss_fn=loss_dict["base_loss_fn"],
                 active_idx=active_hessian_idx,
+                rescaling_args=rescaling_args,
             )
 
             jnp.asarray(loss_train).block_until_ready()

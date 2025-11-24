@@ -32,6 +32,7 @@ def compute_loss(
         multiple_shooting_penalty: float,
         shooting_mode: str,
         loss_fn: Callable,
+        rescaling_args: dict[str, float],
         adjoint: diffrax.AbstractAdjoint = diffrax.RecursiveCheckpointAdjoint(), # default for everything apart from Hessian (DirectAdjoint)
         max_steps: int = 20000,
 ):
@@ -81,7 +82,7 @@ def compute_loss(
         if shooting_mode == "single":
             mlp_output_reg = regularise_mlp_contribution(
                 l2_norm_nn_contrib=sol.ys[:, -1],
-                timespan_length=t_save_windows[0][-1]-t_save_windows[0][0],
+                timespan_length=(t_save_windows[0][-1]-t_save_windows[0][0]) * rescaling_args["time_rescaling"],
                 reg_strength=output_reg
             )
         elif shooting_mode == "multiple":
@@ -89,7 +90,7 @@ def compute_loss(
                 [
                     regularise_mlp_contribution(
                         l2_norm_nn_contrib=sol.ys[i, :, -1],
-                        timespan_length=t_save_windows[i][-1] - t_save_windows[i][0],
+                        timespan_length=(t_save_windows[i][-1] - t_save_windows[i][0]) * rescaling_args["time_rescaling"],
                         reg_strength=output_reg
                     )
                     for i in range(last_valid_index)
@@ -114,6 +115,7 @@ def compute_loss_grad(
         mlp_reg_exp, mlp_reg_strength, output_reg, multiple_shooting_penalty,
         shooting_mode,
         loss_fn: Callable,
+        rescaling_args: dict[str, float],
         adjoint: diffrax.AbstractAdjoint = diffrax.RecursiveCheckpointAdjoint(),
         max_steps: int = 20000,
 ):
@@ -122,7 +124,7 @@ def compute_loss_grad(
         t_save_windows, masks,
         data,
         last_valid_index,
-        mlp_reg_exp, mlp_reg_strength, output_reg, multiple_shooting_penalty, shooting_mode, loss_fn,
+        mlp_reg_exp, mlp_reg_strength, output_reg, multiple_shooting_penalty, shooting_mode, loss_fn, rescaling_args,
         adjoint=adjoint, max_steps=max_steps
     )
 
@@ -146,14 +148,14 @@ def compute_validation_loss(
 def compute_loss_optx(prob_params, args):
     (prob_static, t_save_windows, masks, data, last_valid_index,
      mlp_reg_exp, mlp_reg_strength, output_reg,
-     multiple_shooting_penalty, shooting_mode, loss_fn, max_steps) = args
+     multiple_shooting_penalty, shooting_mode, loss_fn, rescaling_args, max_steps) = args
     loss, _ = compute_loss(
         prob_params, prob_static,
         t_save_windows, masks,
         data,
         last_valid_index,
         mlp_reg_exp, mlp_reg_strength, output_reg, multiple_shooting_penalty, shooting_mode,
-        loss_fn, max_steps=max_steps
+        loss_fn, rescaling_args, max_steps=max_steps
     )
     return loss, None
 
@@ -180,6 +182,7 @@ def compute_hess_array(
         mlp_reg_exp, mlp_reg_strength, output_reg,
         multiple_shooting_penalty, shooting_mode,
         loss_fn,
+        rescaling_args,
         adjoint=diffrax.DirectAdjoint(),
         max_steps: int = 20000
 ):
@@ -192,6 +195,7 @@ def compute_hess_array(
         mlp_reg_exp, mlp_reg_strength, output_reg, multiple_shooting_penalty,
         shooting_mode,
         loss_fn,
+        rescaling_args,
         adjoint=adjoint,
         max_steps=max_steps
     )
@@ -204,9 +208,10 @@ def get_hessian(
         args: tuple,
         conf: Conf,
         base_loss_fn: Callable,
+        rescaling_args: dict[str, float],
 ):
     # define hessian functions for different dynamical models
-    hessian_fn = partial(compute_hess_array, loss_fn=base_loss_fn)
+    hessian_fn = partial(compute_hess_array, loss_fn=base_loss_fn, rescaling_args=rescaling_args)
     # unpack args
     t_save, t_span, input_data, last_valid_index = args
     # flatten params PyTree and get unflatten function
