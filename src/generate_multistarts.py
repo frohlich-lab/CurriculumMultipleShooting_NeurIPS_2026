@@ -60,7 +60,7 @@ def main():
             sampled_log_params,
             columns=[f"param_{i}" for i in range(sampled_log_params.shape[1])]
         )
-        df.insert(0, "multistart_job", list(range(N_STARTS)))
+        df.insert(loc=0, column="multistart_job", value=np.array(list(range(N_STARTS))))
 
         out_path = data_dir / model / f"{method}__{deviation}.csv"
         df.to_csv(out_path, index=False)
