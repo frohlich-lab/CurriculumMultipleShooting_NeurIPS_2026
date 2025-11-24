@@ -425,7 +425,6 @@ def initialize_multiple_shooting(
         u0 = jnp.zeros((num_windows, effective_state_dimension)) + eps
         u0 = u0.at[0].set(u0_guess)
         return t_save_windows, masks, u0
-    # TODO @GiacomoFabrini add an option to initialise with observed initial conditions
     elif strategy == 'g':
         return t_save_windows, masks, jnp.tile(u0_guess, (num_windows, 1))
     elif strategy == 'ru':
@@ -442,12 +441,12 @@ def setup_time_masks_u0_curriculum(
         u0_guess: Union[tuple, jnp.ndarray],
         effective_state_dimension: int,
 ) -> Tuple[Array, Array, Array, dict]:
-    # Setup curriculum learning (if enabled)
-    # TODO this crashes the run - might want to think about a different approach or is this fine?
+    # Prevent curriculum learning if no ADAM epochs
     if conf.curriculum_learning and conf.num_epochs_adam == 0:
         raise ValueError(
-            f"Number of NN training epochs must be > 0 to use curriculum learning - found {conf.num_epochs_adam}!"
+            f"Number of NN training epochs must be > 0 to use curriculum learning; found {conf.num_epochs_adam}!"
         )
+    # Setup curriculum learning (if enabled)
     curriculum_stage_dict = setup_curriculum_learning(
         data=train_args.data,
         t_save=train_args.t_save,

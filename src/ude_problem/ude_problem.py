@@ -70,8 +70,7 @@ class UDEProblem(eqx.Module):
         elif self.dynamical_model == "sir":
             state_delimiter = mlp.layers[0].in_features + 1
         else:
-            # TODO find better way - two raise ValueError for the same check, different messages?!
-            raise ValueError(f"Unsupported dynamical model: {dynamical_model} - add state delimiter value!")
+            raise ValueError(f"Unsupported dynamical model: {dynamical_model}!")
         self.func = UDE_funcs[dynamical_model](
             dynamic_parameters, mlp, options, state_dimension, state_delimiter, regularise_network
         )

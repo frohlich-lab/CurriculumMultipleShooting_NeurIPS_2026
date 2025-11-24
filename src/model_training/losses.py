@@ -85,7 +85,6 @@ def compute_loss(
                 reg_strength=output_reg
             )
         elif shooting_mode == "multiple":
-            # TODO @GiacomoFabrini - should this be a sum or a mean?
             mlp_output_reg = jnp.mean(jnp.array(
                 [
                     regularise_mlp_contribution(

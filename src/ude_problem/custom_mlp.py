@@ -14,8 +14,6 @@ class CustomDropoutMLP(eqx.Module):
     input_dropout_rate: float
     hidden_dropout_rate: float
 
-    # TODO @GiacomoFabrini consider adding bias behaviour (use_bias)
-    # TODO @GiacomoFabrini: test this class!
     def __init__(
             self,
             in_size: int,

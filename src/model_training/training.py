@@ -173,7 +173,7 @@ def make_step(
         static: Union[PyTree, UDEProblem],
         opt: optax.GradientTransformation,
         opt_state: PyTree,
-        input_data: Float[Array, '...'],  # TODO @GiacomoFabrini fix input data shape
+        input_data: Float[Array, "t d"],  # shape = (num_timepoints, augmented_state_dimension)
         t_save_windows: Array,
         masks: Array,
         last_valid_index: int,
@@ -746,7 +746,6 @@ def train(
                 loss_fn=loss_dict["loss_fn"],
                 rescaling_args=rescaling_args,
                 zero_out_mlp=False,
-                # TODO: check wandb_log attributes between fides and optimistix!
                 wandb_log=WANDB_LOG
             )
 

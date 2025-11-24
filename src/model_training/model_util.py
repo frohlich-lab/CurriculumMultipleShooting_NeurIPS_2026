@@ -5,7 +5,7 @@ import jax.random as jr
 import jax.tree
 import numpy as np
 
-from jaxtyping import Array
+from jaxtyping import Array, UInt32
 from typing import Any, Union
 
 
@@ -13,9 +13,8 @@ from typing import Any, Union
 def _init_glorot(
         scale: float,
         shape: tuple,
-        key: Any,  # TODO @Giacomo some weird error with KeyArray import with these package versions?!
+        key: UInt32[Array, "2"],
 ):
-    # TODO @Giacomo: add option for mode / distribution
     init = jnn.initializers.variance_scaling(scale, "fan_avg", "uniform")
     return init(key, shape)
 
