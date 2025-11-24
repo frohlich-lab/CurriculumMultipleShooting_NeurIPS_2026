@@ -67,9 +67,9 @@ TRAINING_SCHEMES = {
     # "bfgs",
     # "single",
     # "single_bfgs",
-    # "single_CL",
+    "single_CL",
     # "multiple",
-    "multiple_CL",
+    # "multiple_CL",
 }
 
 # Optimiser
@@ -158,7 +158,10 @@ OUTPUT_REG = {
         1e0,
         1e1,
         1e2,
-        1e3  # add 5e2=500
+        3e2,  # add more intermediate values after rescaling regularisation for time-normalisation runs
+        5e2,
+        1e3,
+        1e4,
     ),
     "central_value": 1e0,
 }
@@ -303,8 +306,8 @@ NORMALISE_DATA = {
 }
 
 NORMALISE_TIMEPOINTS = {
-    # True,
-    False,
+    True,
+    # False,
 }
 
 N_STARTS = 100  # number of multi-starts
@@ -312,4 +315,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 6000  # default from UDE paper: 200 / SIR: 40000-100000
 N_EPOCHS_BFGS = 10000
 
-EXPERIMENT_NAME = "multipleCL_notimenorm_ls_23112025"
+EXPERIMENT_NAME = "singleCL_ls_24112025"
