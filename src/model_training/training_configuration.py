@@ -66,10 +66,10 @@ HIDDEN_DROPOUT_RATES = {
 TRAINING_SCHEMES = {
     # "bfgs",
     # "single",
-    # "single_bfgs",
+    "single_bfgs",
     # "single_CL",
     # "multiple",
-    "multiple_CL",
+    # "multiple_CL",
 }
 
 # Optimiser
@@ -290,7 +290,8 @@ FREEZE_NN_OPTX= {
 
 # Training settings (UDE, MLP, UDE+MLP)
 TRAINING_SETTINGS = {
-    "UDE",
+    # "UDE",
+    "NODE",
     # "MLP",
 }
 
@@ -315,4 +316,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 6000  # default from UDE paper: 200 / SIR: 40000-100000
 N_EPOCHS_BFGS = 10000
 
-EXPERIMENT_NAME = "multipleCL_ls_25112025"
+EXPERIMENT_NAME = "singleBFGS_NODE_ls_25112025"
