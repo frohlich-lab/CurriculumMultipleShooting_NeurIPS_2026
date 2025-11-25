@@ -228,8 +228,8 @@ RESTART_OPT_CURRICULUM = {
 
 # Dynamic Parameters estimation settings
 DYNAMIC_PARAMS_SCALES = {
-    # "linear",
-    "log10",
+    "linear",  # NODE
+    # "log10",  # UDE
 }
 
 MULTISTART_DEVIATIONS = {
