@@ -82,7 +82,7 @@ rule train_udes:
         num_epochs_bfgs = "[0-9]+",
         normalise_data = "True|False",
         normalise_timepoints = "True|False",
-        training_setting = "UDE|MLP",
+        training_setting = "UDE|NODE|MLP",
         mlpexp_target = "[a-zA-Z_]+",
     retries: 1
     resources:
