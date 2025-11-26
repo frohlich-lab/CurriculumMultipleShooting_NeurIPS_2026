@@ -373,19 +373,23 @@ def train(
                 t_save_windows, masks, cl_stage, advancing_cl_stage = check_and_progress_curriculum(
                     t_save_windows, masks, nn_epoch, cl_stage, model_save_steps_start, curriculum_params
                 )
-                if advancing_cl_stage and conf.restart_opt_curriculum:
-                    # Reset optimiser and opt_state for new curriculum stage, including lr schedule
-                    print(f"Restarting optimiser at epoch {nn_epoch} for CL stage {cl_stage}")
-                    schedule = get_scheduler(conf=conf, n_epochs=n_epochs)
-                    opt, opt_state, params = get_opt_opt_state_params(conf, params, schedule)
+
+                if advancing_cl_stage:
                     # Update last valid window index
                     last_valid_index = curriculum_params[cl_stage]["last_valid_index"]
 
+                    # Update valid Hessian parameter indices
                     if conf.shooting_mode == "multiple":
                         # Update valid indices for Hessian metric computation
                         active_hessian_idx = update_hessian_index_mask_multiple_curriculum(
                             model, adam_filter_spec, last_valid_index
                         )
+
+                    # Optionally restart optimiser and opt_state, including lr schedule for new curriculum stage
+                    if conf.restart_opt_curriculum:
+                        print(f"Restarting optimiser at epoch {nn_epoch} for CL stage {cl_stage}")
+                        schedule = get_scheduler(conf=conf, n_epochs=n_epochs)
+                        opt, opt_state, params = get_opt_opt_state_params(conf, params, schedule)
 
 
             # # Optionally save model
