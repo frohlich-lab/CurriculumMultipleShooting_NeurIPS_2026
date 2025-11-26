@@ -35,6 +35,7 @@ from src.model_training.training_util import (
     max_grad_norm,
     get_hessian_metrics,
     build_hessian_index_mask,
+    update_hessian_index_mask_multiple_curriculum,
     MetricHandler,
     augment_u0
 )
@@ -377,8 +378,15 @@ def train(
                     print(f"Restarting optimiser at epoch {nn_epoch} for CL stage {cl_stage}")
                     schedule = get_scheduler(conf=conf, n_epochs=n_epochs)
                     opt, opt_state, params = get_opt_opt_state_params(conf, params, schedule)
-                # Update last valid window index
-                last_valid_index = curriculum_params[cl_stage]["last_valid_index"]
+                    # Update last valid window index
+                    last_valid_index = curriculum_params[cl_stage]["last_valid_index"]
+
+                    if conf.shooting_mode == "multiple":
+                        # Update valid indices for Hessian metric computation
+                        active_hessian_idx = update_hessian_index_mask_multiple_curriculum(
+                            model, adam_filter_spec, last_valid_index
+                        )
+
 
             # # Optionally save model
             # if nn_epoch in save_epochs:

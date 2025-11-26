@@ -370,12 +370,48 @@ def build_hessian_index_mask(model: UDEProblem, conf: Conf, filter_spec: PyTree)
 
     # Update mask_tree and ravel parameter & mask with same structure
     mask_tree = eqx.tree_at(lambda x: x.initial_values, mask_tree, init_mask)
-    theta0, _   = ravel_pytree(arrays_tree)   # flattened params
+    # theta0, _   = ravel_pytree(arrays_tree)   # flattened params
     mask_vec, _ = ravel_pytree(mask_tree)     # flattened bools, aligned 1:1
 
     # Return indices to keep (active) for Hessian computation
     active_idx = jnp.nonzero(jnp.asarray(mask_vec, dtype=jnp.bool_))[0].astype(jnp.int32)
     return jnp.asarray(active_idx)
+
+
+def update_hessian_index_mask_multiple_curriculum(
+    model: UDEProblem, filter_spec: PyTree, last_valid_index: int
+):
+    # Use precomputed ADAM filter_spec to initialise all-keeping mask_tree
+    arrays_tree  = eqx.filter(model, filter_spec)
+    mask_tree = jax.tree.map(lambda x: jnp.ones_like(x, dtype=bool), arrays_tree)
+
+    state_dim, state_delim = int(model.func.state_dimension), int(model.func.state_delimiter)
+    n_windows = int(jnp.shape(model.initial_values)[0])
+
+    # Freeze network contribution initial value for every window
+    per_win_mask = jnp.concatenate(
+        [jnp.ones((state_delim,), dtype=bool), jnp.array([False], dtype=bool)], axis=0
+    )
+    invalid_mask = jnp.zeros_like(per_win_mask, dtype=bool)
+
+    # Keep valid windows (still in use)
+    init_mask_valid = jnp.tile(per_win_mask[None, :], (last_valid_index, 1))
+    # Zero out dropped windows (absorbed during curriculum)
+    init_mask_invalid = jnp.tile(invalid_mask[None, :], ((n_windows - last_valid_index), 1))
+    init_mask = jnp.concatenate([init_mask_valid, init_mask_invalid], axis=0)
+
+    # Freeze the first window's state variables (not augmented variables)
+    init_mask = init_mask.at[0, :state_dim].set(False)
+
+    # Update mask_tree and ravel parameter & mask with same structure
+    mask_tree = eqx.tree_at(lambda x: x.initial_values, mask_tree, init_mask)
+    # theta0, _ = ravel_pytree(arrays_tree)  # flattened params
+    mask_vec, _ = ravel_pytree(mask_tree)  # flattened bools, aligned 1:1
+
+    # Return indices to keep (active) for Hessian computation
+    active_idx = jnp.nonzero(jnp.asarray(mask_vec, dtype=jnp.bool_))[0].astype(jnp.int32)
+    return jnp.asarray(active_idx)
+
 
 
 def get_hessian_metrics(
