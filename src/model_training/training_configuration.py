@@ -163,7 +163,7 @@ OUTPUT_REG = {
         1e3,
         1e4,
     ),
-    "central_value": 0,
+    "central_value": 0,  # use 1e0 for UDEs
 }
 
 
