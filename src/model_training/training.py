@@ -182,7 +182,7 @@ def make_step(
         loss_grad_fn: Callable,
         compute_hessian_metrics: bool,
         base_loss_fn: Callable,
-        active_idx: Array,
+        active_idx: Optional[Array],
         rescaling_args: dict[str, float],
 ):
     (loss_value, reg_loss_dict), grads = loss_grad_fn(
@@ -204,7 +204,7 @@ def make_step(
         metric: jnp.nan
         for metric in hessian_metrics_wandb.keys()
     }
-    if compute_hessian_metrics:
+    if compute_hessian_metrics and (active_idx is not None):
         args = (t_save_windows, masks, input_data, last_valid_index)
         hessian_metrics = get_hessian_metrics(
             get_hessian(params, static, args, conf, base_loss_fn, rescaling_args),
@@ -341,7 +341,11 @@ def train(
         # Partition model into learnable / static parameters depending on configuration
         adam_filter_spec = get_filter_spec(model, conf, optimiser="adam")
         params, static = eqx.partition(model, adam_filter_spec)
-        active_hessian_idx = build_hessian_index_mask(model, conf, adam_filter_spec)
+
+        if conf.compute_hessian_metrics:
+            active_hessian_idx = build_hessian_index_mask(model, conf, adam_filter_spec)
+        else:
+            active_hessian_idx = None
 
         # Generate regularly log-spaced epochs for model stat logging - from DMMs
         log_epochs = generate_log_epochs(n_epochs=n_epochs, num_samples=100, min_dist=5)
@@ -379,7 +383,7 @@ def train(
                     last_valid_index = curriculum_params[cl_stage]["last_valid_index"]
 
                     # Update valid Hessian parameter indices
-                    if conf.shooting_mode == "multiple":
+                    if conf.compute_hessian_metrics and (conf.shooting_mode == "multiple"):
                         # Update valid indices for Hessian metric computation
                         active_hessian_idx = update_hessian_index_mask_multiple_curriculum(
                             model, adam_filter_spec, last_valid_index
@@ -424,7 +428,7 @@ def train(
                 loss_grad_fn=loss_dict["loss_grad_fn"],
                 compute_hessian_metrics=(conf.compute_hessian_metrics and (nn_epoch in log_epochs)),
                 base_loss_fn=loss_dict["base_loss_fn"],
-                active_idx=active_hessian_idx,
+                active_idx=active_hessian_idx if conf.compute_hessian_metrics else None,
                 rescaling_args=rescaling_args,
             )
 
