@@ -61,23 +61,23 @@ class SIRUDEFunction(BaseUDEFunction):
 # TODO @GiacomoFabrini no magic numbers - add conf.node_augmentation and derive number of components for loss.
 # LOSS AND GRAD FUNCTIONS
 def sir_base_loss(solution: jnp.ndarray, data):
-    infected, dead, recovered = data[:, 0], data[:, 1], data[:, 2]
+    infected, dead_recovered = data[:, 0], data[:, 1]
     # loss is sum of MSE on Infected and Recovered+Dead
     loss1 = get_mse(
         data=jnp.log(infected),
         pred=jnp.log(jnp.absolute(solution[:, 1] + solution[:, 3])),
     )
     loss2 = get_mse(
-        data=jnp.log(recovered + dead),
+        data=jnp.log(dead_recovered),
         pred=jnp.log(jnp.absolute(solution[:, 2])),
     )
     # loss1 = jnp.mean((jnp.log(infected) - jnp.log(jnp.absolute(sol.ys[:, 1] + sol.ys[:, 3]))) ** 2)
-    # loss2 = jnp.mean((jnp.log(recovered + dead) - jnp.log(jnp.absolute(sol.ys[:, 2]))) ** 2)
+    # loss2 = jnp.mean((jnp.log(dead_recovered) - jnp.log(jnp.absolute(sol.ys[:, 2]))) ** 2)
     return loss1 + loss2
 
 
 def sir_base_loss_masked(solution: jnp.ndarray, data, mask: jnp.ndarray):
-    infected, dead, recovered = data[:, 0], data[:, 1], data[:, 2]
+    infected, dead_recovered = data[:, 0], data[:, 1]
     # loss is sum of MSE on Infected and Recovered+Dead
     loss1 = get_masked_mse(
         data=jnp.log(infected),
@@ -85,22 +85,33 @@ def sir_base_loss_masked(solution: jnp.ndarray, data, mask: jnp.ndarray):
         mask=mask,
     )
     loss2 = get_masked_mse(
-        data=jnp.log(recovered + dead),
+        data=jnp.log(dead_recovered),
         pred=jnp.log(jnp.absolute(solution[:, 2])),
         mask=mask,
     )
     # loss1 = jnp.mean((jnp.log(infected) - jnp.log(jnp.absolute(sol.ys[:, 1] + sol.ys[:, 3]))) ** 2)
-    # loss2 = jnp.mean((jnp.log(recovered + dead) - jnp.log(jnp.absolute(sol.ys[:, 2]))) ** 2)
+    # loss2 = jnp.mean((jnp.log(dead_recovered) - jnp.log(jnp.absolute(sol.ys[:, 2]))) ** 2)
     return loss1 + loss2
 
 
 # UTILS - DATA AND PLOTTING
-def get_training_validation_data():
+def get_training_validation_data(country: str):
     """Load SIR training and validation data from CSV files."""
-    return load_training_validation_csv(
-        folder="sir",
-        train_file="Korea_data_train.csv",
-        validation_file="Korea_data_validation.csv",
-        columns=["infected", "dead", "recovered"],
-        time_col="time",
-    )
+    if country == "Korea":
+        return load_training_validation_csv(
+            folder="sir",
+            train_file="Korea_data_train.csv",
+            validation_file="Korea_data_validation.csv",
+            columns=["infected", "dead_recovered"],
+            time_col="time",
+        )
+    elif country == "UK":
+        return load_training_validation_csv(
+            folder="sir",
+            train_file="UK_data_train.csv",
+            validation_file="UK_data_validation.csv",
+            columns=["infected", "dead_recovered"],
+            time_col="time",
+        )
+    else:
+        raise ValueError(f"Unknown country: {country}")

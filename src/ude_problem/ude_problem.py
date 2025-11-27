@@ -18,7 +18,8 @@ from typing import Any, Callable, List, Optional, Union
 
 UDE_funcs = {
     'lotka_volterra': LotkaVolterraUDEFunction,
-    'sir': SIRUDEFunction,
+    'sirKorea': SIRUDEFunction,
+    'sirUK': SIRUDEFunction,
 }
 
 
@@ -67,11 +68,11 @@ class UDEProblem(eqx.Module):
             raise ValueError(f"Unknown dynamical model: {dynamical_model}!")
         if self.dynamical_model == "lotka_volterra":
             state_delimiter = mlp.layers[0].in_features
-        elif self.dynamical_model == "sir":
+        elif self.dynamical_model.startswith("sir"):
             state_delimiter = mlp.layers[0].in_features + 1
         else:
             raise ValueError(f"Unsupported dynamical model: {dynamical_model}!")
-        self.func = UDE_funcs[dynamical_model](
+        self.func = UDE_funcs[self.dynamical_model](
             dynamic_parameters, mlp, options, state_dimension, state_delimiter, regularise_network
         )
         if not regularise_network:
@@ -81,7 +82,7 @@ class UDEProblem(eqx.Module):
                     (dynamical_model == "lotka_volterra")
                     and (initial_values.shape[1] == self.func.mlp.layers[0].in_features)
             ) or (
-                    (dynamical_model == "sir")
+                    (dynamical_model.startswith("sir"))
                     and (initial_values.shape[1] == self.func.mlp.layers[0].in_features + 1)
             ):
                 # Add zero initial value for neural network contribution regularisation

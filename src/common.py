@@ -210,30 +210,35 @@ hessian_metrics_wandb = {
 
 dynamic_param_labels = {
     "lotka_volterra": ["alpha", "delta"],
-    "sir": ["beta", "gamma", "delta"],
+    "sirKorea": ["beta", "gamma", "delta"],
+    "sirUK": ["beta", "gamma", "delta"],
 }
 
 # Ground truth dynamic parameters for models in use (LV, guesses only for SIR)
 true_dynamic_parameters = {
     'lotka_volterra': jnp.array([1.3, 1.8]),
-    'sir': jnp.array([0.15, 0.013, 0.01]),
+    'sirKorea': jnp.array([0.15, 0.013, 0.01]),
+    'sirUK': jnp.array([0.15, 0.013, 0.01]),
 }
 
 # Starting conditions for models in use
 u0s = {
     'lotka_volterra': jnp.array([0.44249296, 4.6280594]),
-    'sir': jnp.array([51000000.0, 578, 24, 10]),
+    'sirKorea': jnp.array([51000000.0, 578.0-10.0, 24.0, 10.0]),
+    'sirUK': jnp.array([66000000.0, 772.0-10.0, 26.0, 10.0])
 }
 
 # State dimension (num state variables) for models in use
 state_dims = {
     "lotka_volterra": 2,
-    "sir": 4,
+    "sirKorea": 4,
+    "sirUK": 4,
 }
 
 default_out_sizes = {
     "lotka_volterra": 2,
-    "sir": 1,
+    "sirKorea": 1,
+    "sirUK": 1,
 }
 
 def normalise(

@@ -33,7 +33,7 @@ from typing import Optional, Tuple, Union
 def get_io_size(conf, u0):
     if conf.dynamical_model == 'lotka_volterra':
         in_size = len(u0)
-    elif conf.dynamical_model == 'sir':
+    elif conf.dynamical_model.startswith('sir'):
         in_size = len(u0) - 1
     else:
         raise ValueError(f"Unknown dynamical model: {conf.dynamical_model}!")
@@ -43,7 +43,6 @@ def get_io_size(conf, u0):
 
 def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple, u0) -> tuple:
     if conf.dynamical_model == 'lotka_volterra':
-        # TODO @GiacomoFabrini find better way to express filepath and pass it as argument
         (train_data, t_save_train, t_span_train,
          validation_data, t_save_validation, t_span_validation) = setup_lv.get_training_validation_data()
 
@@ -53,10 +52,11 @@ def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple, u0) ->
         }
         base_loss_fn = partial(setup_lv.lv_base_loss, state_dimension=state_dims[conf.dynamical_model])
         base_loss_fn_masked = partial(setup_lv.lv_base_loss_masked, state_dimension=state_dims[conf.dynamical_model])
-    elif conf.dynamical_model == 'sir':
-        # TODO @GiacomoFabrini find better way to express filepath and pass it as argument - same as above
+    elif conf.dynamical_model.startswith("sir"):
         (train_data, t_save_train, t_span_train,
-         validation_data, t_save_validation, t_span_validation) = setup_sir.get_training_validation_data()
+         validation_data, t_save_validation, t_span_validation) = setup_sir.get_training_validation_data(
+            country=conf.dynamical_model.lstrip("sir")
+        )
 
         optx_config = {
             "rtol": 1e-6,  # changed from 1e-4
@@ -139,7 +139,7 @@ def get_initial_conditions(conf: Conf):
     u0 = u0s[conf.dynamical_model]
     # Apply NODE-like augmentation
     if conf.node_augmentation > 0:
-            u0 = jnp.concatenate([u0, jnp.zeros(conf.node_augmentation)])
+        u0 = jnp.concatenate([u0, jnp.zeros(conf.node_augmentation)])
     # Ensure 64-bit precision
     u0 = u0.astype(jnp.float64)
     return u0
@@ -491,8 +491,15 @@ def load_multistart_dynamic_params(conf: Conf, data_dir: Path) -> jnp.ndarray:
         jnp.ndarray of shape (n_params,) in the correct scale (log10, linear, or bounded_tanh)
     """
     # Locate the correct file
+    if conf.dynamical_model == "lotka_volterra":
+        model = conf.dynamical_model
+    elif conf.dynamical_model.startswith("sir"):
+        model = "sir"
+    else:
+        raise ValueError(f"Unknown dynamical model: {conf.dynamical_model}")
+
     multistart_file = (
-        data_dir / conf.dynamical_model /
+        data_dir / model /
         f"{conf.dynamic_params_perturb_method}__{conf.multistart_deviation}.csv"
     )
 

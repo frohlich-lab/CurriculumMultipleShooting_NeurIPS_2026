@@ -77,16 +77,16 @@ def get_fit_dfs(
                                "prey": data[:, 0],
                                "predator": data[:, 1],
                                })
-    elif prob.dynamical_model == "sir":
+    elif prob.dynamical_model.startswith("sir"):
         df_pred = pd.DataFrame({"time": sol.ts,
                                 "Infected": jnp.log(jnp.absolute(sol.ys[:, 1] + sol.ys[:, 3])),
                                 "Recovered + dead": jnp.log(jnp.absolute(sol.ys[:, 2])),
                                 })
         # Observed data
-        infected, dead, recovered = data[:, 0], data[:, 1], data[:, 2]
+        infected, dead_recovered = data[:, 0], data[:, 1]
         df_obs = pd.DataFrame({"time": sol.ts,
                                "Infected": jnp.log(infected),
-                               "Recovered + dead": jnp.log(jnp.absolute(recovered + dead)),
+                               "Recovered + dead": jnp.log(jnp.absolute(dead_recovered)),
                                })
     else:
         raise ValueError(f"Undefined dynamical model {prob.dynamical_model}.")
@@ -110,7 +110,7 @@ def get_fit_dfs(
                               }).assign(window=i + 1)
                 for i in range(sol.ys.shape[0])  # shooting-window dimension
             ])
-        elif prob.dynamical_model == "sir":
+        elif prob.dynamical_model.startswith("sir"):
             df_pred_train = pd.concat([
                 pd.DataFrame({"time": sol.ts[i],
                               "Infected": jnp.log(jnp.absolute(sol.ys[i, :, 1] + sol.ys[i, :, 3])),
@@ -317,7 +317,7 @@ def train(
     # Define colours for plots
     if conf.dynamical_model == "lotka_volterra":
         colors = ['red', 'black']
-    elif conf.dynamical_model == 'sir':
+    elif conf.dynamical_model.startswith('sir'):
         colors = ['red', 'black']
     else:
         raise ValueError(f"Undefined dynamical model {conf.dynamical_model}.")
