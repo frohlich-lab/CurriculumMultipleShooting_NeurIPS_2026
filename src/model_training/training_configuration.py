@@ -1,6 +1,7 @@
 DYNAMICAL_MODEL = {
     "lotka_volterra",
-    # "sir"
+    # "sirKorea",
+    # "sirUK",
 }
 
 # MLP
@@ -81,10 +82,10 @@ OPTIMISERS = {
 MAX_LEARNING_RATES = {
     "range": (
         1e-3,
-        5e-2,
         1e-2,
-        5e-1,
+        5e-2,
         1e-1,
+        # 5e-1,
     ),
     "central_value": 1e-2,
 }
@@ -158,10 +159,14 @@ OUTPUT_REG = {
         1e0,
         1e1,
         1e2,
-        3e2,  # add more intermediate values after rescaling regularisation for time-normalisation runs
+        # 3e2,  # add more intermediate values after rescaling regularisation for time-normalisation runs
         5e2,
         1e3,
+        3e3,
+        5e3,
         1e4,
+        3e4,
+        5e4,
     ),
     "central_value": 1e0,  # use 1e0 for UDEs, 0 for NODEs
 }
@@ -174,7 +179,9 @@ SHOOTING_WINDOW_LENGTHS =  {
         5,  # 16 windows
         6,  # 13 windows
         8,  # 9 windows
-        14  # 5 windows
+        14,  # 5 windows
+        21,  # third data length
+        30  # half data length approximately
     ),
     "central_value": 8,
 }
@@ -196,7 +203,7 @@ MULTIPLE_SHOOTING_PENALTIES =  {
         1e2,
         1e3
     ),
-    "central_value": 10,
+    "central_value": 0,  # use 10 for everything apart from multiple_CL (use 0)
 }
 
 # Batch size -- unused, only for window-batch, DISABLED
@@ -316,4 +323,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 6000  # default from UDE paper: 200 / SIR: 40000-100000
 N_EPOCHS_BFGS = 10000
 
-EXPERIMENT_NAME = "multipleCL_ls_26112025"
+EXPERIMENT_NAME = "multipleCL_ls_27112025"
