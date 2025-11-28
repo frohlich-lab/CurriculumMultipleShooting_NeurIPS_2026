@@ -69,8 +69,8 @@ TRAINING_SCHEMES = {
     # "single",
     # "single_bfgs",
     # "single_CL",
-    # "multiple",
-    "multiple_CL",
+    "multiple",
+    # "multiple_CL",
 }
 
 # Optimiser
@@ -87,7 +87,7 @@ MAX_LEARNING_RATES = {
         1e-1,
         # 5e-1,
     ),
-    "central_value": 1e-2,
+    "central_value": 5e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
 }
 
 LEARNING_RATE_SPANS = {
@@ -203,7 +203,7 @@ MULTIPLE_SHOOTING_PENALTIES =  {
         1e2,
         1e3
     ),
-    "central_value": 0,  # use 10 for everything apart from multiple_CL (use 0)
+    "central_value": 10,  # use 10 for everything apart from multiple_CL (use 0)
 }
 
 # Batch size -- unused, only for window-batch, DISABLED
@@ -323,4 +323,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 6000  # default from UDE paper: 200 / SIR: 40000-100000
 N_EPOCHS_BFGS = 10000
 
-EXPERIMENT_NAME = "multipleCL_ls_27112025"
+EXPERIMENT_NAME = "multiple_ls_28112025"
