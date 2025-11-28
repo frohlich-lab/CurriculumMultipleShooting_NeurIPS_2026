@@ -161,7 +161,7 @@ rule aggregate_results:
         # )
     retries: 1
     resources:
-        mem="32GB",
+        mem="64GB",
         runtime="3h",
         nodes=1
     shell:
