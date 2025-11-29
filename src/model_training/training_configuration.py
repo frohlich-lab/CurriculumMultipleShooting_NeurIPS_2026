@@ -168,7 +168,7 @@ OUTPUT_REG = {
         3e4,
         5e4,
     ),
-    "central_value": 1e0,  # use 1e0 for UDEs, 0 for NODEs
+    "central_value": 0,  # use 1e0 for UDEs, 0 for NODEs
 }
 
 
@@ -235,14 +235,14 @@ RESTART_OPT_CURRICULUM = {
 
 # Dynamic Parameters estimation settings
 DYNAMIC_PARAMS_SCALES = {
-    # "linear",  # NODE
-    "log10",  # UDE
+    "linear",  # NODE
+    # "log10",  # UDE
 }
 
 MULTISTART_DEVIATIONS = {
     0,
-    1,
-    2
+    # 1,
+    # 2
 }
 
 DYNAMIC_PARAMS_PERTURB_METHODS = {
@@ -297,8 +297,8 @@ FREEZE_NN_OPTX= {
 
 # Training settings (UDE, MLP, UDE+MLP)
 TRAINING_SETTINGS = {
-    "UDE",
-    # "NODE",
+    # "UDE",
+    "NODE",
     # "MLP",
 }
 
@@ -320,7 +320,7 @@ NORMALISE_TIMEPOINTS = {
 
 N_STARTS = 100  # number of multi-starts
 
-N_EPOCHS_ADAM = 6000  # default from UDE paper: 200 / SIR: 40000-100000
+N_EPOCHS_ADAM = 9000  # default from UDE paper: 200 / SIR: 40000-100000; for us: 6k UDEs; 9k NODEs
 N_EPOCHS_BFGS = 10000
 
-EXPERIMENT_NAME = "singleBFGS_ls_29112025"
+EXPERIMENT_NAME = "singleBFGS_NODE_ls_29112025"
