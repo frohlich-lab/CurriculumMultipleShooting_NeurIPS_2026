@@ -68,8 +68,8 @@ TRAINING_SCHEMES = {
     # "bfgs",
     # "single",
     # "single_bfgs",
-    "single_CL",
-    # "multiple",
+    # "single_CL",
+    "multiple",
     # "multiple_CL",
 }
 
@@ -87,7 +87,7 @@ MAX_LEARNING_RATES = {
         1e-1,
         # 5e-1,
     ),
-    "central_value": 1e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
+    "central_value": 5e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
 }
 
 LEARNING_RATE_SPANS = {
@@ -323,4 +323,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 9000  # default from UDE paper: 200 / SIR: 40000-100000; for us: 6k UDEs; 9k NODEs
 N_EPOCHS_BFGS = 10000
 
-EXPERIMENT_NAME = "singleCL_NODE_ls_29112025"
+EXPERIMENT_NAME = "multiple_NODE_ls_29112025"
