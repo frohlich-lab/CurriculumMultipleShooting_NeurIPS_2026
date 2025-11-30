@@ -491,15 +491,8 @@ def load_multistart_dynamic_params(conf: Conf, data_dir: Path) -> jnp.ndarray:
         jnp.ndarray of shape (n_params,) in the correct scale (log10, linear, or bounded_tanh)
     """
     # Locate the correct file
-    if conf.dynamical_model == "lotka_volterra":
-        model = conf.dynamical_model
-    elif conf.dynamical_model.startswith("sir"):
-        model = "sir"
-    else:
-        raise ValueError(f"Unknown dynamical model: {conf.dynamical_model}")
-
     multistart_file = (
-        data_dir / model /
+        data_dir / conf.dynamical_model /
         f"{conf.dynamic_params_perturb_method}__{conf.multistart_deviation}.csv"
     )
 
