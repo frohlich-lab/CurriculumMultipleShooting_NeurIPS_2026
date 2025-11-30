@@ -203,7 +203,7 @@ MULTIPLE_SHOOTING_PENALTIES =  {
         1e2,
         1e3
     ),
-    "central_value": 0,  # use 10 for everything apart from multiple_CL (use 0)
+    "central_value": 10,  # use 10 for everything apart from multiple_CL (use 0)
 }
 
 # Batch size -- unused, only for window-batch, DISABLED
@@ -323,4 +323,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 9000  # default from UDE paper: 200 / SIR: 40000-100000; for us: 6k UDEs; 9k NODEs
 N_EPOCHS_BFGS = 10000
 
-EXPERIMENT_NAME = "multipleCL_NODE_ls_29112025"
+EXPERIMENT_NAME = "multipleCL_NODE10_ls_30112025"
