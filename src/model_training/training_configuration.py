@@ -1,6 +1,6 @@
 DYNAMICAL_MODEL = {
-    "lotka_volterra",
-    # "sirKorea",
+    # "lotka_volterra",
+    "sirKorea",
     # "sirUK",
 }
 
@@ -16,11 +16,11 @@ MLP_WIDTHS = {
 
 MLP_DEPTHS = {
     "range": (
-        # 1,
-        2,
+        1,
+        # 2,
         # 5
     ),
-    "central_value": 2,
+    "central_value": 1,  # 2 for LV, 1 for SIR
 }
 
 INIT_SCALES = {
@@ -68,9 +68,9 @@ TRAINING_SCHEMES = {
     # "bfgs",
     # "single",
     # "single_bfgs",
-    # "single_CL",
+    "single_CL",
     # "multiple",
-    "multiple_CL",
+    # "multiple_CL",
 }
 
 # Optimiser
@@ -82,9 +82,10 @@ OPTIMISERS = {
 MAX_LEARNING_RATES = {
     "range": (
         1e-3,
+        5e-3,
         1e-2,
         5e-2,
-        1e-1,
+        # 1e-1,
         # 5e-1,
     ),
     "central_value": 1e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
@@ -155,20 +156,23 @@ MLP_REG_STRENGTHS = {
 OUTPUT_REG = {
     "range": (
         0,
+        1e-4,
+        1e-3,
+        1e-2,
         1e-1,
         1e0,
-        1e1,
-        1e2,
-        # 3e2,  # add more intermediate values after rescaling regularisation for time-normalisation runs
-        5e2,
-        1e3,
-        3e3,
-        5e3,
-        1e4,
-        3e4,
-        5e4,
+        # 1e1,
+        # 1e2,
+        # # 3e2,  # add more intermediate values after rescaling regularisation for time-normalisation runs
+        # 5e2,
+        # 1e3,
+        # 3e3,
+        # 5e3,
+        # 1e4,
+        # 3e4,
+        # 5e4,
     ),
-    "central_value": 0,  # use 1e0 for UDEs, 0 for NODEs
+    "central_value": 0,  # use 1e0 for UDEs, 0 for NODEs // starting with 0 for SIR
 }
 
 
@@ -235,14 +239,14 @@ RESTART_OPT_CURRICULUM = {
 
 # Dynamic Parameters estimation settings
 DYNAMIC_PARAMS_SCALES = {
-    "linear",  # NODE
-    # "log10",  # UDE
+    # "linear",  # NODE
+    "log10",  # UDE
 }
 
 MULTISTART_DEVIATIONS = {
-    0,
+    # 0,
     # 1,
-    # 2
+    2  # run only 2 for SIR
 }
 
 DYNAMIC_PARAMS_PERTURB_METHODS = {
@@ -297,8 +301,8 @@ FREEZE_NN_OPTX= {
 
 # Training settings (UDE, MLP, UDE+MLP)
 TRAINING_SETTINGS = {
-    # "UDE",
-    "NODE",
+    "UDE",
+    # "NODE",
     # "MLP",
 }
 
@@ -320,7 +324,8 @@ NORMALISE_TIMEPOINTS = {
 
 N_STARTS = 100  # number of multi-starts
 
-N_EPOCHS_ADAM = 9000  # default from UDE paper: 200 / SIR: 40000-100000; for us: 6k UDEs; 9k NODEs
+# N_EPOCHS_ADAM = 9000  # default from UDE paper: 200 / SIR: 40000-100000; for us: 6k UDEs; 9k NODEs
+N_EPOCHS_ADAM = 30000  # 30k epochs for SIR
 N_EPOCHS_BFGS = 10000
 
-EXPERIMENT_NAME = "multipleCL_NODE10_ls_30112025"
+EXPERIMENT_NAME = "singleCL_ls_30112025"
