@@ -62,7 +62,12 @@ def main():
         )
         df.insert(loc=0, column="multistart_job", value=np.array(list(range(N_STARTS))))
 
-        out_path = data_dir / model / f"{method}__{deviation}.csv"
+        if model.startswith("sir"):
+            model_tag = "sir"
+        else:
+            model_tag = model
+
+        out_path = data_dir / model_tag / f"{method}__{deviation}.csv"
         df.to_csv(out_path, index=False)
         print(f"Saved: {out_path}")
 
