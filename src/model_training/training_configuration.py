@@ -1,7 +1,7 @@
 DYNAMICAL_MODEL = {
-    # "lotka_volterra",
+    "lotka_volterra",
     # "sirKorea",
-    "sirUK",
+    # "sirUK",
 }
 
 # MLP
@@ -16,11 +16,11 @@ MLP_WIDTHS = {
 
 MLP_DEPTHS = {
     "range": (
-        1,
-        # 2,
+        # 1,
+        2,
         # 5
     ),
-    "central_value": 1,  # 2 for LV, 1 for SIR
+    "central_value": 2,  # 2 for LV, 1 for SIR
 }
 
 INIT_SCALES = {
@@ -155,7 +155,7 @@ MLP_REG_STRENGTHS = {
 
 OUTPUT_REG = {
     "range": (
-        0,
+        # 0,
         # 1e-4,
         # 1e-3,
         # 1e-2,
@@ -165,29 +165,30 @@ OUTPUT_REG = {
         # 1e2,
         # # 3e2,  # add more intermediate values after rescaling regularisation for time-normalisation runs
         # 5e2,
-        # 1e3,
+        1e3,
         # 3e3,
         # 5e3,
         # 1e4,
         # 3e4,
         # 5e4,
     ),
-    "central_value": 0,  # use 1e0 for UDEs, 0 for NODEs // starting with 0 for SIR
+    "central_value": 1e3,  # use 1e0 for UDEs, 0 for NODEs // starting with 0 for SIR
+    # LV: 1e3 for single_BFGS, single_CL & multiple; 5e3 for multiple_CL
 }
 
 
 # Shooting parameters (shooting mode is decided by TRAINING_SCHEMES)
 SHOOTING_WINDOW_LENGTHS =  {
     "range": (
-        4,  # 21 windows
+        # 4,  # 21 windows
         5,  # 16 windows
-        6,  # 13 windows
-        8,  # 9 windows
-        14,  # 5 windows
-        21,  # third data length
-        30  # half data length approximately
+        # 6,  # 13 windows
+        # 8,  # 9 windows
+        # 14,  # 5 windows
+        # 21,  # third data length
+        # 30  # half data length approximately
     ),
-    "central_value": 8,
+    "central_value": 5,  # LV: optimal 5 for both multiple and multiple_CL
 }
 
 SHOOTING_IV_INITS = {
@@ -198,16 +199,17 @@ SHOOTING_IV_INITS = {
 
 MULTIPLE_SHOOTING_PENALTIES =  {
     "range": (
-        0,
-        1e-3,  # note: 2e-3 used to work decently
-        1e-2,
-        1e-1,
-        1e0,
+        # 0,
+        # 1e-3,  # note: 2e-3 used to work decently
+        # 1e-2,
+        # 1e-1,
+        # 1e0,
         1e1,
-        1e2,
-        1e3
+        # 1e2,
+        # 1e3
     ),
     "central_value": 10,  # use 10 for everything apart from multiple_CL (tried 0; now use 1e-2)
+    # LV: optimal 10 for multiple; 1.0 for multiple_CL
 }
 
 # Batch size -- unused, only for window-batch, DISABLED
@@ -218,21 +220,21 @@ MULTIPLE_SHOOTING_PENALTIES =  {
 # Curriculum learning (decided by TRAINING_SCHEMES)
 NUM_CURRICULUM_STEPS =  {
     "range": (
-        3,
-        5,   # matches Homotopy paper and corresponding multiple+CL
-        9,
+        # 3,
+        # 5,   # matches Homotopy paper and corresponding multiple+CL
+        # 9,
         13,
         # 16,
         # 21
     ),
-    "central_value": 9,
+    "central_value": 13,  # LV: optimal 13 for single_CL
 }
 
 MAX_CURRICULUM_EPOCHS = {
     "range": (
-        10000,
+        2000,
     ),
-    "central_value": 10000,  # LV: 2k; SIR: 10k
+    "central_value": 2000,  # LV: 2k; SIR: 10k
 }
 
 RESTART_OPT_CURRICULUM = {
@@ -247,8 +249,8 @@ DYNAMIC_PARAMS_SCALES = {
 }
 
 MULTISTART_DEVIATIONS = {
-    # 0, # run only 0 for NODEs
-    # 1,
+    0, # run only 0 for NODEs
+    1,
     2  # run only 2 for SIR
 }
 
@@ -327,9 +329,9 @@ NORMALISE_TIMEPOINTS = {
 
 N_STARTS = 100  # number of multi-starts
 
-# N_EPOCHS_ADAM = 6000  # default from UDE paper: 200 / SIR: 40000-100000; for us: 6k UDEs; 9k NODEs
-N_EPOCHS_ADAM = 30000  # 30k epochs for SIR
-# N_EPOCHS_BFGS = 10000  # 10k for LV
-N_EPOCHS_BFGS = 30000  # 30k for SIR
+N_EPOCHS_ADAM = 6000  # default from UDE paper: 200 / SIR: 40000-100000; for us: 6k UDEs; 9k NODEs
+# N_EPOCHS_ADAM = 30000  # 30k epochs for SIR
+N_EPOCHS_BFGS = 10000  # 10k for LV
+# N_EPOCHS_BFGS = 30000  # 30k for SIR
 
-EXPERIMENT_NAME = "singleCL_SIRUK_ls_01122025"
+EXPERIMENT_NAME = "singleCL_optLV_ls_01122025"
