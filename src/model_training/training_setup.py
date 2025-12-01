@@ -66,7 +66,7 @@ def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple, u0) ->
         }
         base_loss_fn = setup_sir.sir_base_loss
         base_loss_fn_masked = setup_sir.sir_base_loss_masked
-        extra_args = {"population_size": u0[0]}
+        extra_args = {"population_size": tuple([int(u0[0])])}
     else:
         raise ValueError(f"Unknown dynamical model: {conf.dynamical_model}!")
 

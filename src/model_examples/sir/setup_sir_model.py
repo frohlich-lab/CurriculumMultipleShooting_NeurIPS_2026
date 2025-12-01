@@ -28,8 +28,8 @@ class SIRUDEFunction(BaseUDEFunction):
     regularise_network: bool
 
     def __call__(self, t, u, args):
-        # Extract constant population size
-        population_size = jax.lax.stop_gradient(self.options["extra_args"]["population_size"])
+        # Extract constant population size (tuple with single integer to treat as constant)
+        population_size = self.options["extra_args"]["population_size"][0]
 
         # Get dynamic parameters on correct scale for ODE
         beta, gamma, delta = process_mechanistic_params(self.dynamic_parameters, self.options)
