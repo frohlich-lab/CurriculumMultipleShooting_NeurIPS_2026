@@ -37,16 +37,28 @@ class SIRUDEFunction(BaseUDEFunction):
 
         if self.state_delimiter > self.state_dimension:
             augmented_vars = u[self.state_dimension : self.mlp.layers[0].in_features]
-            nn_q = jnp.abs(self.mlp(jnp.array([s, i, r, *augmented_vars])))
+            nn_q = jnp.abs(
+                self.mlp(
+                    jnp.array(
+                        [s/population_size, i/population_size, r/population_size, *augmented_vars]
+                    )
+                )
+            )
         else:
-            nn_q = jnp.abs(self.mlp(jnp.array([s, i, r])))
+            nn_q = jnp.abs(
+                self.mlp(
+                    jnp.array(
+                        [s/population_size, i/population_size, r/population_size]
+                    )
+                )
+            )
 
         # QSIR model
         # TODO @Giacomo: discuss with Sebastian
         ds = - beta * s * i / population_size
-        di = beta * s * i / population_size - gamma * i  - nn_q[0] * i / population_size
+        di = beta * s * i / population_size - gamma * i  - nn_q[0] * i
         dr = gamma * i + delta * t_
-        dt_ = nn_q[0] * i / population_size  - delta * t_
+        dt_ = nn_q[0] * i  - delta * t_
         derivatives = jnp.array([ds, di, dr, dt_])
 
         if self.state_delimiter > self.state_dimension:
@@ -55,7 +67,7 @@ class SIRUDEFunction(BaseUDEFunction):
         if self.regularise_network:
             # Add additional equation for regularisation term on network contribution
             d_nn_reg = jnp.array([
-                jnp.linalg.norm(nn_q[0] * i / population_size)
+                jnp.linalg.norm(nn_q[0] * i)
             ]) # contribution is always the same in both di and dt
             derivatives = jnp.concatenate([derivatives, d_nn_reg])
         return derivatives
@@ -64,37 +76,25 @@ class SIRUDEFunction(BaseUDEFunction):
 # TODO @GiacomoFabrini no magic numbers - add conf.node_augmentation and derive number of components for loss.
 # LOSS AND GRAD FUNCTIONS
 def sir_base_loss(solution: jnp.ndarray, data):
-    infected, dead_recovered = data[:, 0], data[:, 1]
-    # loss is sum of MSE on Infected and Recovered+Dead
-    loss1 = get_mse(
-        data=jnp.log(infected),
-        pred=jnp.log(jnp.absolute(solution[:, 1] + solution[:, 3])),
+    pred = jnp.stack(
+        [
+            jnp.absolute(solution[:, 1] + solution[:, 3]),  # infected+quarantined
+            jnp.absolute(solution[:, 2])  # dead+recovered
+        ],
+        axis=-1
     )
-    loss2 = get_mse(
-        data=jnp.log(dead_recovered),
-        pred=jnp.log(jnp.absolute(solution[:, 2])),
-    )
-    # loss1 = jnp.mean((jnp.log(infected) - jnp.log(jnp.absolute(sol.ys[:, 1] + sol.ys[:, 3]))) ** 2)
-    # loss2 = jnp.mean((jnp.log(dead_recovered) - jnp.log(jnp.absolute(sol.ys[:, 2]))) ** 2)
-    return loss1 + loss2
+    return get_mse(pred=jnp.log(pred), data=jnp.log(data))
 
 
 def sir_base_loss_masked(solution: jnp.ndarray, data, mask: jnp.ndarray):
-    infected, dead_recovered = data[:, 0], data[:, 1]
-    # loss is sum of MSE on Infected and Recovered+Dead
-    loss1 = get_masked_mse(
-        data=jnp.log(infected),
-        pred=jnp.log(jnp.absolute(solution[:, 1] + solution[:, 3])),
-        mask=mask,
+    pred = jnp.stack(
+        [
+            jnp.absolute(solution[:, 1] + solution[:, 3]),  # infected+quarantined
+            jnp.absolute(solution[:, 2])  # dead+recovered
+        ],
+        axis=-1
     )
-    loss2 = get_masked_mse(
-        data=jnp.log(dead_recovered),
-        pred=jnp.log(jnp.absolute(solution[:, 2])),
-        mask=mask,
-    )
-    # loss1 = jnp.mean((jnp.log(infected) - jnp.log(jnp.absolute(sol.ys[:, 1] + sol.ys[:, 3]))) ** 2)
-    # loss2 = jnp.mean((jnp.log(dead_recovered) - jnp.log(jnp.absolute(sol.ys[:, 2]))) ** 2)
-    return loss1 + loss2
+    return get_masked_mse(pred=jnp.log(pred), data=jnp.log(data), mask=mask)
 
 
 # UTILS - DATA AND PLOTTING
