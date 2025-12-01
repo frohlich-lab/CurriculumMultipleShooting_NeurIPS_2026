@@ -81,10 +81,10 @@ OPTIMISERS = {
 
 MAX_LEARNING_RATES = {
     "range": (
-        1e-3,
-        5e-3,
+        # 1e-3,
+        # 5e-3,
         1e-2,
-        5e-2,
+        # 5e-2,
         # 1e-1,
         # 5e-1,
     ),
