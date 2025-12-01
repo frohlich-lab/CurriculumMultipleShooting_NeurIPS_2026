@@ -67,9 +67,9 @@ HIDDEN_DROPOUT_RATES = {
 TRAINING_SCHEMES = {
     # "bfgs",
     # "single",
-    "single_bfgs",
+    # "single_bfgs",
     # "single_CL",
-    # "multiple",
+    "multiple",
     # "multiple_CL",
 }
 
@@ -334,4 +334,4 @@ N_EPOCHS_ADAM = 6000  # default from UDE paper: 200 / SIR: 40000-100000; for us:
 N_EPOCHS_BFGS = 10000  # 10k for LV
 # N_EPOCHS_BFGS = 30000  # 30k for SIR
 
-EXPERIMENT_NAME = "singleBFGS_optLV_ls_01122025"
+EXPERIMENT_NAME = "multiple_optLV_ls_01122025"
