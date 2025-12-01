@@ -323,8 +323,8 @@ NORMALISE_DATA = {
 }
 
 NORMALISE_TIMEPOINTS = {
-    # True,
-    False,
+    True,
+    # False,
 }
 
 N_STARTS = 100  # number of multi-starts
