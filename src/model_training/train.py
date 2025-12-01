@@ -9,7 +9,8 @@ from src.common import (
     data_dir,
     model_save_dir,
     state_dims,
-    true_dynamic_parameters
+    true_dynamic_parameters,
+    max_iters_diffrax,
 )
 from src.model_training.training_setup import (
     get_data_and_funcs_for_train,
@@ -118,4 +119,5 @@ best_model = train(
     model_save_dir=model_save_subdir,
     plot_args=plot_args,
     rescaling_args=rescaling_args,
+    max_steps_diffrax=max_iters_diffrax[conf.dynamical_model],
 )

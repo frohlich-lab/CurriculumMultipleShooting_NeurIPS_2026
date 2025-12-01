@@ -184,6 +184,7 @@ def make_step(
         base_loss_fn: Callable,
         active_idx: Optional[Array],
         rescaling_args: dict[str, float],
+        max_steps_diffrax: int,
 ):
     (loss_value, reg_loss_dict), grads = loss_grad_fn(
         prob_params=params,
@@ -207,7 +208,7 @@ def make_step(
     if compute_hessian_metrics and (active_idx is not None):
         args = (t_save_windows, masks, input_data, last_valid_index)
         hessian_metrics = get_hessian_metrics(
-            get_hessian(params, static, args, conf, base_loss_fn, rescaling_args),
+            get_hessian(params, static, args, conf, base_loss_fn, rescaling_args, max_steps_diffrax),
             return_eigs_svs=False,
             active_idx=active_idx,
         )
@@ -232,6 +233,7 @@ def train(
         model_save_dir: Path,
         plot_args: dict,
         rescaling_args: dict,
+        max_steps_diffrax: int,
 ) -> UDEProblem:
     """
     Trains the UDEmodel (`model`).
@@ -266,6 +268,8 @@ def train(
         Arguments for plotting train/val data.
     :param rescaling_args:
         Arguments for rescaling data/timepoints.
+    :param max_steps_diffrax:
+        Maximum number of iterations for diffrax solve.
     """
 
     # Check training setting in configuration
@@ -430,6 +434,7 @@ def train(
                 base_loss_fn=loss_dict["base_loss_fn"],
                 active_idx=active_hessian_idx if conf.compute_hessian_metrics else None,
                 rescaling_args=rescaling_args,
+                max_steps_diffrax=max_steps_diffrax,
             )
 
             jnp.asarray(loss_train).block_until_ready()

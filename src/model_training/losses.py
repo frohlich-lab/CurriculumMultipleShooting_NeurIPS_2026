@@ -209,9 +209,10 @@ def get_hessian(
         conf: Conf,
         base_loss_fn: Callable,
         rescaling_args: dict[str, float],
+        max_steps: int = 20000,
 ):
     # define hessian functions for different dynamical models
-    hessian_fn = partial(compute_hess_array, loss_fn=base_loss_fn, rescaling_args=rescaling_args)
+    hessian_fn = partial(compute_hess_array, loss_fn=base_loss_fn, rescaling_args=rescaling_args, max_steps=max_steps)
     # unpack args
     t_save, t_span, input_data, last_valid_index = args
     # flatten params PyTree and get unflatten function

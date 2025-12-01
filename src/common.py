@@ -241,6 +241,12 @@ default_out_sizes = {
     "sirUK": 1,
 }
 
+max_iters_diffrax = {
+    "lotka_volterra": 20000,
+    "sirKorea": 100000,
+    "sirUK": 100000,
+}
+
 def normalise(
         train_array: Union[Array, jnp.ndarray, np.array],
         val_array: Union[Array, jnp.ndarray, np.array],

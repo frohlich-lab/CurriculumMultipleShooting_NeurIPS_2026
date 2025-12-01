@@ -17,7 +17,8 @@ from src.common import (
     state_dims,
     TrainValArgs,
     true_dynamic_parameters,
-    u0s
+    u0s,
+    max_iters_diffrax,
 )
 from src.model_examples.lotka_volterra import setup_lotka_volterra_model as setup_lv
 from src.model_examples.sir import setup_sir_model as setup_sir
@@ -69,6 +70,8 @@ def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple, u0) ->
     else:
         raise ValueError(f"Unknown dynamical model: {conf.dynamical_model}!")
 
+    max_steps = max_iters_diffrax[conf.dynamical_model]
+
     options = {
         "dynamic_params_scale": conf.dynamic_params_scale,
         "bounded_tanh_params": broadcast_bounds(
@@ -109,11 +112,21 @@ def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple, u0) ->
         "time_rescaling": time_rescaling,
     }
 
-    val_loss_fn = partial(compute_validation_loss, loss_fn=base_loss_fn)
-    loss_fn = partial(compute_loss, loss_fn=base_loss_fn_masked, rescaling_args=rescaling_args)
-    loss_grad_fn = partial(compute_loss_grad, loss_fn=base_loss_fn_masked, rescaling_args=rescaling_args)
-    loss_optx = partial(compute_loss_optx, rescaling_args=rescaling_args)
-    val_loss_optx = compute_val_loss_optx
+    loss_fn = partial(
+        compute_loss,
+        loss_fn=base_loss_fn_masked,
+        rescaling_args=rescaling_args,
+        max_steps=max_steps
+    )
+    loss_grad_fn = partial(
+        compute_loss_grad,
+        loss_fn=base_loss_fn_masked,
+        rescaling_args=rescaling_args,
+        max_steps=max_steps
+    )
+    val_loss_fn = partial(compute_validation_loss, loss_fn=base_loss_fn, max_steps=2 * max_steps)
+    loss_optx = partial(compute_loss_optx, rescaling_args=rescaling_args, max_steps=max_steps)
+    val_loss_optx = partial(compute_val_loss_optx, max_steps=2*max_steps)
 
     # Pack arguments to return
     train_args = TrainValArgs(data=train_data, t_save=t_save_train, t_span=t_span_train, u0=u0_train)
