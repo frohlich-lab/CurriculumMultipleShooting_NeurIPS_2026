@@ -52,6 +52,7 @@ def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple, u0) ->
         }
         base_loss_fn = partial(setup_lv.lv_base_loss, state_dimension=state_dims[conf.dynamical_model])
         base_loss_fn_masked = partial(setup_lv.lv_base_loss_masked, state_dimension=state_dims[conf.dynamical_model])
+        extra_args = {}
     elif conf.dynamical_model.startswith("sir"):
         (train_data, t_save_train, t_span_train,
          validation_data, t_save_validation, t_span_validation) = setup_sir.get_training_validation_data(
@@ -64,6 +65,7 @@ def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple, u0) ->
         }
         base_loss_fn = setup_sir.sir_base_loss
         base_loss_fn_masked = setup_sir.sir_base_loss_masked
+        extra_args = {"population_size": u0[0]}
     else:
         raise ValueError(f"Unknown dynamical model: {conf.dynamical_model}!")
 
@@ -72,7 +74,8 @@ def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple, u0) ->
         "bounded_tanh_params": broadcast_bounds(
             bounds={"lb": conf.dynamic_params_lb, "ub": conf.dynamic_params_ub},
             shape=dynamic_params_shape
-        )  # bounds are ignored if not using bounded tanh transform from Philipps et al. 2024
+        ),  # bounds are ignored if not using bounded tanh transform from Philipps et al. 2024
+        "extra_args": extra_args,
     }
     if conf.normalise_data:
         # Normalise initial condition u0 as well

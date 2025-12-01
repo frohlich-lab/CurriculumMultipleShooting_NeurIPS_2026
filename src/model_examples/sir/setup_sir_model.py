@@ -1,4 +1,5 @@
 import equinox as eqx
+import jax
 import jax.numpy as jnp
 
 from src.model_training.base_losses import get_mse, get_masked_mse
@@ -21,13 +22,15 @@ class SIRUDEFunction(BaseUDEFunction):
 
     dynamic_parameters: Array
     mlp: Union[eqx.nn.MLP, eqx.Module]
-    options: dict[str, bool]
+    options: dict[str, Union[str, dict]]
     state_dimension: int
     state_delimiter: int
     regularise_network: bool
 
     def __call__(self, t, u, args):
-        u0 = args
+        # Extract constant population size
+        population_size = jax.lax.stop_gradient(self.options["extra_args"]["population_size"])
+
         # Get dynamic parameters on correct scale for ODE
         beta, gamma, delta = process_mechanistic_params(self.dynamic_parameters, self.options)
         s, i, r, t_ = u[:self.state_dimension]
@@ -40,10 +43,10 @@ class SIRUDEFunction(BaseUDEFunction):
 
         # QSIR model
         # TODO @Giacomo: discuss with Sebastian
-        ds = - beta * s * i / u0[0]
-        di = beta * s * i / u0[0] - gamma * i  - nn_q[0] * i / u0[0]
+        ds = - beta * s * i / population_size
+        di = beta * s * i / population_size - gamma * i  - nn_q[0] * i / population_size
         dr = gamma * i + delta * t_
-        dt_ = nn_q[0] * i / u0[0]  - delta * t_
+        dt_ = nn_q[0] * i / population_size  - delta * t_
         derivatives = jnp.array([ds, di, dr, dt_])
 
         if self.state_delimiter > self.state_dimension:
@@ -52,7 +55,7 @@ class SIRUDEFunction(BaseUDEFunction):
         if self.regularise_network:
             # Add additional equation for regularisation term on network contribution
             d_nn_reg = jnp.array([
-                jnp.linalg.norm(nn_q[0] * i / u0[0])
+                jnp.linalg.norm(nn_q[0] * i / population_size)
             ]) # contribution is always the same in both di and dt
             derivatives = jnp.concatenate([derivatives, d_nn_reg])
         return derivatives

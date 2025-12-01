@@ -123,7 +123,6 @@ class UDEProblem(eqx.Module):
             t1,
             1e-6,
             y0=u0,
-            args=u0,
             saveat=diffrax.SaveAt(ts=t_save),
             throw=False,
             stepsize_controller=controller,
@@ -164,7 +163,6 @@ class UDEProblem(eqx.Module):
                 ],
                 axis=0
             ),
-            args=u0,
             saveat=t_save,
             throw=False,
             stepsize_controller=controller,
@@ -215,7 +213,6 @@ class UDEProblem(eqx.Module):
             t1=t_save[-1],
             dt0=1e-6,
             y0=u0,
-            args=u0,
             saveat=diffrax.SaveAt(ts=t_save),
             throw=False,
             stepsize_controller=controller,
