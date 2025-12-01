@@ -15,7 +15,7 @@ unwanted_fields = [
     "init_scale", "use_bias", "use_final_bias", "final_activation_fn_name",
     "use_dropout", "input_dropout_rate", "hidden_dropout_rate",  # might need
     "lrate_span", "lrate_decay", "warmup_fct", "opt_steps", "opt_mult", "opt_sched_type",
-    "max_curriculum_epochs", "restart_opt_curriculum",
+    "restart_opt_curriculum",
     "dynamic_params_lb", "dynamic_params_ub",
     "freeze_mechanistic_params_adam", "freeze_mechanistic_params_optx",  # might need
     "freeze_nn_adam", "freeze_nn_optx",  # might need
@@ -121,6 +121,7 @@ scan_attributes = [
     "shooting_window_length",
     "multiple_shooting_penalty",
     "num_curriculum_steps",
+    "max_curriculum_epochs",
     "node_augmentation",
 ]
 

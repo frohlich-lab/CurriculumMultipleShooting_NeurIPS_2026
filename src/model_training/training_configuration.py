@@ -229,8 +229,10 @@ NUM_CURRICULUM_STEPS =  {
 }
 
 MAX_CURRICULUM_EPOCHS = {
-    # 2000,  # LV
-    10000,  # SIR
+    "range": (
+        10000,
+    ),
+    "central_value": 10000,  # LV: 2k; SIR: 10k
 }
 
 RESTART_OPT_CURRICULUM = {

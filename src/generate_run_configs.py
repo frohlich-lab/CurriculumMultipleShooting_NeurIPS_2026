@@ -43,6 +43,7 @@ linear_hyperparameters = {
     "multiple_shooting_penalty": MULTIPLE_SHOOTING_PENALTIES,
     # Curriculum Learning
     "num_curriculum_steps": NUM_CURRICULUM_STEPS,
+    "max_curriculum_epochs": MAX_CURRICULUM_EPOCHS,
     # NODE augmentation
     "node_augmentation": NODE_AUGMENTATIONS,
 }
@@ -71,7 +72,6 @@ product_hyperparameters = {
     # Shooting modes
     "shooting_iv_init": SHOOTING_IV_INITS,
     # Curriculum learning
-    "max_curriculum_epochs": MAX_CURRICULUM_EPOCHS,
     "restart_opt_curriculum": RESTART_OPT_CURRICULUM,
     # Dynamic param settings
     "dynamic_params_scale": DYNAMIC_PARAMS_SCALES,
