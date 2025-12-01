@@ -37,9 +37,9 @@ class SIRUDEFunction(BaseUDEFunction):
 
         if self.state_delimiter > self.state_dimension:
             augmented_vars = u[self.state_dimension : self.mlp.layers[0].in_features]
-            nn_q = self.mlp(jnp.array([s, i, r, *augmented_vars]))
+            nn_q = jnp.abs(self.mlp(jnp.array([s, i, r, *augmented_vars])))
         else:
-            nn_q = self.mlp(jnp.array([s, i, r]))
+            nn_q = jnp.abs(self.mlp(jnp.array([s, i, r])))
 
         # QSIR model
         # TODO @Giacomo: discuss with Sebastian
