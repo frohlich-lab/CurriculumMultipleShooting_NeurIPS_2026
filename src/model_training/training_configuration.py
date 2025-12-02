@@ -60,9 +60,9 @@ HIDDEN_DROPOUT_RATES = {
 
 TRAINING_SCHEMES = {
     # "bfgs",
-    # "single",
+    "single",
     # "single_bfgs",
-    "single_CL",
+    # "single_CL",
     # "multiple",
     # "multiple_CL",
 }
@@ -157,14 +157,14 @@ OUTPUT_REG = {
         1e0,
         1e1,
         1e2,
-        # # 3e2,  # add more intermediate values after rescaling regularisation for time-normalisation runs
-        5e2,
-        1e3,
+        # 3e2,  # add more intermediate values after rescaling regularisation for time-normalisation runs
+        # 5e2,
+        # 1e3,
         # 3e3,
-        5e3,
-        1e4,
+        # 5e3,
+        # 1e4,
         # 3e4,
-        5e4,
+        # 5e4,
     ),
     "central_value": 0,  # use 1e0 for UDEs, 0 for NODEs // starting with 0 for SIR
     # LV: 1e3 for single_BFGS, single_CL & multiple; 5e3 for multiple_CL
@@ -319,7 +319,7 @@ NORMALISE_TIMEPOINTS = {
     # False,
 }
 
-N_STARTS = 10  # number of multi-starts
+N_STARTS = 50  # number of multi-starts
 
 N_EPOCHS_ADAM = 9000
 N_EPOCHS_BFGS = 10000
