@@ -75,11 +75,11 @@ OPTIMISERS = {
 
 MAX_LEARNING_RATES = {
     "range": (
-        1e-3,
-        5e-3,
+        # 1e-3,
+        # 5e-3,
         1e-2,
-        5e-2,
-        1e-1,
+        # 5e-2,
+        # 1e-1,
         # 5e-1,
     ),
     "central_value": 1e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
@@ -319,7 +319,7 @@ NORMALISE_TIMEPOINTS = {
     # False,
 }
 
-N_STARTS = 100  # number of multi-starts
+N_STARTS = 10  # number of multi-starts
 
 N_EPOCHS_ADAM = 9000
 N_EPOCHS_BFGS = 10000
