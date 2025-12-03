@@ -36,7 +36,7 @@ class SIRUDEFunction(BaseUDEFunction):
         s, i, r, t_ = u[:self.state_dimension]
 
         if self.state_delimiter > self.state_dimension:
-            augmented_vars = u[self.state_dimension : self.mlp.layers[0].in_features]
+            augmented_vars = u[self.state_dimension : self.mlp.layers[0].in_features + 1]
             nn_q = jnp.abs(
                 self.mlp(
                     jnp.array(
