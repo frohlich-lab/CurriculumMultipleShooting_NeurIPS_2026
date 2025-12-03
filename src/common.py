@@ -213,6 +213,7 @@ dynamic_param_labels = {
     "lotka_volterra": ["alpha", "delta"],
     "sirKorea": ["beta", "gamma", "delta"],
     "sirUK": ["beta", "gamma", "delta"],
+    "pendulum": [],  # pure NODE
 }
 
 # Ground truth dynamic parameters for models in use (LV, guesses only for SIR)
@@ -220,13 +221,15 @@ true_dynamic_parameters = {
     'lotka_volterra': jnp.array([1.3, 1.8]),
     'sirKorea': jnp.array([0.15, 0.013, 0.01]),
     'sirUK': jnp.array([0.15, 0.013, 0.01]),
+    "pendulum": jnp.array([]),
 }
 
 # Starting conditions for models in use
 u0s = {
     'lotka_volterra': jnp.array([0.44249296, 4.6280594]),
     'sirKorea': jnp.array([51000000.0, 578.0-10.0, 24.0, 10.0]),
-    'sirUK': jnp.array([66000000.0, 772.0-10.0, 26.0, 10.0])
+    'sirUK': jnp.array([66000000.0, 772.0-10.0, 26.0, 10.0]),
+    'pendulum': jnp.array([-1.1336150169372559, -1.3008047342300415, -0.5385388135910034, -6.1550583839416495]),  # 1st train datapoints
 }
 
 # State dimension (num state variables) for models in use
@@ -234,18 +237,21 @@ state_dims = {
     "lotka_volterra": 2,
     "sirKorea": 4,
     "sirUK": 4,
+    "pendulum": 4,
 }
 
 default_out_sizes = {
     "lotka_volterra": 2,
     "sirKorea": 1,
     "sirUK": 1,
+    "pendulum": 2,
 }
 
 max_iters_diffrax = {
     "lotka_volterra": 20000,
     "sirKorea": 100000,
     "sirUK": 100000,
+    "pendulum": 20000,
 }
 
 def normalise(

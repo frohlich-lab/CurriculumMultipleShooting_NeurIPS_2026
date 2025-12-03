@@ -323,6 +323,9 @@ def train(
         colors = ['red', 'black']
     elif conf.dynamical_model.startswith('sir'):
         colors = ['red', 'black']
+    # TODO check pendulum!
+    elif conf.dynamical_model == "pendulum":
+        colors = ['red', 'black', 'blue', 'purple']
     else:
         raise ValueError(f"Undefined dynamical model {conf.dynamical_model}.")
 

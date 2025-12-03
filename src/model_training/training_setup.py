@@ -22,6 +22,7 @@ from src.common import (
 )
 from src.model_examples.lotka_volterra import setup_lotka_volterra_model as setup_lv
 from src.model_examples.sir import setup_sir_model as setup_sir
+from src.model_examples.pendulum import setup_pendulum_model as setup_pend
 from src.model_training.model_util import bounded_tanh_transform_params, set_weight_bias
 from src.model_training.losses import (
     compute_validation_loss, compute_loss, compute_loss_grad,
@@ -36,6 +37,8 @@ def get_io_size(conf, u0):
         in_size = len(u0)
     elif conf.dynamical_model.startswith('sir'):
         in_size = len(u0) - 1
+    elif conf.dynamical_model.startswith('pendulum'):
+        in_size = len(u0)
     else:
         raise ValueError(f"Unknown dynamical model: {conf.dynamical_model}!")
     out_size = default_out_sizes[conf.dynamical_model] + conf.node_augmentation
@@ -67,6 +70,23 @@ def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple, u0) ->
         base_loss_fn = setup_sir.sir_base_loss
         base_loss_fn_masked = setup_sir.sir_base_loss_masked
         extra_args = {"population_size": tuple([int(u0[0])])}
+    elif conf.dynamical_model.startswith("pendulum"):
+        (train_data, t_save_train, t_span_train,
+         validation_data, t_save_validation, t_span_validation) = setup_pend.get_training_validation_data()
+
+        optx_config = {
+            "rtol": 1e-6,  # changed from 1e-4
+            "atol": 1e-6,  # changed from 1e-4
+        }
+        base_loss_fn = partial(
+            setup_pend.pendulum_base_loss,
+            state_dimension=state_dims[conf.dynamical_model]
+        )
+        base_loss_fn_masked = partial(
+            setup_pend.pendulum_base_loss_masked,
+            state_dimension=state_dims[conf.dynamical_model]
+        )
+        extra_args = {}
     else:
         raise ValueError(f"Unknown dynamical model: {conf.dynamical_model}!")
 
