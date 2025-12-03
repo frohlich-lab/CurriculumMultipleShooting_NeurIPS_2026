@@ -68,9 +68,9 @@ TRAINING_SCHEMES = {
     # "bfgs",
     # "single",
     # "single_bfgs",
-    "single_CL",
+    # "single_CL",
     # "multiple",
-    # "multiple_CL",
+    "multiple_CL",
 }
 
 # Optimiser
@@ -336,4 +336,4 @@ N_EPOCHS_ADAM = 9000  # default for LV NODEs
 N_EPOCHS_BFGS = 10000  # 10k for LV
 # N_EPOCHS_BFGS = 30000  # 30k for SIR
 
-EXPERIMENT_NAME = "singleCL_LV_NODE_ls_03122025"
+EXPERIMENT_NAME = "multipleCL_LV_NODE_ls_03122025"
