@@ -102,7 +102,7 @@ def get_training_validation_data(country: str):
     """Load SIR training and validation data from CSV files."""
     if country == "Korea":
         return load_training_validation_csv(
-            folder="sir",
+            folder="sirKorea",
             train_file="Korea_data_train.csv",
             validation_file="Korea_data_validation.csv",
             columns=["infected", "dead_recovered"],
@@ -110,7 +110,7 @@ def get_training_validation_data(country: str):
         )
     elif country == "UK":
         return load_training_validation_csv(
-            folder="sir",
+            folder="sirUK",
             train_file="UK_data_train.csv",
             validation_file="UK_data_validation.csv",
             columns=["infected", "dead_recovered"],
