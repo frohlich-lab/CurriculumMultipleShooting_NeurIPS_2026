@@ -105,6 +105,8 @@ def get_scheduler(
     elif (conf.opt_steps == 0) and (conf.opt_mult == 0):
         if conf.opt_sched_type == "exp":
             # Single schedule with warmup and exponential decay
+            # If conf.lrate_decay == 1, conf.lrate_span == 1 and conf.warmup_fct == 0, this is equivalent to a
+            # constant lrate schedule
             schedule = {
                 "init_value": conf.max_lrate / conf.lrate_span,  # start of annealing
                 "peak_value": conf.max_lrate,  # end of annealing
@@ -127,16 +129,32 @@ def get_scheduler(
             init_value = conf.max_lrate / conf.lrate_span
             final_value = init_value / decay_factor
 
-            linear_schedule = {
-                "transition_steps": n_epochs,
-                "peak_value": conf.max_lrate,
-                "pct_start": conf.warmup_fct,
-                "pct_final": conf.warmup_fct + ((init_value - conf.max_lrate) / (final_value - conf.max_lrate)) * (
-                            1.0 - conf.warmup_fct),
-                "div_factor": conf.lrate_span,
-                "final_div_factor": decay_factor,
-            }
-            return optax.schedules.linear_onecycle_schedule(**linear_schedule)
+            pct_start = conf.warmup_fct
+            pct_final = conf.warmup_fct + (
+                    (init_value - conf.max_lrate) / (final_value - conf.max_lrate)
+            ) * (1.0 - conf.warmup_fct)
+
+            if (pct_start == 0) or (pct_final == 0):
+                # returns a simple linear decay schedule with no warm-up (ignores conf.warmup_fct & conf.lrate_span)
+                linear_schedule = {
+                    "init_value": conf.max_lrate,
+                    "end_value": conf.max_lrate/decay_factor,
+                    "transition_steps": conf.max_curriculum_epochs if conf.curriculum_learning else n_epochs,
+                    "transition_begin": 0,
+                }
+                return optax.schedules.linear_schedule(**linear_schedule)
+            else:
+                # returns a linear one cycle schedule, i.e. warm-up, decay until original value pre-warmup, final decay
+                linear_schedule = {
+                    "transition_steps": n_epochs,
+                    "peak_value": conf.max_lrate,
+                    "pct_start": conf.warmup_fct,
+                    "pct_final": conf.warmup_fct + ((init_value - conf.max_lrate) / (final_value - conf.max_lrate)) * (
+                                1.0 - conf.warmup_fct),
+                    "div_factor": conf.lrate_span,
+                    "final_div_factor": decay_factor,
+                }
+                return optax.schedules.linear_onecycle_schedule(**linear_schedule)
         else:  # default: cosine annealing
             schedule = {
                 "init_value": conf.max_lrate / conf.lrate_span,
