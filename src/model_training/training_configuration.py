@@ -69,8 +69,8 @@ TRAINING_SCHEMES = {
     # "single",
     # "single_bfgs",
     # "single_CL",
-    # "multiple",
-    "multiple_CL",
+    "multiple",
+    # "multiple_CL",
 }
 
 # Optimiser
@@ -88,7 +88,7 @@ MAX_LEARNING_RATES = {
         1e-1,
         # 5e-1,
     ),
-    "central_value": 1e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
+    "central_value": 5e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
 }
 
 LEARNING_RATE_SPANS = {
@@ -336,4 +336,4 @@ N_EPOCHS_ADAM = 9000  # default for LV NODEs
 N_EPOCHS_BFGS = 10000  # 10k for LV
 # N_EPOCHS_BFGS = 30000  # 30k for SIR
 
-EXPERIMENT_NAME = "multipleCL_LV_NODE_ls_03122025"
+EXPERIMENT_NAME = "multiple_LV_NODE_ls_03122025"
