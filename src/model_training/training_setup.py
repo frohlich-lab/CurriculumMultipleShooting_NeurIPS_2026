@@ -529,7 +529,7 @@ def load_multistart_dynamic_params(conf: Conf, data_dir: Path) -> jnp.ndarray:
     # Locate the correct file
     multistart_file = (
         data_dir / conf.dynamical_model /
-        f"{conf.dynamic_params_perturb_method}__{conf.multistart_deviation}.csv"
+        f"{conf.dynamic_params_perturb_method}__{conf.multistart_deviation}__{conf.num_starts}.csv"
     )
 
     # Load the multistart CSV

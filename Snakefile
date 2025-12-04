@@ -30,7 +30,7 @@ unique_multistart_settings = sorted(set(
 
 # Expand to file paths
 multistart_csvs = [
-    data_dir / f"{model}/{method}__{deviation}.csv"
+    data_dir / f"{model}/{method}__{deviation}__{N_STARTS}.csv"
     for model, deviation, method in unique_multistart_settings
 ]
 
@@ -126,7 +126,7 @@ rule train_udes:
                 "training_setting",
                 "mlpexp_target",
             )
-        ) + ' --experiment_name={EXPERIMENT_NAME}'
+        ) + ' --experiment_name={EXPERIMENT_NAME} --num_starts={N_STARTS}'
 
 
 rule aggregate_results:

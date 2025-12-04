@@ -20,7 +20,8 @@ unwanted_fields = [
     "freeze_mechanistic_params_adam", "freeze_mechanistic_params_optx",  # might need
     "freeze_nn_adam", "freeze_nn_optx",  # might need
     "save_plots",
-    "experiment_name"
+    "experiment_name",
+    "num_starts",
 ]
 
 
@@ -96,6 +97,7 @@ class Conf(dict):
     training_setting: str = None  # options: "UDE", "MLP"
     mlpexp_target: str = "RHS"  # options: "RHS", "interaction"
     experiment_name: str = None
+    num_starts: int = 100
 
     def __str__(self) -> str:
         """

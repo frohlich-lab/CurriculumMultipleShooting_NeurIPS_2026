@@ -65,7 +65,7 @@ def main():
         out_dir = data_dir / model
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        out_path = out_dir / f"{method}__{deviation}.csv"
+        out_path = out_dir / f"{method}__{deviation}__{N_STARTS}.csv"
         df.to_csv(out_path, index=False)
         print(f"Saved: {out_path}")
 
