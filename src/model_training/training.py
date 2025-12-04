@@ -609,6 +609,7 @@ def train(
                     f"mlp_reg {reg_loss_dict['mlp_reg'] if reg_loss_dict is not None else 'n/a'} | "
                     f"mse_train {mse_train} | "
                     f"mse_val {mse_val} | "
+                    f"min_sv {hessian_metrics['min_sv']} | "
                 )
 
                 if nn_epoch == n_epochs - 1:
