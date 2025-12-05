@@ -227,9 +227,9 @@ NUM_CURRICULUM_STEPS =  {
 
 MAX_CURRICULUM_EPOCHS = {
     "range": (
-        3000,
+        2000,
     ),
-    "central_value": 3000,
+    "central_value": 2000,
 }
 
 RESTART_OPT_CURRICULUM = {
@@ -322,7 +322,7 @@ NORMALISE_TIMEPOINTS = {
 
 N_STARTS = 100  # number of multi-starts
 
-N_EPOCHS_ADAM = 9000
+N_EPOCHS_ADAM = 6000
 N_EPOCHS_BFGS = 10000  # same as lotka_volterra UDE
 
 EXPERIMENT_NAME = "multiple_LV_NODE_ls_03122025"
