@@ -1,26 +1,20 @@
 DYNAMICAL_MODEL = {
-    "lotka_volterra",
-    # "sirKorea",
-    # "sirUK",
+    "pendulum",
 }
 
 # MLP
 MLP_WIDTHS = {
     "range": (
-        # 5,  # UDE paper -> activation changed to RBF, max_lrate to 1e-1
-        10,
-        # 20,
+        50,  # Homotopy paper
     ),
-    "central_value": 10,
+    "central_value": 50,
 }
 
 MLP_DEPTHS = {
     "range": (
-        # 1,
         2,
-        # 5
     ),
-    "central_value": 2,  # 2 for LV, 1 for SIR
+    "central_value": 2,  # Homotopy paper
 }
 
 INIT_SCALES = {
@@ -68,8 +62,8 @@ TRAINING_SCHEMES = {
     # "bfgs",
     # "single",
     # "single_bfgs",
-    # "single_CL",
-    "multiple",
+    "single_CL",
+    # "multiple",
     # "multiple_CL",
 }
 
@@ -88,7 +82,7 @@ MAX_LEARNING_RATES = {
         1e-1,
         # 5e-1,
     ),
-    "central_value": 5e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
+    "central_value": 1e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
 }
 
 LEARNING_RATE_SPANS = {
@@ -112,9 +106,9 @@ OPT_MULT = {
 }
 
 OPT_SCHED_TYPES = {
-    "exp",
-    # "lin",
-    # "cos",  # default
+    "lin", # linear schedule (default)
+    # "cos",  # cosine
+    # "exp",  # exponential
 }
 
 
@@ -234,7 +228,7 @@ MAX_CURRICULUM_EPOCHS = {
     "range": (
         3000,
     ),
-    "central_value": 3000,  # LV UDE: 2k; SIR UDE: 10k; LV NODE: 3k
+    "central_value": 3000,
 }
 
 RESTART_OPT_CURRICULUM = {
@@ -243,15 +237,13 @@ RESTART_OPT_CURRICULUM = {
 }
 
 # Dynamic Parameters estimation settings
+# NODEs: set parameters to 0 and use linear scale
 DYNAMIC_PARAMS_SCALES = {
     "linear",  # NODE
-    # "log10",  # UDE
 }
 
 MULTISTART_DEVIATIONS = {
     0, # run only 0 for NODEs
-    # 1,
-    # 2  # run only 2 for SIR
 }
 
 DYNAMIC_PARAMS_PERTURB_METHODS = {
@@ -304,7 +296,7 @@ FREEZE_NN_OPTX= {
 }
 
 
-# Training settings (UDE, MLP, UDE+MLP)
+# Training settings (UDE, NODE, MLP)
 TRAINING_SETTINGS = {
     # "UDE",
     "NODE",
@@ -329,11 +321,7 @@ NORMALISE_TIMEPOINTS = {
 
 N_STARTS = 100  # number of multi-starts
 
-# N_EPOCHS_ADAM = 6000  # default from UDE paper: 200 + ADAM; we use 6k for LV UDEs
-# N_EPOCHS_ADAM = 30000  # 30k epochs for SIR UDEs; original paper: 40000-100000
-N_EPOCHS_ADAM = 9000  # default for LV NODEs
+N_EPOCHS_ADAM = 9000
+N_EPOCHS_BFGS = 10000
 
-N_EPOCHS_BFGS = 10000  # 10k for LV
-# N_EPOCHS_BFGS = 30000  # 30k for SIR
-
-EXPERIMENT_NAME = "multiple_LV_NODE_ls_03122025"
+EXPERIMENT_NAME = "singleCL_pendulum_NODE_ls_03122025"
