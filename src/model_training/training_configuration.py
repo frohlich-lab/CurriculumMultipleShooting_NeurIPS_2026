@@ -61,10 +61,10 @@ HIDDEN_DROPOUT_RATES = {
 TRAINING_SCHEMES = {
     # "bfgs",
     # "single",
-    "single_bfgs",
+    # "single_bfgs",
     # "single_CL",
     # "multiple",
-    # "multiple_CL",
+    "multiple_CL",
 }
 
 # Optimiser
@@ -324,4 +324,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 6000
 N_EPOCHS_BFGS = 10000
 
-EXPERIMENT_NAME = "singleBFGS_pendulum_NODE_ls_05122025"
+EXPERIMENT_NAME = "multipleCL_pendulum_NODE_ls_06122025"
