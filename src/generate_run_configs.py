@@ -111,6 +111,10 @@ def prune_config(run_config: dict):
     elif "multiple" in run_config.get("training_scheme"):
         run_config["num_epochs_adam"] = N_EPOCHS_ADAM
         run_config["shooting_mode"] = "multiple"
+        if run_config["curriculum_learning"]:
+            # in MS+CL the number of curriculum steps is dictated by the number of shooting windows -> set to
+            # default value and ignore
+            run_config["num_curriculum_steps"] = 5
     else:
         run_config["optimiser"] = "None"  # no NN optimiser
         run_config["num_epochs_adam"] = 0
