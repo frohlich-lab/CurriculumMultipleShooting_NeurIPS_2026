@@ -1,5 +1,6 @@
 import equinox as eqx
 import jax.numpy as jnp
+import jax
 
 from jaxtyping import Array
 from src.model_training.base_losses import get_masked_mse
@@ -33,11 +34,13 @@ def regularise_mlp_contribution(
     """
     # l2_norm_nn_contrib[-1] is the integral up to the final timepoint.
     # 1e-6 pre-multiplier for reg_strength avoids wildcard issues in snakemake
-    if timespan_length > 0:
-        return 1e-6 * reg_strength * (l2_norm_nn_contrib[-1]/timespan_length)**2
-    else:
-        # Handles cases where the last window contains a single datapoint
-        return 0.0
+    operand = (l2_norm_nn_contrib, timespan_length)
+    return jax.lax.cond(
+        timespan_length > 0,
+        lambda x: 1e-6 * reg_strength * (x[0][-1]/x[1])**2,
+        lambda _: 0.0,  # Handles cases where the last window contains a single datapoint
+        operand=operand,
+    )
 
 
 def compute_discontinuity_penalty(
