@@ -55,16 +55,20 @@ def project_1d(w: Array, d: Array) -> float:
     return (jnp.dot(w, d) / jnp.linalg.norm(d)).item()
 
 
-def project_2d(w: Array, dx: Array, dy: Array) -> tuple[float, float]:
+def project_2d(
+    w: Array,
+    dx: Union[Array, np.ndarray],
+    dy: Union[Array, np.ndarray]
+) -> tuple[float, float]:
     return project_1d(w, dx), project_1d(w, dy)
 
 
 def setup_weight_pca_directions(
-        model_dict,
-        last_stage,
-        last_weights,
-        last_dynamic,
-        which="MLP"
+    model_dict,
+    last_stage,
+    last_weights,
+    last_dynamic,
+    which="MLP"
 ):
     diff_matrix = []
     for stage in sorted(model_dict):
@@ -106,12 +110,16 @@ def project_trajectory(model_dict, which="MLP"):
         x, y = project_2d(vec, pc1, pc2)
         coord_dfs.append(pd.DataFrame({'x': [x], 'y': [y], 'stage': [stage]}))
 
-    return pd.concat(coord_dfs, ignore_index=True), ([df['x'][0] for df in coord_dfs], [df['y'][0] for df in coord_dfs]), (pc1, pc2)
+    return (
+        pd.concat(coord_dfs, ignore_index=True),
+        ([df['x'][0] for df in coord_dfs], [df['y'][0] for df in coord_dfs]),
+        (pc1, pc2)
+    )
 
 
 def rebuild_mlp_from_weights(
-        template: eqx.nn.MLP,
-        weights: list[Array]
+    template: eqx.nn.MLP,
+    weights: list[Array]
 ) -> eqx.nn.MLP:
     new_layers, idx = [], 0
     for layer in template.layers:
@@ -134,26 +142,32 @@ def rebuild_mlp_from_weights(
 
 def update_model_from_params(model, new_params, which: str):
     if which == "MLP":
-        return eqx.tree_at(lambda m: m.func.mlp, model,
-                           rebuild_mlp_from_weights(model.func.mlp, new_params))
+        return eqx.tree_at(
+            lambda m: m.func.mlp, model,
+            rebuild_mlp_from_weights(model.func.mlp, new_params)
+        )
     elif which == "dynamic":
-        return eqx.tree_at(lambda m: m.func.dynamic_parameters, model, jnp.array(new_params))
+        return eqx.tree_at(
+            lambda m: m.func.dynamic_parameters, model, jnp.array(new_params)
+        )
     else:
         dyn, mlp_weights = new_params[0], new_params[1:]
         updated = eqx.tree_at(lambda m: m.func.dynamic_parameters, model, dyn)
-        return eqx.tree_at(lambda m: m.func.mlp, updated,
-                           rebuild_mlp_from_weights(model.func.mlp, mlp_weights))
+        return eqx.tree_at(
+            lambda m: m.func.mlp, updated,
+            rebuild_mlp_from_weights(model.func.mlp, mlp_weights)
+        )
 
 
 def compute_hessian_directions(
-        model,
-        conf,
-        t_save,
-        t_span,
-        data,
-        last_valid_index,
-        base_loss_fn,
-        loss_hessian_fn,
+    model,
+    conf,
+    t_save,
+    t_span,
+    data,
+    last_valid_index,
+    base_loss_fn,
+    loss_hessian_fn,
 ) -> tuple[Array, Array]:
     params, static = eqx.partition(model, eqx.is_array)
     flat_p, unflatten_p = jax.flatten_util.ravel_pytree(params)
@@ -177,20 +191,20 @@ def compute_hessian_directions(
 
 
 def evaluate_loss_on_mesh_grid(
-        xmesh,
-        ymesh,
-        base_flat_params,
-        metadata,
-        model,
-        loss_fn,
-        conf,
-        data,
-        t_save,
-        masks,
-        last_valid_index,
-        dir1,
-        dir2,
-        which
+    xmesh,
+    ymesh,
+    base_flat_params,
+    metadata,
+    model,
+    loss_fn,
+    conf,
+    data,
+    t_save,
+    masks,
+    last_valid_index,
+    dir1,
+    dir2,
+    which
 ):
     losses = []
     for x, y in zip(xmesh.ravel(), ymesh.ravel()):
@@ -218,19 +232,19 @@ def evaluate_loss_on_mesh_grid(
 
 
 def evaluate_loss_on_pca_grid(
-        model,
-        pc1,
-        pc2,
-        xcoords,
-        ycoords,
-        loss_fn,
-        conf,
-        data,
-        t_save,
-        masks,
-        last_valid_index,
-        which="MLP",
-        num_points=20
+    model,
+    pc1,
+    pc2,
+    xcoords,
+    ycoords,
+    loss_fn,
+    conf,
+    data,
+    t_save,
+    masks,
+    last_valid_index,
+    which="MLP",
+    num_points=20
 ):
     flat_params, metadata = flatten_tensor_list(get_params_conditional(model, which))
     xmesh, ymesh = np.meshgrid(
@@ -256,18 +270,18 @@ def evaluate_loss_on_pca_grid(
 
 
 def evaluate_loss_random_directions(
-        model1,
-        loss_fn,
-        conf,
-        data,
-        t_save,
-        masks,
-        last_valid_index,
-        which="MLP",
-        num_points=20,
-        key=jr.PRNGKey(0),
-        normalise=True,
-        model2=None
+    model1,
+    loss_fn,
+    conf,
+    data,
+    t_save,
+    masks,
+    last_valid_index,
+    which="MLP",
+    num_points=20,
+    key=jr.PRNGKey(0),
+    normalise=True,
+    model2=None
 ):
     f1, meta = flatten_tensor_list(get_params_conditional(model1, which))
 
@@ -312,17 +326,17 @@ def evaluate_loss_random_directions(
 
 
 def evaluate_loss_on_hessian_grid(
-        model,
-        dir1,
-        dir2,
-        loss_fn,
-        conf,
-        data,
-        t_save,
-        masks,
-        last_valid_index,
-        num_points=20,
-        which: str = "full",
+    model,
+    dir1,
+    dir2,
+    loss_fn,
+    conf,
+    data,
+    t_save,
+    masks,
+    last_valid_index,
+    num_points=20,
+    which: str = "full",
 ):
     flat_params, metadata = flatten_tensor_list(get_params_conditional(model, which))
     xmesh, ymesh = jnp.meshgrid(
@@ -349,18 +363,18 @@ def evaluate_loss_on_hessian_grid(
 
 
 def plot_loss_landscape(
-        xmesh,
-        ymesh,
-        losses,
-        mode: str,
-        levels: int = 30,
-        xcoords: list=None,
-        ycoords: list=None,
-        proj_model_x=None,
-        proj_model_y=None,
-        title="Loss Landscape",
-        color_labels: list=None,
-        cmap: str ='tab10'
+    xmesh,
+    ymesh,
+    losses,
+    mode: str,
+    levels: int = 30,
+    xcoords: list=None,
+    ycoords: list=None,
+    proj_model_x=None,
+    proj_model_y=None,
+    title="Loss Landscape",
+    color_labels: list=None,
+    cmap: str ='tab10',
 ):
     fig, ax = plt.subplots(figsize=(6, 5))
     contour = ax.contourf(
@@ -421,24 +435,27 @@ def plot_loss_landscape(
 
 
 def visualize_landscape(
-        model_dict,
-        conf,
-        t_save_windows,
-        masks,
-        data,
-        curriculum_stage_dict,
-        base_loss_fn,
-        loss_fn,
-        hessian_fn,
-        which="full",
-        num_points=20,
-        plot_pairs: bool = True
+    model_dict,
+    conf,
+    t_save_windows,
+    masks,
+    data,
+    curriculum_stage_dict,
+    base_loss_fn,
+    loss_fn,
+    hessian_fn,
+    which="full",
+    num_points=20,
+    plot_pairs: bool = True
 ):
+    # Initialise variables
+    xmesh_hess, ymesh_hess, losses_hess, final_model = None, None, None, None
+    last_valid_index = 1
+    dir1, dir2 = None, None
+
     for cl_stage in model_dict.keys():
         # Get last valid index, save windows and masks for the current curriculum stage (if any)
-        if not conf.curriculum_learning:
-            last_valid_index = 1
-        else:
+        if conf.curriculum_learning:
             last_valid_index = curriculum_stage_dict[cl_stage]["last_valid_index"]
             t_save_windows = curriculum_stage_dict[cl_stage]["time"]
             masks = curriculum_stage_dict[cl_stage]["mask"]
@@ -582,19 +599,23 @@ def visualize_landscape(
 
 
 def test_curriculum_stage_convexity(
-        model_dict,
-        conf,
-        curriculum_stage_dict,
-        data,
-        t_save_windows,
-        masks,
-        loss_fn: Callable,
-        which: str = "full",
-        num_dirs: int = 1000,
-        mode: str = "local",
-        sampling: Optional[str] = "lh",
-        filter_normalise: Optional[bool] = True
+    model_dict,
+    conf,
+    curriculum_stage_dict,
+    data,
+    t_save_windows,
+    masks,
+    loss_fn: Callable,
+    which: str = "full",
+    num_dirs: int = 1000,
+    mode: str = "local",
+    sampling: Optional[str] = "lh",
+    filter_normalise: Optional[bool] = True
 ):
+    # Initialise variables
+    theta1_list, theta2_list, alpha_list, directions, alphas = [], [], [], [], []
+    flat_ref = None
+
     # Get shape of flattened params from any model
     example_stage = list(model_dict.keys())[-1]
     example_epoch = sorted(model_dict[example_stage])[-1]
@@ -714,9 +735,9 @@ def test_curriculum_stage_convexity(
 
 
 def plot_convexity_fractions(
-        results_dict,
-        title="Convexity Check per Curriculum Stage",
-        mode: str = "local"
+    results_dict,
+    title="Convexity Check per Curriculum Stage",
+    mode: str = "local"
 ):
     cl_stages = list(results_dict.keys())
     fractions = list(results_dict.values())

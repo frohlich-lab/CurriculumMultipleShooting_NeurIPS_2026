@@ -1,8 +1,9 @@
 import fire
-import jax.random as jr
+# import jax.random as jr
 
+from functools import partial
 from jax import config
-from src.common import Conf, model_save_dir, true_dynamic_parameters
+from src.common import Conf, model_save_dir, true_dynamic_parameters, max_iters_diffrax
 from src.landscape.landscape_utils import *
 from src.model_training.losses import compute_hess_array
 from src.model_training.training_setup import (
@@ -122,6 +123,12 @@ visualize_landscape(
     train_args.data,
     curriculum_stage_dict,
     base_loss_fn=loss_dict["base_loss_fn"],
+    # loss_fn is already a partial with rescaling_args nad max_steps
     loss_fn=loss_dict["loss_fn"],
-    hessian_fn=compute_hess_array
+    # hessian_fn needs to be turned into a partial
+    hessian_fn=partial(
+        compute_hess_array,
+        rescaling_args=rescaling_args,
+        max_steps=max_iters_diffrax[conf.dynamical_model]
+    ),
 )
