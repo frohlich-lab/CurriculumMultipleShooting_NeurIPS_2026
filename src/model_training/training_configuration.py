@@ -1,21 +1,20 @@
 DYNAMICAL_MODEL = {
-    "lotka_volterra",
+    "pendulum",
 }
 
 # MLP
 MLP_WIDTHS = {
     "range": (
-        # 5,  # original UDE paper; activation: RBF, max_lrate: 1e-1
-        10,
+        50,  # Homotopy paper
     ),
-    "central_value": 10,
+    "central_value": 50,
 }
 
 MLP_DEPTHS = {
     "range": (
         2,
     ),
-    "central_value": 2,  # from original UDE paper
+    "central_value": 2,  # Homotopy paper
 }
 
 INIT_SCALES = {
@@ -64,8 +63,8 @@ TRAINING_SCHEMES = {
     # "single",
     # "single_bfgs",
     # "single_CL",
-    "multiple",
-    # "multiple_CL",
+    # "multiple",
+    "multiple_CL",
 }
 
 # Optimiser
@@ -76,14 +75,14 @@ OPTIMISERS = {
 
 MAX_LEARNING_RATES = {
     "range": (
-        # 1e-3,
-        # 5e-3,
-        # 1e-2,
+        1e-3,
+        5e-3,
+        1e-2,
         5e-2,
-        # 1e-1,
+        1e-1,
         # 5e-1,
     ),
-    "central_value": 5e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
+    "central_value": 1e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
 }
 
 LEARNING_RATE_SPANS = {
@@ -154,18 +153,18 @@ OUTPUT_REG = {
         # 1e-4,
         # 1e-3,
         # 1e-2,
-        # 1e-1,
-        # 1e0,
-        # 1e1,
-        # 1e2,
+        1e-1,
+        1e0,
+        1e1,
+        1e2,
         # # 3e2,  # add more intermediate values after rescaling regularisation for time-normalisation runs
-        # 5e2,
-        # 1e3,
+        5e2,
+        1e3,
         # 3e3,
-        # 5e3,
-        # 1e4,
+        5e3,
+        1e4,
         # 3e4,
-        # 5e4,
+        5e4,
     ),
     "central_value": 0,  # use 1e0 for UDEs, 0 for NODEs // starting with 0 for SIR
     # LV: 1e3 for single_BFGS, single_CL & multiple; 5e3 for multiple_CL
@@ -175,13 +174,13 @@ OUTPUT_REG = {
 # Shooting parameters (shooting mode is decided by TRAINING_SCHEMES)
 SHOOTING_WINDOW_LENGTHS =  {
     "range": (
-        # 4,  # 21 windows
+        4,  # 21 windows
         5,  # 16 windows
         6,  # 13 windows
-        # 8,  # 9 windows
-        # 14,  # 5 windows
-        # 21,  # third data length
-        # 30  # half data length approximately
+        8,  # 9 windows
+        14,  # 5 windows
+        21,  # third data length
+        30  # half data length approximately
     ),
     "central_value": 5,  # LV: optimal 5 for both multiple and multiple_CL
 }
@@ -194,16 +193,16 @@ SHOOTING_IV_INITS = {
 
 MULTIPLE_SHOOTING_PENALTIES =  {
     "range": (
-        # 0,
-        # 1e-3,  # note: 2e-3 used to work decently
-        # 1e-2,
-        # 1e-1,
-        # 1e0,
+        0,
+        1e-3,  # note: 2e-3 used to work decently
+        1e-2,
+        1e-1,
+        1e0,
         1e1,
-        # 1e2,
-        # 1e3
+        1e2,
+        1e3
     ),
-    "central_value": 10,  # use 10 for everything apart from multiple_CL (tried 0; now use 1e-2)
+    "central_value": 1.0,  # use 10 for everything apart from multiple_CL (tried 0; now use 1e-2)
     # LV: optimal 10 for multiple; 1.0 for multiple_CL
 }
 
@@ -266,8 +265,8 @@ NODE_AUGMENTATIONS = {
 
 # Hessian Options
 COMPUTE_HESSIAN_METRICS = {
-    True,
-    # False,
+    # True,
+    False,
 }
 
 # Second optimiser (classical)
@@ -328,6 +327,6 @@ SAVE_LANDSCAPE_MODELS = {
 N_STARTS = 100  # number of multi-starts
 
 N_EPOCHS_ADAM = 6000
-N_EPOCHS_BFGS = 10000  # same as lotka_volterra UDE
+N_EPOCHS_BFGS = 10000
 
-EXPERIMENT_NAME = "multiple_LV_NODEopt_ls_06122025"
+EXPERIMENT_NAME = "multipleCL_pendulum_NODE_ls_08122025"
