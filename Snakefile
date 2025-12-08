@@ -85,6 +85,7 @@ rule train_udes:
         normalise_timepoints = "True|False",
         training_setting = "UDE|NODE|MLP",
         mlpexp_target = "[a-zA-Z_]+",
+        save_landscape_models = "True|False",
     retries: 1
     resources:
         mem="8GB",
@@ -125,6 +126,7 @@ rule train_udes:
                 "normalise_timepoints",
                 "training_setting",
                 "mlpexp_target",
+                "save_landscape_models",
             )
         ) + ' --experiment_name={EXPERIMENT_NAME} --num_starts={N_STARTS}'
 

@@ -23,6 +23,7 @@ from src.model_training.training_configuration import (
     # FREEZE_MECHANISTIC_PARAMS_ADAM, FREEZE_MECHANISTIC_PARAMS_OPTX, FREEZE_NN_ADAM, FREEZE_NN_OPTX,
     TRAINING_SETTINGS, MLPEXP_TARGETS,
     NORMALISE_DATA, NORMALISE_TIMEPOINTS,
+    SAVE_LANDSCAPE_MODELS,
     N_STARTS,
     N_EPOCHS_ADAM, N_EPOCHS_BFGS,
 )
@@ -92,6 +93,7 @@ product_hyperparameters = {
     # Training setting
     "training_setting": TRAINING_SETTINGS,
     "mlpexp_target": MLPEXP_TARGETS,
+    "save_landscape_models": SAVE_LANDSCAPE_MODELS,
 }
 
 

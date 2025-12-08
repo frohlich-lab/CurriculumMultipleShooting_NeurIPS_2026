@@ -96,6 +96,7 @@ class Conf(dict):
     # Training settings
     training_setting: str = None  # options: "UDE", "MLP"
     mlpexp_target: str = "RHS"  # options: "RHS", "interaction"
+    save_landscape_models: bool = False
     experiment_name: str = None
     num_starts: int = 100
 
