@@ -410,7 +410,7 @@ def initialize_multiple_shooting(
         training_horizon: int,
         t_save: Union[Array, SaveAt],
         strategy: str,
-        u0_guess: Optional[Array],
+        u0_guess: Array,
         curriculum_learning: bool = False,
         curriculum_params: Optional[dict[str, tuple]] = None,
         random_seed: int = 0,
@@ -433,7 +433,7 @@ def initialize_multiple_shooting(
     strategy: str
         Initialization strategy for initial conditions.
     u0_guess: Tuple
-        Initial guess for the initial conditions.
+        Initial guess for the initial conditions, always used for the first window.
     curriculum_learning: bool
         If True, the model will be trained using curriculum learning.
     curriculum_params: dict
@@ -467,6 +467,8 @@ def initialize_multiple_shooting(
     elif strategy == 'ru':
         # Sample uniformly state_dimension variables
         u0 = jr.uniform(jr.PRNGKey(random_seed), (num_windows, effective_state_dimension))
+        # Override first window with u0_guess (will be frozen, so needs to be compatible with train/val trajectories)
+        u0 = u0.at[0].set(u0_guess)
         return t_save_windows, masks, u0
     else:
         raise ValueError(f"Invalid shooting_iv_init strategy: {strategy}")
