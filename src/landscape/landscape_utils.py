@@ -10,6 +10,7 @@ import pandas as pd
 from jaxtyping import Array
 from scipy.stats import qmc
 from sklearn.decomposition import PCA
+from src.model_training.training_util import update_hessian_index_mask_multiple_curriculum
 from src.ude_problem import UDEProblem, CustomDropoutMLP
 from tqdm import tqdm
 from typing import Callable, Optional, Union
@@ -168,6 +169,7 @@ def compute_hessian_directions(
     last_valid_index,
     base_loss_fn,
     loss_hessian_fn,
+    active_idx = None,
 ) -> tuple[Array, Array]:
     params, static = eqx.partition(model, eqx.is_array)
     flat_p, unflatten_p = jax.flatten_util.ravel_pytree(params)
@@ -181,7 +183,17 @@ def compute_hessian_directions(
         conf.shooting_mode,
         base_loss_fn
     )
-    eigvals, eigvecs = jnp.linalg.eigh(hessian)
+    if conf.shooting_mode == "multiple" and conf.curriculum_learning:
+        # Only use the active hessian indices (remove initial values for output regularisation and dropped windows)
+        unfrozen_hessian = hessian[jnp.ix_(active_idx, active_idx)]
+        eigvals, unfrozen_eigvecs = jnp.linalg.eigh(unfrozen_hessian)
+        # Pad eigenvectors back to full size with zeros
+        n_active = unfrozen_eigvecs.shape[0]
+        eigvecs = jnp.zeros((hessian.shape[0], n_active), dtype=unfrozen_eigvecs.dtype)
+        eigvecs = eigvecs.at[active_idx, :].set(unfrozen_eigvecs)
+    else:
+        eigvals, eigvecs = jnp.linalg.eigh(hessian)
+
     # Select the two dominant eigenvalues and the corresponding eigenvectors
     top_indices = jnp.argsort(jnp.abs(eigvals))[-2:]
     dir1, dir2 = eigvecs[:, top_indices[0]], eigvecs[:, top_indices[1]]
@@ -452,18 +464,24 @@ def visualize_landscape(
     xmesh_hess, ymesh_hess, losses_hess, final_model = None, None, None, None
     last_valid_index = 1
     dir1, dir2 = None, None
+    active_hessian_idx = None
 
     for cl_stage in model_dict.keys():
+        # Sort by training epoch and get final model
+        sorted_epochs = sorted(model_dict[cl_stage])
+        final_epoch = sorted_epochs[-1]
+        final_model = model_dict[cl_stage][final_epoch]
+
         # Get last valid index, save windows and masks for the current curriculum stage (if any)
         if conf.curriculum_learning:
             last_valid_index = curriculum_stage_dict[cl_stage]["last_valid_index"]
             t_save_windows = curriculum_stage_dict[cl_stage]["time"]
             masks = curriculum_stage_dict[cl_stage]["mask"]
-
-        # Sort by training epoch and get final model
-        sorted_epochs = sorted(model_dict[cl_stage])
-        final_epoch = sorted_epochs[-1]
-        final_model = model_dict[cl_stage][final_epoch]
+            active_hessian_idx = update_hessian_index_mask_multiple_curriculum(
+                final_model,
+                eqx.is_array,
+                last_valid_index
+            )
 
         # === Hessian Landscape ===
         dir1, dir2 = compute_hessian_directions(
@@ -474,7 +492,8 @@ def visualize_landscape(
             data,
             last_valid_index=last_valid_index,
             base_loss_fn=base_loss_fn,
-            loss_hessian_fn=hessian_fn
+            loss_hessian_fn=hessian_fn,
+            active_idx=active_hessian_idx,
         )
         losses_hess, xmesh_hess, ymesh_hess = evaluate_loss_on_hessian_grid(
             final_model,
