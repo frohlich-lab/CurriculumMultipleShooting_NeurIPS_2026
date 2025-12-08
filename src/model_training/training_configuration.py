@@ -229,12 +229,7 @@ MAX_CURRICULUM_EPOCHS = {
     "range": (
         3000,
     ),
-    "central_value": 3000,  # LV UDE: 2k; SIR UDE: 10k; LV NODE: 3k
-}
-
-MAX_CURRICULUM_EPOCHS = {
-    "range": (2000,),
-    "central_value": 2000
+    "central_value": 3000,
 }
 
 RESTART_OPT_CURRICULUM = {
@@ -243,16 +238,13 @@ RESTART_OPT_CURRICULUM = {
 }
 
 # Dynamic Parameters estimation settings
-# UDEs: estimate dynamic parameters on log10 scale
+# NODEs: set parameters to 0 and use linear scale
 DYNAMIC_PARAMS_SCALES = {
-    # "linear",  # NODE
-    "log10",  # UDE
+    "linear",  # NODE
 }
 
 MULTISTART_DEVIATIONS = {
-    0,
-    1,
-    2
+    0, # run only 0 for NODEs
 }
 
 DYNAMIC_PARAMS_PERTURB_METHODS = {
@@ -307,8 +299,8 @@ FREEZE_NN_OPTX= {
 
 # Training settings (UDE, NODE, MLP)
 TRAINING_SETTINGS = {
-    "UDE",
-    # "NODE",
+    # "UDE",
+    "NODE",
     # "MLP",
 }
 
@@ -330,7 +322,7 @@ NORMALISE_TIMEPOINTS = {
 
 N_STARTS = 100  # number of multi-starts
 
-N_EPOCHS_ADAM = 6000
-N_EPOCHS_BFGS = 10000
+N_EPOCHS_ADAM = 9000
+N_EPOCHS_BFGS = 10000  # same as lotka_volterra UDE
 
-EXPERIMENT_NAME = "multiple_LV_UDE_ls_05122025"
+EXPERIMENT_NAME = "multiple_LV_NODE_ls_08122025"
