@@ -33,7 +33,11 @@ def regularise_mlp_contribution(
     """
     # l2_norm_nn_contrib[-1] is the integral up to the final timepoint.
     # 1e-6 pre-multiplier for reg_strength avoids wildcard issues in snakemake
-    return 1e-6 * reg_strength * (l2_norm_nn_contrib[-1]/timespan_length)**2
+    if timespan_length > 0:
+        return 1e-6 * reg_strength * (l2_norm_nn_contrib[-1]/timespan_length)**2
+    else:
+        # Handles cases where the last window contains a single datapoint
+        return 0.0
 
 
 def compute_discontinuity_penalty(
