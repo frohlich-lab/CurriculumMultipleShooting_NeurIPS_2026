@@ -8,8 +8,10 @@ import numpy as np
 import pandas as pd
 
 from jaxtyping import Array
+# from matplotlib.colors import LogNorm
 from scipy.stats import qmc
 from sklearn.decomposition import PCA
+from src.model_training.model_util import process_mechanistic_params
 from src.model_training.training_util import update_hessian_index_mask_multiple_curriculum
 from src.ude_problem import UDEProblem, CustomDropoutMLP
 from tqdm import tqdm
@@ -388,7 +390,7 @@ def plot_loss_landscape(
     color_labels: list=None,
     cmap: str ='tab10',
 ):
-    fig, ax = plt.subplots(figsize=(6, 5))
+    fig, ax = plt.subplots(figsize=(8, 5))
     contour = ax.contourf(
         xmesh,
         ymesh,
@@ -441,12 +443,12 @@ def plot_loss_landscape(
             y_margin = 0.1 * (max(ycoords) - min(ycoords))
             ax.set_ylim(min(ycoords) - y_margin, max(ycoords) + y_margin)
 
-    ax.legend()
+    ax.legend(bbox_to_anchor=(1.30, 1), loc='upper left')
     plt.tight_layout()
     plt.show()
 
 
-def visualize_landscape(
+def visualize_hessian_eigvec_landscape(
     model_dict,
     conf,
     t_save_windows,
@@ -508,12 +510,13 @@ def visualize_landscape(
             which=which,
             num_points=num_points
         )
+
         plot_loss_landscape(
             xmesh_hess,
             ymesh_hess,
             losses_hess,
             mode="hessian",
-            title=f"Loss Landscape (Hessian Directions) - CL Stage {cl_stage}",
+            title=f"Loss Landscape (Hessian Directions) - CL Stage {cl_stage}"
         )
 
         if plot_pairs:
@@ -537,9 +540,6 @@ def visualize_landscape(
                 ycoords=df_proj["y"].tolist(),
                 title=f"Loss Landscape (Model Checkpoints) - CL Stage {cl_stage}"
             )
-
-    # last_valid_index = 1
-    # final_model = model_dict[max(model_dict)][sorted(model_dict[max(model_dict)])[-1]]
 
     # Sort by training epoch and get final model
     model_dict_flattened = {}
@@ -780,3 +780,509 @@ def plot_convexity_fractions(
     ax.grid(True, axis='y', linestyle='--', alpha=0.6)
     plt.tight_layout()
     plt.show()
+
+
+def plot_lotka_volterra_dynamic_param_trajectory(
+    model_dict: dict,
+    ground_truth_dynamic_params: Array,
+    rescaling_args: dict,
+    title: str = "LV dynamic parameter trajectory",
+):
+    # Initialise variables to track dynamic parameters across curriculum stages and epochs
+    records = []
+    step = 0
+
+    # Order: sort by curriculum stage first, then epoch
+    for cl_stage in sorted(model_dict):
+        epoch_dict = model_dict[cl_stage]
+        for epoch in sorted(epoch_dict):
+            model = epoch_dict[epoch]
+            # Extract dynamic parameters, process them to linear scale and rescale if using timepoint normalisation
+            dyn = process_mechanistic_params(
+                model.func.dynamic_parameters, model.func.options
+            ) / rescaling_args["time_rescaling"]
+            records.append(
+                {
+                    "step": step,
+                    "cl_stage": cl_stage,
+                    "epoch": epoch,
+                    "alpha": dyn[0],
+                    "delta": dyn[1],
+                }
+            )
+            step += 1
+
+    # Create DataFrame
+    df = pd.DataFrame.from_records(records)
+
+    # Plot: one subplot per dynamic parameter, coloured by curriculum stage
+    cl_stages = sorted(df["cl_stage"].unique())
+    cmap = cm.get_cmap("tab10", len(cl_stages))
+    stage_to_color = {stage: cmap(i) for i, stage in enumerate(cl_stages)}
+
+    fig, axes = plt.subplots(
+        2, 1, figsize=(8, 5), sharex=True
+    )
+
+    for i, pname in enumerate(["alpha", "delta"]):
+        ax = axes[i]
+
+        # Plot per curriculum stage
+        for stage in cl_stages:
+            ax.plot(
+                df[df["cl_stage"] == stage]["step"],
+                df[df["cl_stage"] == stage][pname],
+                "-o",
+                markersize=3,
+                label=f"CL stage {stage}" if i == 0 else None,
+                color=stage_to_color[stage],
+                alpha=0.8,
+            )
+
+        # Ground-truth horizontal line
+        ax.axhline(
+            float(ground_truth_dynamic_params[i]),
+            linestyle="--",
+            linewidth=1.5,
+            color="black",
+            label="Ground truth" if i == 0 else None,
+        )
+
+        # Mark starting and final points
+        ax.plot(
+            df.iloc[0]["step"],
+            df.iloc[0][pname],
+            marker="s",
+            markersize=6,
+            color="red",
+            label="Initial value" if i == 0 else None,
+        )
+        ax.plot(
+            df.iloc[-1]["step"],
+            df.iloc[-1][pname],
+            marker="*",
+            markersize=8,
+            color="gold",
+            label="Final value" if i == 0 else None,
+        )
+
+        ax.set_ylabel(f"{pname}")
+        ax.grid(True, linestyle="--", alpha=0.4)
+
+    axes[-1].set_xlabel("Training step (curriculum stage & epoch order)")
+    fig.suptitle(title, fontsize=14)
+
+    # Build shared legend from the first axis
+    handles, labels = axes[0].get_legend_handles_labels()
+    if handles:
+        fig.legend(
+            handles,
+            labels,
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.02),
+            ncol=min(len(labels), 4),
+        )
+
+    plt.tight_layout()
+    plt.show()
+
+
+def evaluate_lv_loss_on_param_grid(
+    base_model: UDEProblem,
+    loss_fn: Callable,
+    x_vals: np.ndarray,
+    y_vals: np.ndarray,
+    conf,
+    data: np.ndarray,
+    t_save,
+    masks,
+    last_valid_index: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+        Helper to evaluate the loss on a 2D grid in Lotka–Volterra dynamic parameter space (alpha, delta).
+
+    Parameters
+    ----------
+    base_model :
+        Model whose non-dynamic parameters (MLP weights, initial values of shooting windows) are held fixed.
+        Only dynamic parameters (base_model.func.dynamic_parameters) are varied over the grid.
+    loss_fn, conf, data, t_save, masks, last_valid_index:
+        Loss function callable and arguments necessary for loss computation.
+    x_vals, y_vals :
+        1D arrays of values to use for alpha (x) and delta (y), used to build loss surface mesh.
+
+    Returns
+    -------
+    xmesh, ymesh, losses :
+        2D meshes for alpha/delta and the corresponding loss values.
+    """
+
+    xmesh, ymesh = np.meshgrid(x_vals, y_vals)
+    losses = np.zeros_like(xmesh, dtype=float)
+
+    # Build loss surface
+    for i in range(xmesh.shape[0]):
+        for j in range(xmesh.shape[1]):
+            # Replace dynamic parameters with current grid point
+            new_model = eqx.tree_at(
+                lambda m: m.func.dynamic_parameters,
+                base_model,
+                jnp.array([xmesh[i, j], ymesh[i, j]]),
+            )
+            params, static = eqx.partition(new_model, eqx.is_array)
+            loss, _ = loss_fn(
+                params,
+                static,
+                t_save,
+                masks,
+                data,
+                last_valid_index,
+                conf.mlp_reg_exp,
+                conf.mlp_reg_strength,
+                conf.output_reg,
+                conf.multiple_shooting_penalty,
+                conf.shooting_mode,
+            )
+            losses[i, j] = loss
+
+    return xmesh, ymesh, losses
+
+
+def _compute_stage_loss_surface(
+    base_model: UDEProblem,
+    stage_key,
+    conf,
+    curriculum_stage_dict,
+    data: np.ndarray,
+    t_save_windows,
+    masks,
+    loss_fn: Callable,
+    x_vals: np.ndarray,
+    y_vals: np.ndarray,
+):
+    """Shared helper to get (xmesh, ymesh, losses) for a given curriculum stage."""
+    if conf.curriculum_learning:
+        last_valid_index = curriculum_stage_dict[stage_key]["last_valid_index"]
+        t_save = curriculum_stage_dict[stage_key]["time"]
+        stage_masks = curriculum_stage_dict[stage_key]["mask"]
+    else:
+        last_valid_index = 1
+        t_save = t_save_windows
+        stage_masks = masks
+
+    xmesh, ymesh, losses = evaluate_lv_loss_on_param_grid(
+        base_model=base_model,
+        loss_fn=loss_fn,
+        conf=conf,
+        data=data,
+        t_save=t_save,
+        masks=stage_masks,
+        last_valid_index=last_valid_index,
+        x_vals=x_vals,
+        y_vals=y_vals,
+    )
+    return xmesh, ymesh, losses
+
+
+def visualize_lv_loss_around_true_dyn_params(
+    model_dict: dict,
+    conf,
+    curriculum_stage_dict,
+    data: np.ndarray,
+    t_save_windows,
+    masks,
+    loss_fn: Callable,
+    ground_truth_dynamic_params: Array,
+    rescaling_args: dict,
+    num_points: int = 21,
+    plot_in_log: bool = False,
+    title: str = "LV Loss Landscape around true dynamic parameters",
+):
+    """
+    Builds a single 2D loss landscape along Lotka-Volterra parameters (alpha, delta)
+    centred at the provided ground truth parameters. Overlays on such loss landscape
+    the training trajectory (i.e. model dynamic parameters) across curriculum stages.
+
+    The grid is chosen so that it is large enough to include all observed
+    (alpha, delta) values across all stages/epochs (in particular the sampled start).
+    Parameter grid can be plotted in log10 space (where they are typically estimated) using the plot_in_log flag.
+
+    Assumes:
+      - conf.dynamical_model == "lotka_volterra"
+      - ground_truth_dynamic_params in linear scale, same order as model.func.dynamic_parameters (alpha, delta).
+    """
+    gt_alpha, gt_delta = ground_truth_dynamic_params
+
+    # Collect all (alpha, delta) positions across all curriculum stages and epochs
+    all_alphas, all_deltas = [], []
+    traj_by_stage = {}
+
+    for cl_stage in sorted(model_dict):
+        epoch_dict = model_dict[cl_stage]
+        sorted_epochs = sorted(epoch_dict)
+
+        alphas_stage, deltas_stage = [], []
+        for epoch in sorted_epochs:
+            model = epoch_dict[epoch]
+            a, d = process_mechanistic_params(
+                model.func.dynamic_parameters, model.func.options
+            ) / rescaling_args["time_rescaling"]
+            alphas_stage.append(a)
+            deltas_stage.append(d)
+            all_alphas.append(a)
+            all_deltas.append(d)
+
+        traj_by_stage[cl_stage] = {
+            "epochs": sorted_epochs,
+            "alphas": alphas_stage,
+            "deltas": deltas_stage,
+        }
+
+    # Convert to log10 scale if specified
+    if plot_in_log:
+        gt_alpha = np.log10(gt_alpha)
+        gt_delta = np.log10(gt_delta)
+        all_alphas = [np.log10(a) for a in all_alphas]
+        all_deltas = [np.log10(d) for d in all_deltas]
+
+    # Define grid centred at ground truth, big enough to contain the entire trajectory
+    # Augment ranges with 20% margin and build grid
+    x_half_range = 1.2 * max(abs(a - gt_alpha) for a in all_alphas)
+    y_half_range = 1.2 * max(abs(d - gt_delta) for d in all_deltas)
+    x_vals = np.linspace(gt_alpha - x_half_range, gt_alpha + x_half_range, num_points)
+    y_vals = np.linspace(gt_delta - y_half_range, gt_delta + y_half_range, num_points)
+
+    # Use the final model of the last curriculum stage as base_model for the loss surface
+    last_stage = sorted(model_dict)[-1]
+    last_epoch = sorted(model_dict[last_stage])[-1]
+    base_model = model_dict[last_stage][last_epoch]
+
+    # Compute single loss surface
+    xmesh, ymesh, losses = _compute_stage_loss_surface(
+        base_model=base_model,
+        stage_key=last_stage,
+        conf=conf,
+        curriculum_stage_dict=curriculum_stage_dict,
+        data=data,
+        t_save_windows=t_save_windows,
+        masks=masks,
+        loss_fn=loss_fn,
+        x_vals=x_vals,
+        y_vals=y_vals,
+    )
+
+    # Plot with trajectory overlaid
+    fig, ax = plt.subplots(figsize=(7, 6))
+    contour = ax.contourf(
+        xmesh,
+        ymesh,
+        np.log(losses),
+        levels=40,
+        cmap="viridis",
+        # norm=LogNorm()
+    )
+    cbar = plt.colorbar(contour, ax=ax)
+    cbar.set_label("Log loss")
+
+    # Colour-code trajectory by curriculum stage
+    stages = sorted(traj_by_stage.keys())
+    cmap = cm.get_cmap("tab10", len(stages))
+    stage_to_color = {stage: cmap(i) for i, stage in enumerate(stages)}
+
+    # Track global start & final for highlighting
+    first_stage = stages[0]
+    first_a = traj_by_stage[first_stage]["alphas"][0]
+    first_d = traj_by_stage[first_stage]["deltas"][0]
+
+    last_stage = stages[-1]
+    last_a = traj_by_stage[last_stage]["alphas"][-1]
+    last_d = traj_by_stage[last_stage]["deltas"][-1]
+
+    if plot_in_log:
+        first_a = np.log10(first_a)
+        first_d = np.log10(first_d)
+        last_a = np.log10(last_a)
+        last_d = np.log10(last_d)
+
+    for stage in stages:
+        if plot_in_log:
+            alphas = [np.log10(a) for a in traj_by_stage[stage]["alphas"]]
+            deltas = [np.log10(d) for d in traj_by_stage[stage]["deltas"]]
+        else:
+            alphas = traj_by_stage[stage]["alphas"]
+            deltas = traj_by_stage[stage]["deltas"]
+        ax.plot(
+            alphas,
+            deltas,
+            "-o",
+            markersize=3,
+            color=stage_to_color[stage],
+            label=f"CL stage {stage}",
+        )
+
+    # Ground truth, global start and global final markers
+    ax.plot(gt_alpha, gt_delta, "x", color="black", markersize=8, label="Ground truth")
+    ax.plot(first_a, first_d, "s", color="red", markersize=7, label="Start")
+    ax.plot(last_a, last_d, "*", color="gold", markersize=9, label="Final")
+
+    ax.set_xlabel("alpha")
+    ax.set_ylabel("delta")
+    ax.set_title(title)
+    ax.legend(loc="best", fontsize=9)
+    ax.grid(True, linestyle="--", alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+
+
+def visualize_lv_loss_on_dyn_params_per_stage(
+    model_dict,
+    conf,
+    curriculum_stage_dict,
+    data,
+    t_save_windows,
+    masks,
+    loss_fn: Callable,
+    ground_truth_dynamic_params: Array,
+    rescaling_args: dict,
+    num_points: int = 21,
+    plot_in_log: bool = False,
+    title_prefix: str = "LV Loss Landscape (stage-centred)",
+):
+    """
+    For each curriculum stage:
+      - Takes the final model of that stage as base model;
+      - Builds a 2D grid in (alpha, delta) centred around the final dynamic
+        parameters for that curriculum stage, with a range wide enough to include also
+        the dynamic parameters for the curriculum stage start and middle epochs;
+      - Plots the loss contour and marks:
+        - start, middle, final dynamic parameters for that stage,
+        - the provided ground-truth parameters.
+    Parameter grid can be plotted in log10 space (where they are typically estimated) using the plot_in_log flag.
+
+    Assumes:
+      - conf.dynamical_model == "lotka_volterra"
+      - ground_truth_dynamic_params in linear scale, same order as model.func.dynamic_parameters (alpha, delta).
+    """
+
+    gt_alpha, gt_delta = ground_truth_dynamic_params
+
+    if plot_in_log:
+        gt_alpha = np.log10(gt_alpha)
+        gt_delta = np.log10(gt_delta)
+
+    stage_points = {}
+    all_x = [gt_alpha]
+    all_y = [gt_delta]
+
+    for cl_stage in sorted(model_dict):
+        epoch_dict = model_dict[cl_stage]
+        sorted_epochs = sorted(epoch_dict)
+        if len(sorted_epochs) < 1:
+            continue
+
+        start_epoch = sorted_epochs[0]
+        mid_epoch = sorted_epochs[len(sorted_epochs) // 2]
+        final_epoch = sorted_epochs[-1]
+
+        start_model = epoch_dict[start_epoch]
+        mid_model = epoch_dict[mid_epoch]
+        final_model = epoch_dict[final_epoch]
+
+        a_start, d_start = process_mechanistic_params(
+            start_model.func.dynamic_parameters, start_model.func.options
+        ) / rescaling_args["time_rescaling"]
+        a_mid, d_mid = process_mechanistic_params(
+            mid_model.func.dynamic_parameters, mid_model.func.options
+        ) / rescaling_args["time_rescaling"]
+        a_final, d_final = process_mechanistic_params(
+            final_model.func.dynamic_parameters, final_model.func.options
+        ) / rescaling_args["time_rescaling"]
+
+        # If needed, convert to log10 scale
+        if plot_in_log:
+            a_start = np.log10(a_start)
+            d_start = np.log10(d_start)
+            a_mid = np.log10(a_mid)
+            d_mid = np.log10(d_mid)
+            a_final = np.log10(a_final)
+            d_final = np.log10(d_final)
+
+        stage_points[cl_stage] = {
+            "a_start": a_start,
+            "d_start": d_start,
+            "a_mid": a_mid,
+            "d_mid": d_mid,
+            "a_final": a_final,
+            "d_final": d_final,
+            "final_epoch": final_epoch,
+        }
+
+        all_x.extend([a_start, a_mid, a_final])
+        all_y.extend([d_start, d_mid, d_final])
+
+    # Build global grid bounds (same for every stage)
+    x_min_raw, x_max_raw = min(all_x), max(all_x)
+    y_min_raw, y_max_raw = min(all_y), max(all_y)
+
+    # Add 20% margin to min-max ranges
+    x_min = x_min_raw - 0.2 * (x_max_raw - x_min_raw)
+    x_max = x_max_raw + 0.2 * (x_max_raw - x_min_raw)
+    y_min = y_min_raw - 0.2 * (y_max_raw - y_min_raw)
+    y_max = y_max_raw + 0.2 * (y_max_raw - y_min_raw)
+
+    x_vals = np.linspace(x_min, x_max, num_points)
+    y_vals = np.linspace(y_min, y_max, num_points)
+
+    # Loop through curriculum stages and plot
+    for cl_stage in sorted(model_dict):
+        if cl_stage not in stage_points:
+            continue
+
+        epoch_dict = model_dict[cl_stage]
+        final_epoch = stage_points[cl_stage]["final_epoch"]
+        final_model = epoch_dict[final_epoch]
+
+        # Compute loss surface for this curriculum stage on the global grid
+        xmesh, ymesh, losses = _compute_stage_loss_surface(
+            base_model=final_model,
+            stage_key=cl_stage,
+            conf=conf,
+            curriculum_stage_dict=curriculum_stage_dict,
+            data=data,
+            t_save_windows=t_save_windows,
+            masks=masks,
+            loss_fn=loss_fn,
+            x_vals=x_vals,
+            y_vals=y_vals,
+        )
+
+        sp = stage_points[cl_stage]
+        a_start, d_start = sp["a_start"], sp["d_start"]
+        a_mid, d_mid = sp["a_mid"], sp["d_mid"]
+        a_final, d_final = sp["a_final"], sp["d_final"]
+
+        # ---- 5) Plot ----
+        fig, ax = plt.subplots(figsize=(6, 5))
+        contour = ax.contourf(
+            xmesh,
+            ymesh,
+            np.log(losses),
+            levels=30,
+            cmap="viridis",
+        )
+        cbar = plt.colorbar(contour, ax=ax)
+        cbar.set_label("Log loss")
+
+        # Mark start, mid, final, ground truth
+        ax.plot(a_start, d_start, "s", color="red", markersize=6, label="Start")
+        ax.plot(a_mid, d_mid, "o", color="orange", markersize=5, label="Mid")
+        ax.plot(a_final, d_final, "*", color="gold", markersize=8, label="Final")
+        ax.plot(gt_alpha, gt_delta, "x", color="black", markersize=7, label="Ground truth")
+
+        ax.set_xlabel("alpha" if not plot_in_log else "log10(alpha)")
+        ax.set_ylabel("delta" if not plot_in_log else "log10(delta)")
+        ax.set_title(f"{title_prefix} – CL stage {cl_stage}")
+        ax.legend(loc="best")
+        ax.grid(True, linestyle="--", alpha=0.3)
+        plt.tight_layout()
+        plt.show()

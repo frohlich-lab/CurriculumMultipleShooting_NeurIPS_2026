@@ -115,7 +115,7 @@ for mode in ["local", "global"]:
 
     plot_convexity_fractions(convexity_results, mode=mode)
 
-visualize_landscape(
+visualize_hessian_eigvec_landscape(
     model_dict,
     conf,
     t_save_windows,
@@ -132,3 +132,37 @@ visualize_landscape(
         max_steps=max_iters_diffrax[conf.dynamical_model]
     ),
 )
+
+# Lotka-Volterra-specific analysis given ground truth dynamic parameters (alpha, delta)
+if conf.dynamical_model == "lotka_volterra":
+    plot_lotka_volterra_dynamic_param_trajectory(
+        model_dict,
+        true_dynamic_parameters[conf.dynamical_model],
+        rescaling_args,
+    )
+
+    visualize_lv_loss_around_true_dyn_params(
+        model_dict,
+        conf,
+        curriculum_stage_dict,
+        train_args.data,
+        t_save_windows,
+        masks,
+        loss_dict["loss_fn"],
+        true_dynamic_parameters[conf.dynamical_model],
+        rescaling_args,
+        plot_in_log=True
+    )
+
+    visualize_lv_loss_on_dyn_params_per_stage(
+        model_dict,
+        conf,
+        curriculum_stage_dict,
+        train_args.data,
+        t_save_windows,
+        masks,
+        loss_dict["loss_fn"],
+        true_dynamic_parameters[conf.dynamical_model],
+        rescaling_args,
+        plot_in_log=True
+    )
