@@ -171,3 +171,5 @@ if conf.dynamical_model == "lotka_volterra":
         rescaling_args,
         plot_in_log=True
     )
+
+print("Analysis complete.")
