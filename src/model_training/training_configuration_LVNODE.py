@@ -305,7 +305,8 @@ TRAINING_SETTINGS = {
 }
 
 MLPEXP_TARGETS = {
-    "RHS",
+    "None",  # for UDEs
+    # "RHS",
     # "interaction"
 }
 
