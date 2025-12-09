@@ -156,8 +156,14 @@ def prune_config(run_config: dict):
     #     run_config["activation_fn_name"] = "rbf"
     #     run_config["max_lrate"] = 1e-1
 
-    if run_config.get("training_setting") in ["UDE", "NODE"]:
+    if run_config.get("training_setting") == "UDE":
         run_config["mlpexp_target"] = "None"
+    elif run_config.get("training_setting") == "NODE":
+        run_config["mlpexp_target"] = "None"
+        # dynamic parameters are going to be frozen to zero, so they need to be evaluated linearly
+        run_config["dynamic_params_scale"] = "linear"
+        # and there is no need to sample widely around guess, since everything will be overridden with zeroes
+        run_config["multistart_deviation"] = 0
     elif run_config.get("training_setting") == "MLP":
         run_config["output_reg"] = 0.0
         run_config["shooting_window_length"] = 0
