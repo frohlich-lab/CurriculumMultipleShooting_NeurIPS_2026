@@ -406,11 +406,11 @@ def train(
             # Optionally save model
             if conf.save_landscape_models and nn_epoch in save_epochs:
                 # Save model at the end of the epoch
-                model_pca_traj_dir = model_save_dir / "pca_traj"
+                model_pca_traj_dir = model_save_dir / "checkpoints"
                 model_pca_traj_dir.mkdir(exist_ok=True, parents=True)
                 epoch_save_path = (
                     model_pca_traj_dir /
-                    (conf.__str__() + f"_PCA_{nn_epoch}_CL{cl_stage}.eqx")
+                    (conf.__str__() + f"_ep{nn_epoch}_CL{cl_stage}.eqx")
                 )
                 print(f"Saving model at epoch {nn_epoch}, CL stage {cl_stage} to {epoch_save_path}")
                 inference_model = model.replace_mlp(

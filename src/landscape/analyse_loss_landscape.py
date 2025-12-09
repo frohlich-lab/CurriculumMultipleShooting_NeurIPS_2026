@@ -84,15 +84,20 @@ else:
     ]
 
 
-model_save_subdir = model_save_dir / conf.dynamical_model
+model_save_subdir = (
+    model_save_dir /
+    conf.dynamical_model /
+    str(conf.experiment_name) /
+    conf.training_setting
+)
 
 # Load models into dict with curriculum stages as outer keys and epochs as inner keys
 model_dict = {
     cl_stage: {
         epoch: UDEProblem.load(
             model_save_subdir /
-            "pca_traj" /
-            (conf.__str__() + f"_PCA_{epoch}_CL{cl_stage}.eqx")
+            "checkpoints" /
+            (conf.__str__() + f"_ep{epoch}_CL{cl_stage}.eqx")
         )
         for epoch in save_epochs[cl_stage]
     }

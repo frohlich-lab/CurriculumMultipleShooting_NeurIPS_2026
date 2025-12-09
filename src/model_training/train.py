@@ -101,7 +101,12 @@ ude_problem = UDEProblem(
 # ================================================================
 #                            TRAIN
 # ================================================================
-model_save_subdir = model_save_dir / conf.dynamical_model
+model_save_subdir = (
+    model_save_dir /
+    conf.dynamical_model /
+    str(conf.experiment_name) /
+    conf.training_setting
+)
 model_save_subdir.mkdir(parents=True, exist_ok=True)
 
 best_model = train(
