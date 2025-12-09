@@ -62,8 +62,8 @@ TRAINING_SCHEMES = {
     # "bfgs",
     # "single",
     # "single_bfgs",
-    # "single_CL",
-    "multiple",
+    "single_CL",
+    # "multiple",
     # "multiple_CL",
 }
 
@@ -82,7 +82,7 @@ MAX_LEARNING_RATES = {
         1e-1,
         # 5e-1,
     ),
-    "central_value": 5e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
+    "central_value": 1e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
 }
 
 LEARNING_RATE_SPANS = {
@@ -221,7 +221,7 @@ NUM_CURRICULUM_STEPS =  {
         16,
         21
     ),
-    "central_value": 13,  # LV: optimal 13 for single_CL
+    "central_value": 21,  # LV NODE optimal value for singleCL
 }
 
 MAX_CURRICULUM_EPOCHS = {
@@ -330,4 +330,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 6000
 N_EPOCHS_BFGS = 10000
 
-EXPERIMENT_NAME = "multiple_pendulum_NODE_ls_09122025"
+EXPERIMENT_NAME = "singleCL_pendulum_NODE_ls_09122025"
