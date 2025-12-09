@@ -156,7 +156,7 @@ def prune_config(run_config: dict):
     #     run_config["activation_fn_name"] = "rbf"
     #     run_config["max_lrate"] = 1e-1
 
-    if run_config.get("training_setting") == "UDE":
+    if run_config.get("training_setting") in ["UDE", "NODE"]:
         run_config["mlpexp_target"] = "None"
     elif run_config.get("training_setting") == "MLP":
         run_config["output_reg"] = 0.0
