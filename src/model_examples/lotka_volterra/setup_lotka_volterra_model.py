@@ -61,12 +61,12 @@ def lv_base_loss_masked(solution: jnp.ndarray, data, state_dimension: int, mask:
 
 
 # UTILS - DATA AND PLOTTING
-def get_training_validation_data():
+def get_training_validation_data(noise_level: int = 5):
     """Load Lotka-Volterra training and validation data from CSV files."""
     return load_training_validation_csv(
         folder="lotka_volterra",
-        train_file="Train_data.csv",
-        validation_file="Validation_data.csv",
-        columns=["u1", "u2"],
-        time_col="t",
+        train_file=f"Train_data_noise{noise_level}.csv",
+        validation_file=f"Validation_data_noise{noise_level}.csv",
+        columns=["prey", "predator"],
+        time_col="time",
     )
