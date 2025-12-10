@@ -418,14 +418,16 @@ def plot_loss_landscape(
                     ax.plot(group["x"], group["y"], '-', color=label_to_color[label], label=f"CL Stage {label}")
                     ax.plot(group["x"], group["y"], 'o', color=label_to_color[label], markersize=4)
             else:
-                ax.plot(xcoords, ycoords, 'bo-', markersize=5, label='Projected Models')
+                ax.plot(xcoords, ycoords, 'bo-', markersize=5)
+                # Override start marker with red square
+                ax.plot(xcoords[0], ycoords[0], 'rs-', markersize=10, label='Start')
         if mode == "PCA":
             xlabel = "PC1"
             ylabel = "PC2"
         elif mode == "hessian":
             xlabel = "Hessian Direction 1"
             ylabel = "Hessian Direction 2"
-            ax.plot(0, 0, 'r*', markersize=10, label="Final Model")
+            ax.plot(0, 0, color="gold", marker='*', markersize=10, label="End")
         else:
             raise ValueError(f"Unknown mode: {mode}")
 
@@ -531,6 +533,7 @@ def visualize_hessian_eigvec_landscape(
                 coord_dfs.append(pd.DataFrame({"x": [dx], "y": [dy], "stage": [epoch]}))
 
             df_proj = pd.concat(coord_dfs, ignore_index=True)
+            df_proj.sort_values(by="stage", inplace=True)
             plot_loss_landscape(
                 xmesh_hess,
                 ymesh_hess,
