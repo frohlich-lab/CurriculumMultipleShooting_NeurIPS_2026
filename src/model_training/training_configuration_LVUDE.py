@@ -226,13 +226,6 @@ NUM_CURRICULUM_STEPS =  {
 }
 
 MAX_CURRICULUM_EPOCHS = {
-    "range": (
-        3000,
-    ),
-    "central_value": 3000,  # LV UDE: 2k; SIR UDE: 10k; LV NODE: 3k
-}
-
-MAX_CURRICULUM_EPOCHS = {
     "range": (2000,),
     "central_value": 2000
 }
