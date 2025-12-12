@@ -114,7 +114,7 @@ for mode in ["local", "global"]:
         masks,
         loss_dict["loss_fn"],
         which="full",
-        num_dirs=1000,
+        num_dirs=100,
         mode=mode
     )
 
@@ -139,7 +139,7 @@ visualize_hessian_eigvec_landscape(
 )
 
 # Lotka-Volterra-specific analysis given ground truth dynamic parameters (alpha, delta)
-if conf.dynamical_model == "lotka_volterra":
+if conf.dynamical_model == "lotka_volterra" and conf.training_setting == "UDE":
     plot_lotka_volterra_dynamic_param_trajectory(
         model_dict,
         true_dynamic_parameters[conf.dynamical_model],
