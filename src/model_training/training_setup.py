@@ -48,7 +48,9 @@ def get_io_size(conf, u0):
 def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple, u0) -> tuple:
     if conf.dynamical_model == 'lotka_volterra':
         (train_data, t_save_train, t_span_train,
-         validation_data, t_save_validation, t_span_validation) = setup_lv.get_training_validation_data()
+         validation_data, t_save_validation, t_span_validation) = setup_lv.get_training_validation_data(
+            noise_level=conf.noise_level if conf.noise_level is not None else 5  # default: 5% noise level
+        )
 
         optx_config = {
             "rtol": 1e-6,  # changed from 1e-3

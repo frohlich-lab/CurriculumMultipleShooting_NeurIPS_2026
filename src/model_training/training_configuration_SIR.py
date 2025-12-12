@@ -328,6 +328,10 @@ SAVE_LANDSCAPE_MODELS = {
     False,
 }
 
+NOISE_LEVELS = {
+    None,
+}
+
 N_STARTS = 100  # number of multi-starts
 
 N_EPOCHS_ADAM = 30000

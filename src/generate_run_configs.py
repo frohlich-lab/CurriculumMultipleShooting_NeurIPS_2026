@@ -24,6 +24,7 @@ from src.model_training.training_configuration import (
     TRAINING_SETTINGS, MLPEXP_TARGETS,
     NORMALISE_DATA, NORMALISE_TIMEPOINTS,
     SAVE_LANDSCAPE_MODELS,
+    NOISE_LEVELS,
     N_STARTS,
     N_EPOCHS_ADAM, N_EPOCHS_BFGS,
 )
@@ -94,6 +95,7 @@ product_hyperparameters = {
     "training_setting": TRAINING_SETTINGS,
     "mlpexp_target": MLPEXP_TARGETS,
     "save_landscape_models": SAVE_LANDSCAPE_MODELS,
+    "noise_level": NOISE_LEVELS,
 }
 
 

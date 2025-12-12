@@ -98,6 +98,7 @@ class Conf(dict):
     mlpexp_target: str = "None"  # options: "RHS", "interaction" (for old MLP experiments), "None" (for NODEs/UDEs)
     save_landscape_models: bool = False
     experiment_name: str = None
+    noise_level: Optional[int] = None
     num_starts: int = 100
 
     def __str__(self) -> str:

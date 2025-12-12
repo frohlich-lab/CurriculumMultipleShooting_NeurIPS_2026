@@ -86,6 +86,7 @@ rule train_udes:
         training_setting = "UDE|NODE|MLP",
         mlpexp_target = "[a-zA-Z_]+",
         save_landscape_models = "True|False",
+        noise_level = "[0-9]+|None",
     retries: 1
     resources:
         mem="8GB",
@@ -127,6 +128,7 @@ rule train_udes:
                 "training_setting",
                 "mlpexp_target",
                 "save_landscape_models",
+                "noise_level",
             )
         ) + ' --experiment_name={EXPERIMENT_NAME} --num_starts={N_STARTS}'
 
