@@ -1,20 +1,21 @@
 DYNAMICAL_MODEL = {
-    "pendulum",
+    # "sirKorea",
+    "sirUK",
 }
 
 # MLP
 MLP_WIDTHS = {
     "range": (
-        50,  # Homotopy paper
+        10,
     ),
-    "central_value": 50,
+    "central_value": 10,
 }
 
 MLP_DEPTHS = {
     "range": (
-        2,
+        1,
     ),
-    "central_value": 2,  # Homotopy paper
+    "central_value": 1,  # from original SIR paper
 }
 
 INIT_SCALES = {
@@ -60,9 +61,9 @@ HIDDEN_DROPOUT_RATES = {
 
 TRAINING_SCHEMES = {
     # "bfgs",
-    "single",
+    # "single",
     # "single_bfgs",
-    # "single_CL",
+    "single_CL",
     # "multiple",
     # "multiple_CL",
 }
@@ -82,15 +83,17 @@ MAX_LEARNING_RATES = {
         1e-1,
         # 5e-1,
     ),
-    "central_value": 1e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
+    "central_value": 5e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
 }
 
 LEARNING_RATE_SPANS = {
     1e0,  # initial learning rate = max learning rate
 }
 
+# TODO check whether this parameter can actually be passed - probably needs to be added to scan_attributes and Snakefile
 LEARNING_RATE_DECAYS = {
     0.9**0,  # 1.0  -> no decay
+    # 2.0,  # enables decay for SIR from start to max_curriculum_epochs or overall N_EPOCHS_ADAM
 }
 
 WARMUP_FCTS = {
@@ -174,13 +177,13 @@ OUTPUT_REG = {
 # Shooting parameters (shooting mode is decided by TRAINING_SCHEMES)
 SHOOTING_WINDOW_LENGTHS =  {
     "range": (
-        # 4,  # 21 windows
+        4,  # 21 windows
         5,  # 16 windows
-        # 6,  # 13 windows
-        # 8,  # 9 windows
-        # 14,  # 5 windows
-        # 21,  # third data length
-        # 30  # half data length approximately
+        6,  # 13 windows
+        8,  # 9 windows
+        14,  # 5 windows
+        21,  # third data length
+        30  # half data length approximately
     ),
     "central_value": 5,  # LV: optimal 5 for both multiple and multiple_CL
 }
@@ -194,15 +197,15 @@ SHOOTING_IV_INITS = {
 MULTIPLE_SHOOTING_PENALTIES =  {
     "range": (
         0,
-        # 1e-3,  # note: 2e-3 used to work decently
-        # 1e-2,
-        # 1e-1,
-        # 1e0,
-        # 1e1,
-        # 1e2,
-        # 1e3
+        1e-3,  # note: 2e-3 used to work decently
+        1e-2,
+        1e-1,
+        1e0,
+        1e1,
+        1e2,
+        1e3
     ),
-    "central_value": 0,  # use 10 for everything apart from multiple_CL (tried 0; now use 1e-2)
+    "central_value": 10,  # use 10 for everything apart from multiple_CL (tried 0; now use 1e-2)
     # LV: optimal 10 for multiple; 1.0 for multiple_CL
 }
 
@@ -214,21 +217,21 @@ MULTIPLE_SHOOTING_PENALTIES =  {
 # Curriculum learning (decided by TRAINING_SCHEMES)
 NUM_CURRICULUM_STEPS =  {
     "range": (
-        # 3,
-        # 5,   # matches Homotopy paper and corresponding multiple+CL
-        # 9,
+        3,
+        5,   # matches Homotopy paper and corresponding multiple+CL
+        9,
         13,
-        # 16,
-        # 21
+        16,
+        21
     ),
     "central_value": 13,  # LV: optimal 13 for single_CL
 }
 
 MAX_CURRICULUM_EPOCHS = {
     "range": (
-        2000,
+        10000,
     ),
-    "central_value": 2000,
+    "central_value": 10000,  # 1/3 of total ADAM epochs
 }
 
 RESTART_OPT_CURRICULUM = {
@@ -237,13 +240,13 @@ RESTART_OPT_CURRICULUM = {
 }
 
 # Dynamic Parameters estimation settings
-# NODEs: set parameters to 0 and use linear scale
+# UDEs: estimate dynamic parameters on log10 scale; NODEs: set to 0 and use linear scale
 DYNAMIC_PARAMS_SCALES = {
-    "linear",  # NODE
+    "log10",  # UDE
 }
 
 MULTISTART_DEVIATIONS = {
-    0, # run only 0 for NODEs
+    2,  # run only 2 for SIR
 }
 
 DYNAMIC_PARAMS_PERTURB_METHODS = {
@@ -265,8 +268,8 @@ NODE_AUGMENTATIONS = {
 
 # Hessian Options
 COMPUTE_HESSIAN_METRICS = {
-    # True,
-    False,
+    True,
+    # False,
 }
 
 # Second optimiser (classical)
@@ -298,8 +301,8 @@ FREEZE_NN_OPTX= {
 
 # Training settings (UDE, NODE, MLP)
 TRAINING_SETTINGS = {
-    # "UDE",
-    "NODE",
+    "UDE",
+    # "NODE",
     # "MLP",
 }
 
@@ -316,8 +319,8 @@ NORMALISE_DATA = {
 }
 
 NORMALISE_TIMEPOINTS = {
-    True,
-    # False,
+    # True,
+    False,
 }
 
 SAVE_LANDSCAPE_MODELS = {
@@ -331,7 +334,7 @@ NOISE_LEVELS = {
 
 N_STARTS = 100  # number of multi-starts
 
-N_EPOCHS_ADAM = 6000
-N_EPOCHS_BFGS = 10000
+N_EPOCHS_ADAM = 30000
+N_EPOCHS_BFGS = 30000  # same as ADAM epochs
 
-EXPERIMENT_NAME = "single_pendulum_NODE_ls_10122025"
+EXPERIMENT_NAME = "single_CL_SIR_UDE_ls_15122025"
