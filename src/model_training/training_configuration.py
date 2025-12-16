@@ -83,7 +83,7 @@ MAX_LEARNING_RATES = {
         1e-1,
         # 5e-1,
     ),
-    "central_value": 5e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
+    "central_value": 5e-3,  # 1e-2 for everything apart from MS, use 5e-2 for MS
 }
 
 LEARNING_RATE_SPANS = {
@@ -229,9 +229,9 @@ NUM_CURRICULUM_STEPS =  {
 
 MAX_CURRICULUM_EPOCHS = {
     "range": (
-        10000,
+        3000,
     ),
-    "central_value": 10000,  # 1/3 of total ADAM epochs
+    "central_value": 3000,  # 1/3 of total ADAM epochs
 }
 
 RESTART_OPT_CURRICULUM = {
@@ -334,7 +334,7 @@ NOISE_LEVELS = {
 
 N_STARTS = 100  # number of multi-starts
 
-N_EPOCHS_ADAM = 30000
-N_EPOCHS_BFGS = 30000  # same as ADAM epochs
+N_EPOCHS_ADAM = 10000
+N_EPOCHS_BFGS = 10000  # same as ADAM epochs
 
-EXPERIMENT_NAME = "single_CL_SIR_UDE_ls_15122025"
+EXPERIMENT_NAME = "single_CL_SIR_UDE_ls_16122025"
