@@ -153,21 +153,21 @@ MLP_REG_STRENGTHS = {
 OUTPUT_REG = {
     "range": (
         0,
-        # 1e-4,
-        # 1e-3,
-        # 1e-2,
+        1e-4,
+        1e-3,
+        1e-2,
         1e-1,
         1e0,
-        1e1,
-        1e2,
+        # 1e1,
+        # 1e2,
         # # 3e2,  # add more intermediate values after rescaling regularisation for time-normalisation runs
-        5e2,
-        1e3,
+        # 5e2,
+        # 1e3,
         # 3e3,
-        5e3,
-        1e4,
+        # 5e3,
+        # 1e4,
         # 3e4,
-        5e4,
+        # 5e4,
     ),
     "central_value": 0,  # use 1e0 for UDEs, 0 for NODEs // starting with 0 for SIR
     # LV: 1e3 for single_BFGS, single_CL & multiple; 5e3 for multiple_CL
@@ -229,9 +229,9 @@ NUM_CURRICULUM_STEPS =  {
 
 MAX_CURRICULUM_EPOCHS = {
     "range": (
-        3000,
+        5000,
     ),
-    "central_value": 3000,  # 1/3 of total ADAM epochs
+    "central_value": 5000,  # 1/3 of total ADAM epochs
 }
 
 RESTART_OPT_CURRICULUM = {
@@ -334,7 +334,7 @@ NOISE_LEVELS = {
 
 N_STARTS = 100  # number of multi-starts
 
-N_EPOCHS_ADAM = 10000
-N_EPOCHS_BFGS = 10000  # same as ADAM epochs
+N_EPOCHS_ADAM = 15000
+N_EPOCHS_BFGS = 15000  # same as ADAM epochs
 
 EXPERIMENT_NAME = "single_bfgs_SIR_UDE_ls_16122025"
