@@ -282,7 +282,7 @@ def normalise(
 
 def format_combos(v):
     if isinstance(v, float):
-        return f"{{{v:.6f}}}"
+        return f"{v:.6f}"
     else:
         return v
     
