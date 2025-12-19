@@ -279,3 +279,15 @@ def normalise(
                 val_array / jnp.max(train_array),
                 jnp.array(u0) / jnp.max(train_array),
                 jnp.max(train_array))
+
+def format_combos(v):
+    if isinstance(v, float):
+        return f"{{{v:.6f}}}"
+    else:
+        return v
+    
+def format_param_combos(param_combos):
+    return [
+        {k: format_combos(v) for k, v in cfg.items()}
+        for cfg in param_combos
+    ]
