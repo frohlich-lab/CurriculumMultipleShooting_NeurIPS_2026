@@ -3,7 +3,7 @@
 from src.generate_run_configs import generate_param_combinations
 from src.common import (
     data_dir,
-    format_param_combos,
+    reformat_filename,
     # AGGREGATION_PLOTS,
     OUTPUT_HDF5,
     # PLOT_TYPES,
@@ -54,7 +54,7 @@ rule train_udes:
         script = 'src/model_training/train.py',
         multistarts=rules.generate_multistarts.output
     output:
-        csv = TRAINING_RESULTS
+        csv = reformat_filename(TRAINING_RESULTS)
     wildcard_constraints:
         dynamical_model =  "[a-zA-Z_]+",
         mlp_layer_width = "[0-9]+",
@@ -138,8 +138,8 @@ rule aggregate_results:
     input:
         script = 'src/aggregate_results.py',
         training = [
-            y
-            for hyperparam_config in format_param_combos(param_combos)
+            reformat_filename(y)
+            for hyperparam_config in param_combos
             for y in expand(
                 rules.train_udes.output.csv,
                 **hyperparam_config,

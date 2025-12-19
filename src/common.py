@@ -1,4 +1,5 @@
 import dataclasses
+import re
 import jax.numpy as jnp
 import jax.nn as jnn
 import jax
@@ -151,6 +152,13 @@ def flatten(v: PyTree):
     return out, lambda x: pullback(x)[0]
 
 
+def reformat_filename(filename):
+    matches = re.search(r'__(\d+(?:\.\d+)?[eE][+-]?\d+)__', filename)
+    if matches:
+        filename = filename.replace(matches.group(1), f"{float(matches.group(1)):.6f}")
+    return filename
+
+
 basedir: Path = Path(__file__).resolve().parent.parent  # Test_UDE, outside src
 plots_dir = basedir / "plots"
 results_dir = basedir / "results"
@@ -164,7 +172,7 @@ default_attributes = [
 ]
 
 defaults = {
-    x: f"{{{x:.6f}}}" if isinstance(x, float) else f"{{{x}}}"
+    x: f"{{{x}}}"
     for x in default_attributes
 }
 
@@ -280,14 +288,3 @@ def normalise(
                 jnp.array(u0) / jnp.max(train_array),
                 jnp.max(train_array))
 
-def format_combos(v):
-    if isinstance(v, float):
-        return f"{v:.6f}"
-    else:
-        return v
-    
-def format_param_combos(param_combos):
-    return [
-        {k: format_combos(v) for k, v in cfg.items()}
-        for cfg in param_combos
-    ]

@@ -19,7 +19,7 @@ from dataclasses import replace
 from diffrax import SaveAt
 from jaxtyping import Array, Float, PyTree
 from pathlib import Path
-from src.common import TRAINING_RESULTS
+from src.common import TRAINING_RESULTS, reformat_filename
 from src.model_training.losses import get_hessian
 from src.model_training.model_util import process_mechanistic_params
 from src.model_training.training_util import (
@@ -724,7 +724,7 @@ def train(
                         "time_rescaling": rescaling_args["time_rescaling"],
                     }]
                 )
-            results_total.to_csv(TRAINING_RESULTS.format_map(conf.__dict__), index=False)
+            results_total.to_csv(reformat_filename(TRAINING_RESULTS.format_map(conf.__dict__)), index=False)
             if WANDB_LOG:
                 wandb.finish()
             return best_model
@@ -826,7 +826,7 @@ def train(
         adam_wall_duration=adam_wall_duration,
         adam_process_duration=adam_process_duration,
     )
-    train_results_filename = TRAINING_RESULTS.format_map(conf.__dict__)
+    train_results_filename = reformat_filename(TRAINING_RESULTS.format_map(conf.__dict__))
     print(f"Saving run results to {train_results_filename}...")
     results_total.to_csv(train_results_filename, index=False)
 
