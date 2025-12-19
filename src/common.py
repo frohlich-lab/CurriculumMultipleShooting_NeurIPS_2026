@@ -164,7 +164,7 @@ default_attributes = [
 ]
 
 defaults = {
-    x: f"{{{x}}}"
+    x: f"{{{x:.6f}}}" if isinstance(x, float) else f"{{{x}}}"
     for x in default_attributes
 }
 
