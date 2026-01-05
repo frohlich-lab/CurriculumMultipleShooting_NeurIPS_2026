@@ -1,6 +1,6 @@
 DYNAMICAL_MODEL = {
-    # "sirKorea",
-    "sirUK",
+    "sirKorea",
+    # "sirUK",
 }
 
 # MLP
@@ -63,9 +63,9 @@ TRAINING_SCHEMES = {
     # "bfgs",
     # "single",
     # "single_bfgs",
-    # "single_CL",
+    "single_CL",
     # "multiple",
-    "multiple_CL",
+    # "multiple_CL",
 }
 
 # Optimiser
@@ -340,4 +340,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 15000
 N_EPOCHS_BFGS = 15000  # same as ADAM epochs
 
-EXPERIMENT_NAME = "multiple_CL_SIR_UDE_ls_19122025"
+EXPERIMENT_NAME = "single_CL_SIR_Korea_UDE_ls_05012026"
