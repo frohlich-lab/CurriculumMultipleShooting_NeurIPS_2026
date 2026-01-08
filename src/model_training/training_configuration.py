@@ -232,9 +232,9 @@ NUM_CURRICULUM_STEPS =  {
 
 MAX_CURRICULUM_EPOCHS = {
     "range": (
-        5000,
+        10000,
     ),
-    "central_value": 5000,  # 1/3 of total ADAM epochs
+    "central_value": 10000,  # 1/3 of total ADAM epochs
 }
 
 RESTART_OPT_CURRICULUM = {
@@ -337,7 +337,7 @@ NOISE_LEVELS = {
 
 N_STARTS = 100  # number of multi-starts
 
-N_EPOCHS_ADAM = 15000
-N_EPOCHS_BFGS = 15000  # same as ADAM epochs
+N_EPOCHS_ADAM = 30000
+N_EPOCHS_BFGS = 30000  # same as ADAM epochs
 
-EXPERIMENT_NAME = "single_bfgs_SIR_Korea_UDE_ls_05012026"
+EXPERIMENT_NAME = "single_bfgs_SIR_Korea_UDE_ls_08012026"
