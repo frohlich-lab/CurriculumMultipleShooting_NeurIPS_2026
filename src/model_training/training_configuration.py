@@ -62,8 +62,8 @@ HIDDEN_DROPOUT_RATES = {
 TRAINING_SCHEMES = {
     # "bfgs",
     # "single",
-    "single_bfgs",
-    # "single_CL",
+    # "single_bfgs",
+    "single_CL",
     # "multiple",
     # "multiple_CL",
 }
@@ -340,4 +340,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 30000
 N_EPOCHS_BFGS = 30000  # same as ADAM epochs
 
-EXPERIMENT_NAME = "single_bfgs_SIR_Korea_UDE_ls_08012026"
+EXPERIMENT_NAME = "single_CL_SIR_Korea_UDE_ls_08012026"
