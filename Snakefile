@@ -42,8 +42,8 @@ rule generate_multistarts:
     output:
         multistart_csvs
     resources:
-        mem="1GB",
-        runtime="30m",
+        mem="2GB",
+        runtime="1h",
         threads=1
     shell:
         "python3 {input.script}"
@@ -90,8 +90,8 @@ rule train_udes:
         noise_level = "[0-9]+|None",
     retries: 1
     resources:
-        mem="8GB",
-        runtime="12h",
+        mem="16GB",
+        runtime="24h",
         nodes=1,
         threads=2
     shell:
