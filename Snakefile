@@ -169,7 +169,7 @@ rule aggregate_results:
     retries: 1
     resources:
         mem="64GB",
-        runtime="3h",
+        runtime="6h",
         nodes=1
     shell:
         "python3 {input.script}"
