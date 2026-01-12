@@ -60,11 +60,11 @@ HIDDEN_DROPOUT_RATES = {
 
 TRAINING_SCHEMES = {
     # "bfgs",
-    # "single",
+    "single",
     # "single_bfgs",
     # "single_CL",
     # "multiple",
-    "multiple_CL",
+    # "multiple_CL",
 }
 
 # Optimiser
@@ -223,7 +223,7 @@ NUM_CURRICULUM_STEPS =  {
         16,
         21
     ),
-    "central_value": 13,  # LV: optimal 13 for single_CL
+    "central_value": 9,  # LV: optimal 13 for single_CL
 }
 
 MAX_CURRICULUM_EPOCHS = {
@@ -336,4 +336,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 10000
 N_EPOCHS_BFGS = 10000
 
-EXPERIMENT_NAME = "multiple_CL_pendulum_NODE_ls_12012026"
+EXPERIMENT_NAME = "single_pendulum_NODE_ls_12012026"
