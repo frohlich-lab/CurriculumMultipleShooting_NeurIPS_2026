@@ -1,21 +1,20 @@
 DYNAMICAL_MODEL = {
-    "sirKorea",
-    # "sirUK",
+    "pendulum",
 }
 
 # MLP
 MLP_WIDTHS = {
     "range": (
-        10,
+        50,  # Homotopy paper
     ),
-    "central_value": 10,
+    "central_value": 50,
 }
 
 MLP_DEPTHS = {
     "range": (
-        1,
+        2,
     ),
-    "central_value": 1,  # from original SIR paper
+    "central_value": 2,  # Homotopy paper
 }
 
 INIT_SCALES = {
@@ -36,8 +35,8 @@ USE_FINAL_BIASES = {
 MLP_ACTIVATIONS = {
     # "tanh",
     # "relu",
-    "swish",
-    # "gelu",
+    # "swish",
+    "gelu",
     # "rbf"
 }
 
@@ -61,39 +60,37 @@ HIDDEN_DROPOUT_RATES = {
 
 TRAINING_SCHEMES = {
     # "bfgs",
-    # "single",
+    "single",
     # "single_bfgs",
-    "single_CL",
+    # "single_CL",
     # "multiple",
     # "multiple_CL",
 }
 
 # Optimiser
 OPTIMISERS = {
-    "adam",
-    # "adamw",
+    # "adam",
+    "adamw",
 }
 
 MAX_LEARNING_RATES = {
     "range": (
-        1e-3,
-        5e-3,
-        1e-2,
-        2e-2,
+        # 1e-3,
+        # 5e-3,
+        # 1e-2,
         5e-2,
+        # 1e-1,
         # 5e-1,
     ),
-    "central_value": 1e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
+    "central_value": 5e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
 }
 
 LEARNING_RATE_SPANS = {
     1e0,  # initial learning rate = max learning rate
 }
 
-# TODO check whether this parameter can actually be passed - probably needs to be added to scan_attributes and Snakefile
 LEARNING_RATE_DECAYS = {
-    2.0,  # 1.0  -> no decay
-    # 2.0,  # enables decay for SIR from start to max_curriculum_epochs or overall N_EPOCHS_ADAM
+    0.9**0,  # 1.0  -> no decay
 }
 
 WARMUP_FCTS = {
@@ -153,11 +150,11 @@ MLP_REG_STRENGTHS = {
 OUTPUT_REG = {
     "range": (
         0,
-        1e-4,
-        1e-3,
-        1e-2,
-        1e-1,
-        1e0,
+        # 1e-4,
+        # 1e-3,
+        # 1e-2,
+        # 1e-1,
+        # 1e0,
         # 1e1,
         # 1e2,
         # # 3e2,  # add more intermediate values after rescaling regularisation for time-normalisation runs
@@ -177,15 +174,17 @@ OUTPUT_REG = {
 # Shooting parameters (shooting mode is decided by TRAINING_SCHEMES)
 SHOOTING_WINDOW_LENGTHS =  {
     "range": (
-        4,  # 21 windows
-        5,  # 16 windows
-        6,  # 13 windows
-        8,  # 9 windows
-        14,  # 5 windows
-        21,  # third data length
-        30  # half data length approximately
+        # 4,  # 21 windows
+        # 5,  # 16 windows
+        # 6,  # 13 windows
+        # 7, 
+        # 8,  # 9 windows
+        # 14,  # 5 windows
+        20
+        # 21,  # third data length
+        # 30  # half data length approximately
     ),
-    "central_value": 5,  # LV: optimal 5 for both multiple and multiple_CL
+    "central_value": 20,  # LV: optimal 5 for both multiple and multiple_CL
 }
 
 SHOOTING_IV_INITS = {
@@ -196,19 +195,17 @@ SHOOTING_IV_INITS = {
 
 MULTIPLE_SHOOTING_PENALTIES =  {
     "range": (
-        0,
-        1e-6,
-        1e-5,
-        1e-4,
-        1e-3,  # note: 2e-3 used to work decently
+        # 0,
+        # 1e-3,  # note: 2e-3 used to work decently
         1e-2,
         # 1e-1,
         # 1e0,
         # 1e1,
         # 1e2,
+        # 5e2,
         # 1e3
     ),
-    "central_value": 1e-6,  # use 10 for everything apart from multiple_CL (tried 0; now use 1e-2)
+    "central_value": 1e-2,  # use 10 for everything apart from multiple_CL (tried 0; now use 1e-2)
     # LV: optimal 10 for multiple; 1.0 for multiple_CL
 }
 
@@ -227,14 +224,14 @@ NUM_CURRICULUM_STEPS =  {
         16,
         21
     ),
-    "central_value": 13,  # LV: optimal 13 for single_CL
+    "central_value": 9,  # LV: optimal 13 for single_CL
 }
 
 MAX_CURRICULUM_EPOCHS = {
     "range": (
-        10000,
+        1300,
     ),
-    "central_value": 10000,  # 1/3 of total ADAM epochs
+    "central_value": 1300,
 }
 
 RESTART_OPT_CURRICULUM = {
@@ -243,13 +240,13 @@ RESTART_OPT_CURRICULUM = {
 }
 
 # Dynamic Parameters estimation settings
-# UDEs: estimate dynamic parameters on log10 scale; NODEs: set to 0 and use linear scale
+# NODEs: set parameters to 0 and use linear scale
 DYNAMIC_PARAMS_SCALES = {
-    "log10",  # UDE
+    "linear",  # NODE
 }
 
 MULTISTART_DEVIATIONS = {
-    2,  # run only 2 for SIR
+    0, # run only 0 for NODEs
 }
 
 DYNAMIC_PARAMS_PERTURB_METHODS = {
@@ -271,8 +268,8 @@ NODE_AUGMENTATIONS = {
 
 # Hessian Options
 COMPUTE_HESSIAN_METRICS = {
-    True,
-    # False,
+    # True,
+    False,
 }
 
 # Second optimiser (classical)
@@ -304,8 +301,8 @@ FREEZE_NN_OPTX= {
 
 # Training settings (UDE, NODE, MLP)
 TRAINING_SETTINGS = {
-    "UDE",
-    # "NODE",
+    # "UDE",
+    "NODE",
     # "MLP",
 }
 
@@ -322,8 +319,8 @@ NORMALISE_DATA = {
 }
 
 NORMALISE_TIMEPOINTS = {
-    # True,
-    False,
+    True,
+    # False,
 }
 
 SAVE_LANDSCAPE_MODELS = {
@@ -337,7 +334,7 @@ NOISE_LEVELS = {
 
 N_STARTS = 100  # number of multi-starts
 
-N_EPOCHS_ADAM = 30000
-N_EPOCHS_BFGS = 30000  # same as ADAM epochs
+N_EPOCHS_ADAM = 4000
+N_EPOCHS_BFGS = 4000
 
-EXPERIMENT_NAME = "single_CL_SIR_Korea_UDE_ls_13012026"
+EXPERIMENT_NAME = "single_pendulum_NODE_lit_run_ls_13012026"
