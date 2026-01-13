@@ -79,11 +79,11 @@ MAX_LEARNING_RATES = {
         1e-3,
         5e-3,
         1e-2,
+        2e-2,
         5e-2,
-        1e-1,
         # 5e-1,
     ),
-    "central_value": 5e-3,  # 1e-2 for everything apart from MS, use 5e-2 for MS
+    "central_value": 1e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
 }
 
 LEARNING_RATE_SPANS = {
@@ -92,7 +92,7 @@ LEARNING_RATE_SPANS = {
 
 # TODO check whether this parameter can actually be passed - probably needs to be added to scan_attributes and Snakefile
 LEARNING_RATE_DECAYS = {
-    5.0,  # 1.0  -> no decay
+    2.0,  # 1.0  -> no decay
     # 2.0,  # enables decay for SIR from start to max_curriculum_epochs or overall N_EPOCHS_ADAM
 }
 
@@ -340,4 +340,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 30000
 N_EPOCHS_BFGS = 30000  # same as ADAM epochs
 
-EXPERIMENT_NAME = "single_CL_SIR_Korea_UDE_ls_12012026"
+EXPERIMENT_NAME = "single_CL_SIR_Korea_UDE_ls_13012026"
