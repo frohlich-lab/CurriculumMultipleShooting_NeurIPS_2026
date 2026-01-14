@@ -69,21 +69,20 @@ TRAINING_SCHEMES = {
 
 # Optimiser
 OPTIMISERS = {
-    # "adam",
-    "adamw",
+    "adam",
+    # "adamw",
 }
 
 MAX_LEARNING_RATES = {
     "range": (
-        # 1e-3,
-        # 5e-3,
-        # 1e-2,
-        # 2e-2,
+        1e-3,
+        5e-3,
+        1e-2,
         5e-2,
-        # 1e-1,
+        1e-1,
         # 5e-1,
     ),
-    "central_value": 5e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
+    "central_value": 1e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
 }
 
 LEARNING_RATE_SPANS = {
@@ -155,11 +154,11 @@ OUTPUT_REG = {
         # 1e-3,
         # 1e-2,
         # 1e-1,
-        # 1e0,
+        1e0,
         # 1e1,
-        # 1e2,
+        1e2,
         # # 3e2,  # add more intermediate values after rescaling regularisation for time-normalisation runs
-        # 5e2,
+        5e2,
         # 1e3,
         # 3e3,
         # 5e3,
@@ -175,17 +174,16 @@ OUTPUT_REG = {
 # Shooting parameters (shooting mode is decided by TRAINING_SCHEMES)
 SHOOTING_WINDOW_LENGTHS =  {
     "range": (
-        # 4,  # 21 windows
-        # 5,  # 16 windows
-        # 6,  # 13 windows
-        # 7, 
+        4,  # 21 windows
+        5,  # 16 windows
+        6,  # 13 windows
+        7, 
         # 8,  # 9 windows
-        # 14,  # 5 windows
-        20,
-        # 21,  # third data length
-        # 30  # half data length approximately
+        14,  # 5 windows
+        21,  # third data length
+        30  # half data length approximately
     ),
-    "central_value": 20,  # LV: optimal 5 for both multiple and multiple_CL
+    "central_value": 8,  # LV: optimal 5 for both multiple and multiple_CL
 }
 
 SHOOTING_IV_INITS = {
@@ -196,17 +194,17 @@ SHOOTING_IV_INITS = {
 
 MULTIPLE_SHOOTING_PENALTIES =  {
     "range": (
-        # 0,
+        0,
         # 1e-3,  # note: 2e-3 used to work decently
-        1e-2,
-        # 1e-1,
-        # 1e0,
-        # 1e1,
-        # 1e2,
-        # 5e2,
-        # 1e3
+        # 1e-2,
+        1e-1,
+        1e0,
+        1e1,
+        1e2,
+        5e2,
+        1e3
     ),
-    "central_value": 1e-2,  # use 10 for everything apart from multiple_CL (tried 0; now use 1e-2)
+    "central_value": 1e0,  # use 10 for everything apart from multiple_CL (tried 0; now use 1e-2)
     # LV: optimal 10 for multiple; 1.0 for multiple_CL
 }
 
@@ -230,9 +228,9 @@ NUM_CURRICULUM_STEPS =  {
 
 MAX_CURRICULUM_EPOCHS = {
     "range": (
-        1300,
+        5000,
     ),
-    "central_value": 1300,
+    "central_value": 5000,
 }
 
 RESTART_OPT_CURRICULUM = {
@@ -335,7 +333,7 @@ NOISE_LEVELS = {
 
 N_STARTS = 100  # number of multi-starts
 
-N_EPOCHS_ADAM = 4000
-N_EPOCHS_BFGS = 4000
+N_EPOCHS_ADAM = 15000
+N_EPOCHS_BFGS = 15000
 
-EXPERIMENT_NAME = "single_pendulum_NODE_lit_run_ls_14012026"
+EXPERIMENT_NAME = "single_pendulum_NODE_ls_14012026"
