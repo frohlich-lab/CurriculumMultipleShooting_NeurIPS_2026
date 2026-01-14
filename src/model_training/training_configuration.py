@@ -338,4 +338,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 4000
 N_EPOCHS_BFGS = 4000
 
-EXPERIMENT_NAME = "multiple_pendulum_NODE_lit_run_ls_13012026"
+EXPERIMENT_NAME = "multiple_pendulum_NODE_lit_run_ls_14012026"
