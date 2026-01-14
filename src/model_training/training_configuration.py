@@ -78,7 +78,7 @@ MAX_LEARNING_RATES = {
         # 1e-3,
         # 5e-3,
         # 1e-2,
-        2e-2
+        2e-2,
         # 5e-2,
         # 1e-1,
         # 5e-1,
@@ -181,7 +181,7 @@ SHOOTING_WINDOW_LENGTHS =  {
         # 7, 
         # 8,  # 9 windows
         # 14,  # 5 windows
-        20
+        20,
         # 21,  # third data length
         # 30  # half data length approximately
     ),
