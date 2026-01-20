@@ -228,9 +228,9 @@ NUM_CURRICULUM_STEPS =  {
 
 MAX_CURRICULUM_EPOCHS = {
     "range": (
-        5000,
+        2500,
     ),
-    "central_value": 5000,
+    "central_value": 2500,
 }
 
 RESTART_OPT_CURRICULUM = {
@@ -333,7 +333,7 @@ NOISE_LEVELS = {
 
 N_STARTS = 100  # number of multi-starts
 
-N_EPOCHS_ADAM = 15000
-N_EPOCHS_BFGS = 15000
+N_EPOCHS_ADAM = 7500
+N_EPOCHS_BFGS = 7500
 
-EXPERIMENT_NAME = "multiple_CL_pendulum_NODE_ls_15012026"
+EXPERIMENT_NAME = "multiple_CL_pendulum_NODE_ls_20012026"
