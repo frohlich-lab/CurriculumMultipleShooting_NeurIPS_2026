@@ -78,6 +78,7 @@ MAX_LEARNING_RATES = {
         1e-3,
         5e-3,
         1e-2,
+        2e-2,
         5e-2,
         1e-1,
         # 5e-1,
@@ -223,14 +224,14 @@ NUM_CURRICULUM_STEPS =  {
         16,
         21
     ),
-    "central_value": 9,  # LV: optimal 13 for single_CL
+    "central_value": 5,  # LV: optimal 13 for single_CL
 }
 
 MAX_CURRICULUM_EPOCHS = {
     "range": (
-        2500,
+        1650,
     ),
-    "central_value": 2500,
+    "central_value": 1650,
 }
 
 RESTART_OPT_CURRICULUM = {
@@ -333,7 +334,7 @@ NOISE_LEVELS = {
 
 N_STARTS = 100  # number of multi-starts
 
-N_EPOCHS_ADAM = 7500
-N_EPOCHS_BFGS = 7500
+N_EPOCHS_ADAM = 5000
+N_EPOCHS_BFGS = 5000
 
-EXPERIMENT_NAME = "single_CL_pendulum_NODE_ls_21012026"
+EXPERIMENT_NAME = "single_CL_pendulum_NODE_ls_22012026"
