@@ -63,8 +63,8 @@ TRAINING_SCHEMES = {
     # "single",
     # "single_bfgs",
     # "single_CL",
-    "multiple",
-    # "multiple_CL",
+    # "multiple",
+    "multiple_CL",
 }
 
 # Optimiser
@@ -78,12 +78,12 @@ MAX_LEARNING_RATES = {
         # 1e-3,
         # 5e-3,
         # 1e-2,
-        # 2e-2,
-        5e-2,
+        2e-2,
+        # 5e-2,
         # 1e-1,
         # 5e-1,
     ),
-    "central_value": 5e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
+    "central_value": 2e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
 }
 
 LEARNING_RATE_SPANS = {
@@ -198,14 +198,14 @@ MULTIPLE_SHOOTING_PENALTIES =  {
         # 0,
         # 1e-3,  # note: 2e-3 used to work decently
         # 1e-2,
-        # 1e-1,
+        1e-1,
         # 1e0,
-        1e1,
+        # 1e1,
         # 1e2,
         # 5e2,
         # 1e3
     ),
-    "central_value": 10,  # use 10 for everything apart from multiple_CL (tried 0; now use 1e-2)
+    "central_value": 1e-1,  # use 10 for everything apart from multiple_CL (tried 0; now use 1e-2)
     # LV: optimal 10 for multiple; 1.0 for multiple_CL
 }
 
@@ -337,4 +337,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 4000
 N_EPOCHS_BFGS = 4000
 
-EXPERIMENT_NAME = "multiple_pendulum_NODE_ls_27012026_final_config"
+EXPERIMENT_NAME = "multiple_CL_pendulum_NODE_ls_27012026_final_config"
