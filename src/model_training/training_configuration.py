@@ -1,6 +1,6 @@
 DYNAMICAL_MODEL = {
-    "sirKorea",
-    # "sirUK",
+    # "sirKorea",
+    "sirUK",
 }
 
 # MLP
@@ -63,8 +63,8 @@ TRAINING_SCHEMES = {
     "bfgs",
     # "single",
     # "single_bfgs",
-    "single_CL",
-    # "multiple",
+    # "single_CL",
+    "multiple",
     # "multiple_CL",
 }
 
@@ -84,7 +84,7 @@ MAX_LEARNING_RATES = {
         # 1e-1,
         # 5e-1,
     ),
-    "central_value": 1e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
+    "central_value": 5e-3,  # 1e-2 for everything apart from MS, use 5e-2 for MS
 }
 
 LEARNING_RATE_SPANS = {
@@ -93,7 +93,7 @@ LEARNING_RATE_SPANS = {
 
 # TODO check whether this parameter can actually be passed - probably needs to be added to scan_attributes and Snakefile
 LEARNING_RATE_DECAYS = {
-    2.0,  # 1.0  -> no decay
+    0.9**0,  # 1.0  -> no decay
     # 2.0,  # enables decay for SIR from start to max_curriculum_epochs or overall N_EPOCHS_ADAM
 }
 
@@ -234,9 +234,9 @@ NUM_CURRICULUM_STEPS =  {
 
 MAX_CURRICULUM_EPOCHS = {
     "range": (
-        10000,
+        5000,
     ),
-    "central_value": 10000,  # 1/3 of total ADAM epochs
+    "central_value": 5000,  # 1/3 of total ADAM epochs
 }
 
 RESTART_OPT_CURRICULUM = {
@@ -343,7 +343,7 @@ TIME_SPAN = {
 
 N_STARTS = 100  # number of multi-starts
 
-N_EPOCHS_ADAM = 30000
-N_EPOCHS_BFGS = 30000  # same as ADAM epochs
+N_EPOCHS_ADAM = 15000
+N_EPOCHS_BFGS = 15000  # same as ADAM epochs
 
 EXPERIMENT_NAME = "bfgs_pendulum_NODE_ls_27042026"
