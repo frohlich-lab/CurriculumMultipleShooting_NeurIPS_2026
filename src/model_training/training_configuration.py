@@ -62,9 +62,9 @@ TRAINING_SCHEMES = {
     # "bfgs",
     # "single",
     # "single_bfgs",
-    # "single_CL",
+    "single_CL",
     # "multiple",
-    "multiple_CL",
+    # "multiple_CL",
 }
 
 # Optimiser
@@ -75,15 +75,15 @@ OPTIMISERS = {
 
 MAX_LEARNING_RATES = {
     "range": (
-        1e-3,
-        5e-3,
+        # 1e-3,
+        # 5e-3,
         1e-2,
-        2e-2,
-        5e-2,
-        1e-1,
+        # 2e-2,
+        # 5e-2,
+        # 1e-1,
         # 5e-1,
     ),
-    "central_value": 2e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
+    "central_value": 1e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
 }
 
 LEARNING_RATE_SPANS = {
@@ -155,11 +155,11 @@ OUTPUT_REG = {
         # 1e-3,
         # 1e-2,
         # 1e-1,
-        1e0,
+        # 1e0,
         # 1e1,
-        1e2,
+        # 1e2,
         # # 3e2,  # add more intermediate values after rescaling regularisation for time-normalisation runs
-        5e2,
+        # 5e2,
         # 1e3,
         # 3e3,
         # 5e3,
@@ -217,14 +217,14 @@ MULTIPLE_SHOOTING_PENALTIES =  {
 # Curriculum learning (decided by TRAINING_SCHEMES)
 NUM_CURRICULUM_STEPS =  {
     "range": (
-        3,
-        5,   # matches Homotopy paper and corresponding multiple+CL
-        9,
-        13,
-        16,
+        # 3,
+        # 5,   # matches Homotopy paper and corresponding multiple+CL
+        # 9,
+        # 13,
+        # 16,
         21
     ),
-    "central_value": 5,  # LV: optimal 13 for single_CL
+    "central_value": 21,  # LV: optimal 13 for single_CL
 }
 
 MAX_CURRICULUM_EPOCHS = {
@@ -268,8 +268,8 @@ NODE_AUGMENTATIONS = {
 
 # Hessian Options
 COMPUTE_HESSIAN_METRICS = {
-    # True,
-    False,
+    True,
+    # False,
 }
 
 # Second optimiser (classical)
@@ -337,4 +337,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 4000
 N_EPOCHS_BFGS = 4000
 
-EXPERIMENT_NAME = "multiple_CL_pendulum_NODE_ls_23012026"
+EXPERIMENT_NAME = "single_CL_pendulum_NODE_ls_27012026_final_config"
