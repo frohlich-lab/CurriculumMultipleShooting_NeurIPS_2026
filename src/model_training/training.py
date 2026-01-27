@@ -8,6 +8,7 @@ import diffrax
 import equinox as eqx
 import jax.numpy as jnp
 import optax
+import jax
 import pandas as pd
 import wandb
 from diffrax import SaveAt
@@ -274,7 +275,6 @@ def train(
     :param max_steps_diffrax:
         Maximum number of iterations for diffrax solve.
     """
-
     # Check training setting in configuration
     if conf.training_setting not in ["UDE", "NODE"]:
         # if not properly set, set to default value of UDE
@@ -373,6 +373,10 @@ def train(
         # Initialise optimiser and optimiser state
         opt, opt_state, params = get_opt_opt_state_params(conf, params, schedule)
 
+        # jax.debug.print(
+        #     "Before training: params = {}", params.initial_values
+        # )
+
         # Training loop
         metric_handler = MetricHandler(patience=5)
         ivs = []
@@ -442,6 +446,10 @@ def train(
                 rescaling_args=rescaling_args,
                 max_steps_diffrax=max_steps_diffrax,
             )
+
+            # jax.debug.print(
+            #     "After step: params = {}", params.initial_values
+            # )
 
             jnp.asarray(loss_train).block_until_ready()
 

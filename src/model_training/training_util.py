@@ -578,7 +578,7 @@ def loss_multiple_shooting(
 ):
     losses = jnp.array([
         loss_fn(
-            solution=sol.ys[i, :, :prob.func.state_dimension],
+            solution=sol[i, :, :prob.func.state_dimension],
             data=data,
             mask=masks[i]
         )
@@ -600,6 +600,11 @@ def get_sol_and_loss_multiple_shooting(
     # Freeze state variables (first window) + network contribution regularisation (everywhere)
     ivs = freeze_ivs(prob.initial_values[:last_valid_index], prob.func.state_dimension)
 
+    # jax.debug.print("get_sol_and_loss_multiple_shooting: prob.initial_values = {}, ivs = {}", 
+    #     prob.initial_values,
+    #     ivs
+    # )
+
     sol = prob.solve_multiple_shooting(
         diffrax.Tsit5(),
         ivs,
@@ -614,12 +619,21 @@ def get_sol_and_loss_multiple_shooting(
         loss_fn=loss_fn,
         last_valid_index=last_valid_index,
     )
+
+    scaled_results = jax.vmap(prob.scale_initial_values)(sol.ys)
+
+    # jax.debug.print(
+    #     "get_sol_and_loss_multiple_shooting: sol.ys = {}, scaled = {}", 
+    #     sol.ys,
+    #     scaled_results,
+    # )
+
     operand = dict(
-        sol=sol,
+        sol=scaled_results,
         data=data,
         masks=masks,
     )
-    return sol, jax.lax.cond(
+    return scaled_results, jax.lax.cond(
         any_max_steps,
         lambda _: jnp.nan,
         lambda op: loss_multiple_shooting_partial(**op),

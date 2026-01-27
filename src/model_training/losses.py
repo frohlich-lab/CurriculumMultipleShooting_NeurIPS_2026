@@ -63,7 +63,7 @@ def compute_loss(
         )
         # Average losses and add discontinuity penalty
         discontinuity_penalty = compute_discontinuity_penalty(
-            solutions=sol.ys[:last_valid_index],
+            solutions=sol[:last_valid_index],
             state_dimension=prob_static.func.state_dimension,
             reg_strength=multiple_shooting_penalty,
             masks=masks[:last_valid_index],
@@ -89,7 +89,7 @@ def compute_loss(
             mlp_output_reg = jnp.mean(jnp.array(
                 [
                     regularise_mlp_contribution(
-                        l2_norm_nn_contrib=sol.ys[i, :, -1],
+                        l2_norm_nn_contrib=sol[i, :, -1],
                         timespan_length=(t_save_windows[i][-1] - t_save_windows[i][0]) * rescaling_args["time_rescaling"],
                         reg_strength=output_reg
                     )

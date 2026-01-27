@@ -63,7 +63,7 @@ TRAINING_SCHEMES = {
     "bfgs",
     # "single",
     # "single_bfgs",
-    # "single_CL",
+    "single_CL",
     # "multiple",
     # "multiple_CL",
 }
@@ -154,11 +154,11 @@ MLP_REG_STRENGTHS = {
 OUTPUT_REG = {
     "range": (
         0,
-        # 1e-4,
-        # 1e-3,
-        # 1e-2,
-        # 1e-1,
-        # 1e0,
+        1e-4,
+        1e-3,
+        1e-2,
+        1e-1,
+        1e0,
         # 1e1,
         # 1e2,
         # # 3e2,  # add more intermediate values after rescaling regularisation for time-normalisation runs
@@ -200,10 +200,10 @@ MULTIPLE_SHOOTING_PENALTIES =  {
     "range": (
         0,
         1e-6,
-        # 1e-5,
-        # 1e-4,
-        # 1e-3,  # note: 2e-3 used to work decently
-        # 1e-2,
+        1e-5,
+        1e-4,
+        1e-3,  # note: 2e-3 used to work decently
+        1e-2,
         # 1e-1,
         # 1e0,
         # 1e1,
@@ -222,21 +222,21 @@ MULTIPLE_SHOOTING_PENALTIES =  {
 # Curriculum learning (decided by TRAINING_SCHEMES)
 NUM_CURRICULUM_STEPS =  {
     "range": (
-        # 3,
-        # 5,   # matches Homotopy paper and corresponding multiple+CL
-        # 9,
+        3,
+        5,   # matches Homotopy paper and corresponding multiple+CL
+        9,
         13,
-        # 16,
-        # 21
+        16,
+        21
     ),
     "central_value": 13,  # LV: optimal 13 for single_CL
 }
 
 MAX_CURRICULUM_EPOCHS = {
     "range": (
-        3000,
+        10000,
     ),
-    "central_value": 3000,  # 1/3 of total ADAM epochs
+    "central_value": 10000,  # 1/3 of total ADAM epochs
 }
 
 RESTART_OPT_CURRICULUM = {
@@ -273,8 +273,8 @@ NODE_AUGMENTATIONS = {
 
 # Hessian Options
 COMPUTE_HESSIAN_METRICS = {
-    # True,
-    False,
+    True,
+    # False,
 }
 
 # Second optimiser (classical)
@@ -343,7 +343,7 @@ TIME_SPAN = {
 
 N_STARTS = 100  # number of multi-starts
 
-N_EPOCHS_ADAM = 10000
-N_EPOCHS_BFGS = 10000  # same as ADAM epochs
+N_EPOCHS_ADAM = 30000
+N_EPOCHS_BFGS = 30000  # same as ADAM epochs
 
 EXPERIMENT_NAME = "bfgs_pendulum_NODE_ls_27042026"
