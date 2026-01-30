@@ -154,11 +154,11 @@ MLP_REG_STRENGTHS = {
 OUTPUT_REG = {
     "range": (
         0,
-        1e-4,
-        1e-3,
-        1e-2,
-        1e-1,
-        1e0,
+        # 1e-4,
+        # 1e-3,
+        # 1e-2,
+        # 1e-1,
+        # 1e0,
         # 1e1,
         # 1e2,
         # # 3e2,  # add more intermediate values after rescaling regularisation for time-normalisation runs
@@ -178,7 +178,7 @@ OUTPUT_REG = {
 # Shooting parameters (shooting mode is decided by TRAINING_SCHEMES)
 SHOOTING_WINDOW_LENGTHS =  {
     "range": (
-        4,  # 21 windows
+        # 4,  # 21 windows
         5,  # 16 windows
         6,  # 13 windows
         7,
@@ -198,12 +198,12 @@ SHOOTING_IV_INITS = {
 
 MULTIPLE_SHOOTING_PENALTIES =  {
     "range": (
-        0,
+        # 0,
         1e-6,
-        1e-5,
-        1e-4,
-        1e-3,  # note: 2e-3 used to work decently
-        1e-2,
+        # 1e-5,
+        # 1e-4,
+        # 1e-3,  # note: 2e-3 used to work decently
+        # 1e-2,
         # 1e-1,
         # 1e0,
         # 1e1,
@@ -222,21 +222,21 @@ MULTIPLE_SHOOTING_PENALTIES =  {
 # Curriculum learning (decided by TRAINING_SCHEMES)
 NUM_CURRICULUM_STEPS =  {
     "range": (
-        3,
-        5,   # matches Homotopy paper and corresponding multiple+CL
-        9,
+        # 3,
+        # 5,   # matches Homotopy paper and corresponding multiple+CL
+        # 9,
         13,
-        16,
-        21
+        # 16,
+        # 21
     ),
     "central_value": 13,  # LV: optimal 13 for single_CL
 }
 
 MAX_CURRICULUM_EPOCHS = {
     "range": (
-        5000,
+        3000,
     ),
-    "central_value": 5000,  # 1/3 of total ADAM epochs
+    "central_value": 3000,  # 1/3 of total ADAM epochs
 }
 
 RESTART_OPT_CURRICULUM = {
@@ -273,8 +273,8 @@ NODE_AUGMENTATIONS = {
 
 # Hessian Options
 COMPUTE_HESSIAN_METRICS = {
-    True,
-    # False,
+    # True,
+    False,
 }
 
 # Second optimiser (classical)
@@ -343,7 +343,7 @@ TIME_SPAN = {
 
 N_STARTS = 100  # number of multi-starts
 
-N_EPOCHS_ADAM = 15000
-N_EPOCHS_BFGS = 15000  # same as ADAM epochs
+N_EPOCHS_ADAM = 10000
+N_EPOCHS_BFGS = 10000  # same as ADAM epochs
 
-EXPERIMENT_NAME = "bfgs_pendulum_NODE_ls_27042026"
+EXPERIMENT_NAME = "multiple_SIR_UK_UDE_ls_30012026_no_scaling"

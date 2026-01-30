@@ -28,7 +28,6 @@ from src.model_training.training_configuration import (
     NOISE_LEVELS,
     NORMALISE_DATA,
     NORMALISE_TIMEPOINTS,
-    # BATCH_SIZES,
     NUM_CURRICULUM_STEPS,
     OPT_MULT,
     OPT_SCHED_TYPES,
@@ -37,6 +36,7 @@ from src.model_training.training_configuration import (
     OUTPUT_REG,
     RESTART_OPT_CURRICULUM,
     SAVE_LANDSCAPE_MODELS,
+    SCALE_INITIAL_VALUES,
     SECOND_OPTS,
     SHOOTING_IV_INITS,
     SHOOTING_WINDOW_LENGTHS,
@@ -44,8 +44,8 @@ from src.model_training.training_configuration import (
     # MLP_FINAL_ACTIVATIONS,
     # USE_DROPOUT, INPUT_DROPOUT_RATES, HIDDEN_DROPOUT_RATES,
     TRAINING_SCHEMES,
-    # FREEZE_MECHANISTIC_PARAMS_ADAM, FREEZE_MECHANISTIC_PARAMS_OPTX, FREEZE_NN_ADAM, FREEZE_NN_OPTX,
     TRAINING_SETTINGS,
+    # FREEZE_MECHANISTIC_PARAMS_ADAM, FREEZE_MECHANISTIC_PARAMS_OPTX, FREEZE_NN_ADAM, FREEZE_NN_OPTX,
     USE_BIASES,
     USE_FINAL_BIASES,
     WARMUP_FCTS,
@@ -117,6 +117,7 @@ product_hyperparameters = {
     "save_landscape_models": SAVE_LANDSCAPE_MODELS,
     "noise_level": NOISE_LEVELS,
     "time_span": TIME_SPAN,
+    "scale_initial_values": SCALE_INITIAL_VALUES,
 }
 
 

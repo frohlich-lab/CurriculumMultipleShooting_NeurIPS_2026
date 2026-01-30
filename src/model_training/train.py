@@ -96,8 +96,10 @@ ude_problem = UDEProblem(
     state_dimension=state_dims[conf.dynamical_model],
     initial_values=initial_values,
     regularise_network=True,  # TODO: consider making this more general / not hardcoded
-    scale_initial_values="log10" # TEMPORARILY HARDCODED (use safe log10 scaling)
+    scale_initial_values=conf.scale_initial_values # TEMPORARILY HARDCODED (use safe log10 scaling)
 )
+
+breakpoint()
 
 # ================================================================
 #                            TRAIN
