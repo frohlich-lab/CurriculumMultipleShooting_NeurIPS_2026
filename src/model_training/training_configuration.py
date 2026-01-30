@@ -222,7 +222,7 @@ NUM_CURRICULUM_STEPS =  {
         # 9,
         # 13,
         # 16,
-        21
+        21,
     ),
     "central_value": 21,  # LV: optimal 13 for single_CL
 }
@@ -337,4 +337,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 4000
 N_EPOCHS_BFGS = 4000
 
-EXPERIMENT_NAME = "single_pendulum_NODE_ls_27012026_final_config"
+EXPERIMENT_NAME = "single_pendulum_NODE_ls_30012026_final_config"
