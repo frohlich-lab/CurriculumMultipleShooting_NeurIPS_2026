@@ -91,7 +91,7 @@ rule train_udes:
         noise_level = "[0-9]+|None",
     retries: 1
     resources:
-        mem="16GB",
+        mem="32GB",
         runtime="20h",
         nodes=1,
         threads=2
