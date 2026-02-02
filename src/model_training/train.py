@@ -99,8 +99,6 @@ ude_problem = UDEProblem(
     scale_initial_values=conf.scale_initial_values # TEMPORARILY HARDCODED (use safe log10 scaling)
 )
 
-breakpoint()
-
 # ================================================================
 #                            TRAIN
 # ================================================================
