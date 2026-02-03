@@ -342,8 +342,8 @@ TIME_SPAN = {
 }
 
 SCALE_INITIAL_VALUES = {
-    # None,
-    "log10",
+    None,
+    # "log10",
 }
 
 N_STARTS = 100  # number of multi-starts
@@ -351,4 +351,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 15000
 N_EPOCHS_BFGS = 15000  # same as ADAM epochs
 
-EXPERIMENT_NAME = "multiple_SIR_UDE_ls_30012026_with_scaling"
+EXPERIMENT_NAME = "multiple_SIR_UDE_ls_03022026_no_scaling"
