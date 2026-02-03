@@ -92,7 +92,7 @@ rule train_udes:
     retries: 1
     resources:
         mem="32GB",
-        runtime="20h",
+        runtime="12h",
         nodes=1,
         threads=2
     shell:

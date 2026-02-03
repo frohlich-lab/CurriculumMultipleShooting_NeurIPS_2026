@@ -200,6 +200,7 @@ def make_step(
         shooting_mode=conf.shooting_mode,
     )
     grads = make_grads_finite(grads)
+    print("after make grads finite")
     # Initialise hessian metrics with NaNs
     hessian_metrics = {
         metric: jnp.nan
@@ -213,6 +214,8 @@ def make_step(
             active_idx=active_idx,
             num_dyn_params=params.func.dynamic_parameters.shape[0] if conf.training_setting == "UDE" else None,
         )
+
+    print("finished computing hessian metrics")
     updates, opt_state = opt.update(grads, opt_state, params)
     params = eqx.apply_updates(params, updates)
     return params, opt_state, loss_value, reg_loss_dict, grads, hessian_metrics
@@ -355,6 +358,8 @@ def train(
         else:
             active_hessian_idx = None
 
+        print("finished building hessian index mask")
+
         # Generate regularly log-spaced epochs for model stat logging - from DMMs
         log_epochs = generate_log_epochs(n_epochs=n_epochs, num_samples=100, min_dist=5)
         # Add first and final epochs
@@ -421,6 +426,8 @@ def train(
                 inference_model.save(epoch_save_path)
 
             wall_t0, process_t0 = time.perf_counter(), time.process_time()
+
+            print("before make_step")
 
             # Take step
             params, opt_state, loss_train, reg_loss_dict, grads, hessian_metrics = make_step(
