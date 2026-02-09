@@ -60,9 +60,9 @@ HIDDEN_DROPOUT_RATES = {
 
 TRAINING_SCHEMES = {
     # "bfgs",
-    "single",
+    # "single",
     # "single_bfgs",
-    # "single_CL",
+    "single_CL",
     # "multiple",
     # "multiple_CL",
 }
@@ -76,14 +76,14 @@ OPTIMISERS = {
 MAX_LEARNING_RATES = {
     "range": (
         # 1e-3,
-        # 5e-3,
+        5e-3,
         # 1e-2,
-        2e-2,
+        # 2e-2,
         # 5e-2,
         # 1e-1,
         # 5e-1,
     ),
-    "central_value": 2e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
+    "central_value": 5e-3,  # 1e-2 for everything apart from MS, use 5e-2 for MS
 }
 
 LEARNING_RATE_SPANS = {
@@ -337,4 +337,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 4000
 N_EPOCHS_BFGS = 4000
 
-EXPERIMENT_NAME = "single_pendulum_NODE_ls_09022026"
+EXPERIMENT_NAME = "single_CL_pendulum_NODE_ls_09022026"
