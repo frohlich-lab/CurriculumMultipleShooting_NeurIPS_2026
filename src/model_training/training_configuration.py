@@ -60,10 +60,10 @@ HIDDEN_DROPOUT_RATES = {
 
 TRAINING_SCHEMES = {
     # "bfgs",
-    # "single",
+    "single",
     # "single_bfgs",
     # "single_CL",
-    "multiple",
+    # "multiple",
     # "multiple_CL",
 }
 
@@ -78,12 +78,12 @@ MAX_LEARNING_RATES = {
         # 1e-3,
         # 5e-3,
         # 1e-2,
-        # 2e-2,
-        5e-2,
+        2e-2,
+        # 5e-2,
         # 1e-1,
         # 5e-1,
     ),
-    "central_value": 5e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
+    "central_value": 2e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
 }
 
 LEARNING_RATE_SPANS = {
@@ -184,7 +184,7 @@ SHOOTING_WINDOW_LENGTHS =  {
         21,  # third data length
         30  # half data length approximately
     ),
-    "central_value": 14,  # LV: optimal 5 for both multiple and multiple_CL
+    "central_value": 8,  # LV: optimal 5 for both multiple and multiple_CL
 }
 
 SHOOTING_IV_INITS = {
@@ -205,7 +205,7 @@ MULTIPLE_SHOOTING_PENALTIES =  {
         5e2,
         1e3
     ),
-    "central_value": 100,  # use 10 for everything apart from multiple_CL (tried 0; now use 1e-2)
+    "central_value": 10,  # use 10 for everything apart from multiple_CL (tried 0; now use 1e-2)
     # LV: optimal 10 for multiple; 1.0 for multiple_CL
 }
 
@@ -337,4 +337,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 4000
 N_EPOCHS_BFGS = 4000
 
-EXPERIMENT_NAME = "multiple_pendulum_NODE_ls_09022026"
+EXPERIMENT_NAME = "single_pendulum_NODE_ls_09022026"
