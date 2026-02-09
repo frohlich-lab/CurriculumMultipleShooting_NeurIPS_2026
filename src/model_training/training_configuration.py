@@ -217,14 +217,14 @@ MULTIPLE_SHOOTING_PENALTIES =  {
 # Curriculum learning (decided by TRAINING_SCHEMES)
 NUM_CURRICULUM_STEPS =  {
     "range": (
-        3,
-        5,   # matches Homotopy paper and corresponding multiple+CL
-        9,
-        13,
+        # 3,
+        # 5,   # matches Homotopy paper and corresponding multiple+CL
+        # 9,
+        # 13,
         16,
-        21
+        # 21
     ),
-    "central_value": 5,  # LV: optimal 13 for single_CL
+    "central_value": 16,  # LV: optimal 13 for single_CL
 }
 
 MAX_CURRICULUM_EPOCHS = {
@@ -337,4 +337,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 4000
 N_EPOCHS_BFGS = 4000
 
-EXPERIMENT_NAME = "single_CL_pendulum_NODE_ls_09022026"
+EXPERIMENT_NAME = "single_CL_pendulum_NODE_ls_09022026_best_config"
