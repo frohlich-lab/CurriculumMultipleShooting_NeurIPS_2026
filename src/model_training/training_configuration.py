@@ -198,14 +198,14 @@ MULTIPLE_SHOOTING_PENALTIES =  {
         # 0,
         # 1e-3,  # note: 2e-3 used to work decently
         # 1e-2,
-        # 1e-1,
-        1e0,
+        1e-1,
+        # 1e0,
         # 1e1,
         # 1e2,
         # 5e2,
         # 1e3
     ),
-    "central_value": 1.0,  # use 10 for everything apart from multiple_CL (tried 0; now use 1e-2)
+    "central_value": 1e-1,  # use 10 for everything apart from multiple_CL (tried 0; now use 1e-2)
     # LV: optimal 10 for multiple; 1.0 for multiple_CL
 }
 
@@ -337,4 +337,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 4000
 N_EPOCHS_BFGS = 4000
 
-EXPERIMENT_NAME = "multiple_CL_pendulum_NODE_ls_10022026_hessians"
+EXPERIMENT_NAME = "multiple_CL_pendulum_NODE_ls_10022026_best_config"
