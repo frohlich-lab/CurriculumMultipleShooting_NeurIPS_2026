@@ -268,8 +268,8 @@ NODE_AUGMENTATIONS = {
 
 # Hessian Options
 COMPUTE_HESSIAN_METRICS = {
-    # True,
-    False,
+    True,
+    # False,
 }
 
 # Second optimiser (classical)
@@ -337,4 +337,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 4000
 N_EPOCHS_BFGS = 4000
 
-EXPERIMENT_NAME = "multiple_CL_pendulum_NODE_ls_09022026_best_config"
+EXPERIMENT_NAME = "multiple_CL_pendulum_NODE_ls_10022026_hessians"
