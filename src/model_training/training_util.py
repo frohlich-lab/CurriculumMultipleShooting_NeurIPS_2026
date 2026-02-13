@@ -633,7 +633,7 @@ def get_sol_and_loss_multiple_shooting(
         data=data,
         masks=masks,
     )
-    return scaled_results, jax.lax.cond(
+    return sol.ys, jax.lax.cond(
         any_max_steps,
         lambda _: jnp.nan,
         lambda op: loss_multiple_shooting_partial(**op),

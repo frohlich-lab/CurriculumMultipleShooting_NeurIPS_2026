@@ -61,9 +61,12 @@ def compute_loss(
             last_valid_index,
             max_steps
         )
+
+        abs_results = jax.vmap(jnp.abs)(sol)
+        scaled_results = jax.vmap(prob.scale_initial_values)(abs_results)
         # Average losses and add discontinuity penalty
         discontinuity_penalty = compute_discontinuity_penalty(
-            solutions=sol[:last_valid_index],
+            solutions=scaled_results[:last_valid_index],
             state_dimension=prob_static.func.state_dimension,
             reg_strength=multiple_shooting_penalty,
             masks=masks[:last_valid_index],
