@@ -274,7 +274,7 @@ NODE_AUGMENTATIONS = {
 # Hessian Options
 COMPUTE_HESSIAN_METRICS = {
     # True,
-    # False,
+    False,
 }
 
 # Second optimiser (classical)
