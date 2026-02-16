@@ -64,8 +64,8 @@ TRAINING_SCHEMES = {
     # "single",
     # "single_bfgs",
     # "single_CL",
-    # "multiple",
-    "multiple_CL",
+    "multiple",
+    # "multiple_CL",
 }
 
 # Optimiser
@@ -274,7 +274,7 @@ NODE_AUGMENTATIONS = {
 # Hessian Options
 COMPUTE_HESSIAN_METRICS = {
     # True,
-    False,
+    # False,
 }
 
 # Second optimiser (classical)
@@ -351,4 +351,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 15000
 N_EPOCHS_BFGS = 15000  # same as ADAM epochs
 
-EXPERIMENT_NAME = "multiple_CL_SIR_UDE_ls_16022026"
+EXPERIMENT_NAME = "multiple_SIR_UDE_ls_16022026"
