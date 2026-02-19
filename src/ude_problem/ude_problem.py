@@ -174,7 +174,6 @@ class UDEProblem(eqx.Module):
                 self.descale_initial_values = descale_fn if descale_fn is not None else (lambda x: x)
 
             # Apply scaling safely (scale_fn expects finite inputs due to clipping)
-            self.initial_values = self.scale_initial_values(self.initial_values)
 
 
     def get_internal_augmented_vars(self):
@@ -287,8 +286,6 @@ class UDEProblem(eqx.Module):
         max_steps: int, optional
             Maximum number of steps for diffrax.diffeqsolve().
         """
-        u0 = self.descale_initial_values(u0)
-
         solution = diffrax.diffeqsolve(
             terms=diffrax.ODETerm(self.func),
             solver=solver,
