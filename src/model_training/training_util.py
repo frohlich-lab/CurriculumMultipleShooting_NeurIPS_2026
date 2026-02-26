@@ -600,10 +600,7 @@ def get_sol_and_loss_multiple_shooting(
     # Freeze state variables (first window) + network contribution regularisation (everywhere)
     ivs = freeze_ivs(prob.initial_values[:last_valid_index], prob.func.state_dimension)
 
-    # jax.debug.print("get_sol_and_loss_multiple_shooting: prob.initial_values = {}, ivs = {}", 
-    #     prob.initial_values,
-    #     ivs
-    # )
+    ivs = prob.descale_initial_values(ivs)
 
     sol = prob.solve_multiple_shooting(
         diffrax.Tsit5(),
@@ -620,8 +617,6 @@ def get_sol_and_loss_multiple_shooting(
         last_valid_index=last_valid_index,
     )
 
-    scaled_results = jax.vmap(prob.scale_initial_values)(sol.ys)
-
     # jax.debug.print(
     #     "get_sol_and_loss_multiple_shooting: sol.ys = {}, scaled = {}", 
     #     sol.ys,
@@ -629,7 +624,7 @@ def get_sol_and_loss_multiple_shooting(
     # )
 
     operand = dict(
-        sol=scaled_results,
+        sol=sol.ys,
         data=data,
         masks=masks,
     )
