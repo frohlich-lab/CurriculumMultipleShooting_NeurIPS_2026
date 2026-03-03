@@ -65,7 +65,7 @@ TRAINING_SCHEMES = {
     # "single_bfgs",
     # "single_CL",
     # "multiple",
-    "multiple_CL",
+    # "multiple_CL",
 }
 
 # Optimiser
@@ -351,4 +351,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 15000
 N_EPOCHS_BFGS = 15000  # same as ADAM epochs
 
-EXPERIMENT_NAME = "multiple_CL_SIR_UDE_ls_03032026"
+EXPERIMENT_NAME = "single_SIR_UDE_ls_03032026"
