@@ -342,8 +342,8 @@ TIME_SPAN = {
 }
 
 SCALE_INITIAL_VALUES = {
-    # None,
-    "log10",
+    None,
+    # "log10",
 }
 
 N_STARTS = 100  # number of multi-starts
