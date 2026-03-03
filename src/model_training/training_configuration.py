@@ -178,7 +178,7 @@ OUTPUT_REG = {
 # Shooting parameters (shooting mode is decided by TRAINING_SCHEMES)
 SHOOTING_WINDOW_LENGTHS =  {
     "range": (
-        4,  # 21 windows
+        # 4,  # 21 windows
         5,  # 16 windows
         6,  # 13 windows
         7,
@@ -199,18 +199,18 @@ SHOOTING_IV_INITS = {
 MULTIPLE_SHOOTING_PENALTIES =  {
     "range": (
         0,
-        1e-6,
-        1e-5,
-        1e-4,
-        1e-3,  # note: 2e-3 used to work decently
-        1e-2,
-        # 1e-1,
-        # 1e0,
-        # 1e1,
-        # 1e2,
-        # 1e3
+        # 1e-6,
+        # 1e-5,
+        # 1e-4,
+        # 1e-3,  # note: 2e-3 used to work decently
+        # 1e-2,
+        1e-1,
+        1e0,
+        1e1,
+        1e2,
+        1e3
     ),
-    "central_value": 1e-6,  # use 10 for everything apart from multiple_CL (tried 0; now use 1e-2)
+    "central_value": 1.0,  # use 10 for everything apart from multiple_CL (tried 0; now use 1e-2)
     # LV: optimal 10 for multiple; 1.0 for multiple_CL
 }
 
@@ -351,4 +351,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 15000
 N_EPOCHS_BFGS = 15000  # same as ADAM epochs
 
-EXPERIMENT_NAME = "multiple_SIR_UDE_ls_26022026"
+EXPERIMENT_NAME = "multiple_SIR_UDE_ls_03032026"
