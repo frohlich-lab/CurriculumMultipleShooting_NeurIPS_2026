@@ -60,12 +60,12 @@ HIDDEN_DROPOUT_RATES = {
 }
 
 TRAINING_SCHEMES = {
-    "bfgs",
+    # "bfgs",
     # "single",
     # "single_bfgs",
     # "single_CL",
     # "multiple",
-    # "multiple_CL",
+    "multiple_CL",
 }
 
 # Optimiser
@@ -84,7 +84,7 @@ MAX_LEARNING_RATES = {
         # 1e-1,
         # 5e-1,
     ),
-    "central_value": 5e-3,  # 1e-2 for everything apart from MS, use 5e-2 for MS
+    "central_value": 1e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
 }
 
 LEARNING_RATE_SPANS = {
@@ -210,7 +210,7 @@ MULTIPLE_SHOOTING_PENALTIES =  {
         1e2,
         1e3
     ),
-    "central_value": 1.0,  # use 10 for everything apart from multiple_CL (tried 0; now use 1e-2)
+    "central_value": 0.1,  # use 10 for everything apart from multiple_CL (tried 0; now use 1e-2)
     # LV: optimal 10 for multiple; 1.0 for multiple_CL
 }
 
@@ -342,8 +342,8 @@ TIME_SPAN = {
 }
 
 SCALE_INITIAL_VALUES = {
-    None,
-    # "log10",
+    # None,
+    "log10",
 }
 
 N_STARTS = 100  # number of multi-starts
@@ -351,4 +351,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 15000
 N_EPOCHS_BFGS = 15000  # same as ADAM epochs
 
-EXPERIMENT_NAME = "single_SIR_UDE_ls_03032026"
+EXPERIMENT_NAME = "multiple_CL_SIR_UDE_ls_04032026"
