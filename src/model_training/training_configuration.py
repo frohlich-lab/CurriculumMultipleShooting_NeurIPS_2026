@@ -64,9 +64,9 @@ TRAINING_SCHEMES = {
     # "bfgs",
     # "single",
     # "single_bfgs",
-    # "single_CL",
+    "single_CL",
     # "multiple",
-    "multiple_CL",
+    # "multiple_CL",
 }
 
 # Optimiser
@@ -226,11 +226,11 @@ NUM_CURRICULUM_STEPS =  {
         # 3,
         # 5,   # matches Homotopy paper and corresponding multiple+CL
         # 9,
-        13,
+        # 13,
         # 16,
-        # 21
+        21,
     ),
-    "central_value": 13,  # LV: optimal 13 for single_CL
+    "central_value": 21,  # LV: optimal 13 for single_CL
 }
 
 MAX_CURRICULUM_EPOCHS = {
@@ -343,8 +343,8 @@ TIME_SPAN = {
 }
 
 SCALE_INITIAL_VALUES = {
-    # None,
-    "log10",
+    None,
+    # "log10",
 }
 
 N_STARTS = 100  # number of multi-starts
@@ -352,4 +352,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 15000
 N_EPOCHS_BFGS = 15000  # same as ADAM epochs
 
-EXPERIMENT_NAME = "multiple_CL_SIR_UDE_ls_06032026"
+EXPERIMENT_NAME = "single_CL_SIR_UDE_ls_06032026"
