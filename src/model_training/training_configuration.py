@@ -155,11 +155,11 @@ MLP_REG_STRENGTHS = {
 OUTPUT_REG = {
     "range": (
         0,
-        1e-4,
-        1e-3,
-        1e-2,
-        1e-1,
-        1e0,
+        # 1e-4,
+        # 1e-3,
+        # 1e-2,
+        # 1e-1,
+        # 1e0,
         # 1e1,
         # 1e2,
         # # 3e2,  # add more intermediate values after rescaling regularisation for time-normalisation runs
@@ -199,17 +199,17 @@ SHOOTING_IV_INITS = {
 
 MULTIPLE_SHOOTING_PENALTIES =  {
     "range": (
-        0,
+        # 0,
         # 1e-6,
         # 1e-5,
         # 1e-4,
         # 1e-3,  # note: 2e-3 used to work decently
         # 1e-2,
         1e-1,
-        1e0,
-        1e1,
-        1e2,
-        1e3
+        # 1e0,
+        # 1e1,
+        # 1e2,
+        # 1e3
     ),
     "central_value": 0.1,  # use 10 for everything apart from multiple_CL (tried 0; now use 1e-2)
     # LV: optimal 10 for multiple; 1.0 for multiple_CL
@@ -223,12 +223,12 @@ MULTIPLE_SHOOTING_PENALTIES =  {
 # Curriculum learning (decided by TRAINING_SCHEMES)
 NUM_CURRICULUM_STEPS =  {
     "range": (
-        3,
-        5,   # matches Homotopy paper and corresponding multiple+CL
-        9,
+        # 3,
+        # 5,   # matches Homotopy paper and corresponding multiple+CL
+        # 9,
         13,
-        16,
-        21
+        # 16,
+        # 21
     ),
     "central_value": 13,  # LV: optimal 13 for single_CL
 }
@@ -274,8 +274,8 @@ NODE_AUGMENTATIONS = {
 
 # Hessian Options
 COMPUTE_HESSIAN_METRICS = {
-    # True,
-    False,
+    True,
+    # False,
 }
 
 # Second optimiser (classical)
@@ -352,4 +352,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 15000
 N_EPOCHS_BFGS = 15000  # same as ADAM epochs
 
-EXPERIMENT_NAME = "multiple_CL_SIR_UDE_ls_05032026"
+EXPERIMENT_NAME = "multiple_CL_SIR_UDE_ls_06032026"
