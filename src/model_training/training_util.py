@@ -1,21 +1,22 @@
+import itertools as itt
+from functools import partial
+from typing import Callable, Dict, List, Optional, Tuple, Union
+
 import diffrax
 import equinox as eqx
 import git
-import itertools as itt
-import jax.numpy as jnp
 import jax
+import jax.numpy as jnp
 import numpy as np
 import optax
 import wandb
 from diffrax import SaveAt
-
-from functools import partial
 from jax.flatten_util import ravel_pytree
 from jaxtyping import Array, PyTree
+
 from src.common import Conf, dynamic_param_labels, hessian_metrics_wandb
 from src.model_training.model_util import set_weight_bias
 from src.ude_problem.ude_problem import UDEProblem
-from typing import Callable, Dict, List, Optional, Tuple, Union
 
 
 def augment_u0(u0):
@@ -616,12 +617,6 @@ def get_sol_and_loss_multiple_shooting(
         loss_fn=loss_fn,
         last_valid_index=last_valid_index,
     )
-
-    # jax.debug.print(
-    #     "get_sol_and_loss_multiple_shooting: sol.ys = {}, scaled = {}", 
-    #     sol.ys,
-    #     scaled_results,
-    # )
 
     operand = dict(
         sol=sol.ys,

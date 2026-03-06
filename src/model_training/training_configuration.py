@@ -63,9 +63,9 @@ HIDDEN_DROPOUT_RATES = {
 TRAINING_SCHEMES = {
     # "bfgs",
     # "single",
-    # "single_bfgs",
+    "single_bfgs",
     # "single_CL",
-    "multiple",
+    # "multiple",
     # "multiple_CL",
 }
 
@@ -78,14 +78,14 @@ OPTIMISERS = {
 MAX_LEARNING_RATES = {
     "range": (
         # 1e-3,
-        # 5e-3,
+        5e-3,
         # 1e-2,
         2e-2,
         # 5e-2,
-        1e-1,
+        # 1e-1,
         # 5e-1,
     ),
-    "central_value": 1e-1,  # 1e-2 for everything apart from MS, use 5e-2 for MS
+    "central_value": 5e-3,  # 1e-2 for everything apart from MS, use 5e-2 for MS
 }
 
 LEARNING_RATE_SPANS = {
@@ -156,10 +156,10 @@ OUTPUT_REG = {
     "range": (
         # 0,
         # 1e-4,
-        # 1e-3,
+        1e-3,
         # 1e-2,
         # 1e-1,
-        1e0,
+        # 1e0,
         # 1e1,
         # 1e2,
         # # 3e2,  # add more intermediate values after rescaling regularisation for time-normalisation runs
@@ -171,7 +171,7 @@ OUTPUT_REG = {
         # 3e4,
         # 5e4,
     ),
-    "central_value": 1e0,  # use 1e0 for UDEs, 0 for NODEs // starting with 0 for SIR
+    "central_value": 1e-3,  # use 1e0 for UDEs, 0 for NODEs // starting with 0 for SIR
     # LV: 1e3 for single_BFGS, single_CL & multiple; 5e3 for multiple_CL
 }
 
@@ -179,7 +179,7 @@ OUTPUT_REG = {
 # Shooting parameters (shooting mode is decided by TRAINING_SCHEMES)
 SHOOTING_WINDOW_LENGTHS =  {
     "range": (
-        # 4,  # 21 windows
+        4,  # 21 windows
         5,  # 16 windows
         6,  # 13 windows
         7,
@@ -188,7 +188,7 @@ SHOOTING_WINDOW_LENGTHS =  {
         # 21,  # third data length
         # 30  # half data length approximately
     ),
-    "central_value": 21,  # LV: optimal 5 for both multiple and multiple_CL
+    "central_value": 5,  # LV: optimal 5 for both multiple and multiple_CL
 }
 
 SHOOTING_IV_INITS = {
@@ -199,7 +199,7 @@ SHOOTING_IV_INITS = {
 
 MULTIPLE_SHOOTING_PENALTIES =  {
     "range": (
-        # 0,
+        0,
         # 1e-6,
         # 1e-5,
         # 1e-4,
@@ -210,9 +210,9 @@ MULTIPLE_SHOOTING_PENALTIES =  {
         # 1e1,
         # 1e2,
         # 1e3,
-        1e4,
+        # 1e4,
     ),
-    "central_value": 1e4,  # use 10 for everything apart from multiple_CL (tried 0; now use 1e-2)
+    "central_value": 0,  # use 10 for everything apart from multiple_CL (tried 0; now use 1e-2)
     # LV: optimal 10 for multiple; 1.0 for multiple_CL
 }
 
@@ -353,4 +353,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 15000
 N_EPOCHS_BFGS = 15000  # same as ADAM epochs
 
-EXPERIMENT_NAME = "multiple_SIR_UDE_ls_06032026"
+EXPERIMENT_NAME = "single_bfgs_SIR_UDE_ls_09042026"
