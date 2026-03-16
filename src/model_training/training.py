@@ -1,50 +1,51 @@
+import time
+import warnings
+from dataclasses import replace
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
 import diffrax
 import equinox as eqx
 import jax.numpy as jnp
 import optax
 import pandas as pd
-import time
 import wandb
-import warnings
+from diffrax import SaveAt
+from jaxtyping import Array, Float, PyTree
 
 from src.common import (
+    TRAINING_RESULTS,
     Conf,
+    TrainValArgs,
     dynamic_param_labels,
     hessian_metrics_wandb,
     plots_dir,
+    reformat_filename,
     results_dir,
-    TrainValArgs
 )
-from dataclasses import replace
-from diffrax import SaveAt
-from jaxtyping import Array, Float, PyTree
-from pathlib import Path
-from src.common import TRAINING_RESULTS, reformat_filename
+from src.model_training.fides_training import train_fides
 from src.model_training.losses import get_hessian
 from src.model_training.model_util import process_mechanistic_params
+from src.model_training.optimistix_training import train_optimistix
 from src.model_training.training_util import (
+    MetricHandler,
+    augment_u0,
+    build_hessian_index_mask,
     check_and_progress_curriculum,
-    get_save_epochs,
-    get_train_val_mse,
     generate_log_epochs,
     get_filter_spec,
+    get_hessian_metrics,
     get_opt_opt_state_params,
+    get_save_epochs,
     get_scheduler,
+    get_train_val_mse,
     initialise_wandb,
     make_grads_finite,
     max_grad_norm,
-    get_hessian_metrics,
-    build_hessian_index_mask,
     update_hessian_index_mask_multiple_curriculum,
-    MetricHandler,
-    augment_u0
 )
-from src.model_training.optimistix_training import train_optimistix
-from src.model_training.fides_training import train_fides
 from src.plotting import log_plots
 from src.ude_problem import UDEProblem
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-
 
 # Some FutureWarning with unhashable DynamicJaxprTracer object in the diffeq solve/call
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -200,7 +201,6 @@ def make_step(
         shooting_mode=conf.shooting_mode,
     )
     grads = make_grads_finite(grads)
-    print("after make grads finite")
     # Initialise hessian metrics with NaNs
     hessian_metrics = {
         metric: jnp.nan
@@ -215,7 +215,6 @@ def make_step(
             num_dyn_params=params.func.dynamic_parameters.shape[0] if conf.training_setting == "UDE" else None,
         )
 
-    print("finished computing hessian metrics")
     updates, opt_state = opt.update(grads, opt_state, params)
     params = eqx.apply_updates(params, updates)
     return params, opt_state, loss_value, reg_loss_dict, grads, hessian_metrics
@@ -358,8 +357,6 @@ def train(
         else:
             active_hessian_idx = None
 
-        print("finished building hessian index mask")
-
         # Generate regularly log-spaced epochs for model stat logging - from DMMs
         log_epochs = generate_log_epochs(n_epochs=n_epochs, num_samples=100, min_dist=5)
         # Add first and final epochs
@@ -426,8 +423,6 @@ def train(
                 inference_model.save(epoch_save_path)
 
             wall_t0, process_t0 = time.perf_counter(), time.process_time()
-
-            print("before make_step")
 
             # Take step
             params, opt_state, loss_train, reg_loss_dict, grads, hessian_metrics = make_step(
