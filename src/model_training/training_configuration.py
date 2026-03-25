@@ -328,10 +328,10 @@ SAVE_LANDSCAPE_MODELS = {
 }
 
 NOISE_LEVELS = {
-    5,
+    # 5,
     10,
-    20,
-    50
+    # 20,
+    # 50
 }
 
 N_STARTS = 100  # number of multi-starts
@@ -339,4 +339,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 6000
 N_EPOCHS_BFGS = 10000
 
-EXPERIMENT_NAME = "single_bfgs_LV_UDE_ls_16032026"
+EXPERIMENT_NAME = "single_bfgs_LV_UDE_ls_25032026"
