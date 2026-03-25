@@ -62,10 +62,10 @@ HIDDEN_DROPOUT_RATES = {
 TRAINING_SCHEMES = {
     # "bfgs",
     # "single",
-    # "single_bfgs",
+    "single_bfgs",
     # "single_CL",
     # "multiple",
-    "multiple_CL",
+    # "multiple_CL",
 }
 
 # Optimiser
@@ -78,12 +78,12 @@ MAX_LEARNING_RATES = {
     "range": (
         # 1e-3,
         # 5e-3,
-        1e-2,
-        # 5e-2,
+        # 1e-2,
+        5e-2,
         # 1e-1,
         # 5e-1,
     ),
-    "central_value": 1e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
+    "central_value": 5e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
 }
 
 LEARNING_RATE_SPANS = {
@@ -150,7 +150,7 @@ MLP_REG_STRENGTHS = {
 
 OUTPUT_REG = {
     "range": (
-        0,
+        # 0,
         # 1e-4,
         # 1e-3,
         # 1e-2,
@@ -160,14 +160,14 @@ OUTPUT_REG = {
         # 1e2,
         # # 3e2,  # add more intermediate values after rescaling regularisation for time-normalisation runs
         # 5e2,
-        # 1e3,
+        1e3,
         # 3e3,
-        5e3,
+        # 5e3,
         # 1e4,
         # 3e4,
         # 5e4,
     ),
-    "central_value": 5e3,  # use 1e0 for UDEs, 0 for NODEs // starting with 0 for SIR
+    "central_value": 1e3,  # use 1e0 for UDEs, 0 for NODEs // starting with 0 for SIR
     # LV: 1e3 for single_BFGS, single_CL & multiple; 5e3 for multiple_CL
 }
 
@@ -194,16 +194,16 @@ SHOOTING_IV_INITS = {
 
 MULTIPLE_SHOOTING_PENALTIES =  {
     "range": (
-        # 0,
+        0,
         # 1e-3,  # note: 2e-3 used to work decently
         # 1e-2,
         # 1e-1,
-        1e0,
+        # 1e0,
         # 1e1,
         # 1e2,
         # 1e3
     ),
-    "central_value": 1e0,  # use 10 for everything apart from multiple_CL (tried 0; now use 1e-2)
+    "central_value": 0,  # use 10 for everything apart from multiple_CL (tried 0; now use 1e-2)
     # LV: optimal 10 for multiple; 1.0 for multiple_CL
 }
 
@@ -339,4 +339,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 6000
 N_EPOCHS_BFGS = 10000
 
-EXPERIMENT_NAME = "multiple_CL_LV_UDE_ls_noise_20_25032026"
+EXPERIMENT_NAME = "single_bfgs_LV_UDE_ls_noise_20_25032026"
