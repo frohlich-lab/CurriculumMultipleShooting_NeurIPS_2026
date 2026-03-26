@@ -331,7 +331,7 @@ NOISE_LEVELS = {
     # 5,
     # 10,
     # 20,
-    50
+    50,
 }
 
 N_STARTS = 100  # number of multi-starts
