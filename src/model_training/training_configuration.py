@@ -62,8 +62,8 @@ HIDDEN_DROPOUT_RATES = {
 TRAINING_SCHEMES = {
     # "bfgs",
     # "single",
-    "single_bfgs",
-    # "single_CL",
+    # "single_bfgs",
+    "single_CL",
     # "multiple",
     # "multiple_CL",
 }
@@ -78,12 +78,12 @@ MAX_LEARNING_RATES = {
     "range": (
         # 1e-3,
         # 5e-3,
-        # 1e-2,
-        5e-2,
+        1e-2,
+        # 5e-2,
         # 1e-1,
         # 5e-1,
     ),
-    "central_value": 5e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
+    "central_value": 1e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
 }
 
 LEARNING_RATE_SPANS = {
@@ -150,7 +150,7 @@ MLP_REG_STRENGTHS = {
 
 OUTPUT_REG = {
     "range": (
-        # 0,
+        0,
         # 1e-4,
         # 1e-3,
         # 1e-2,
@@ -330,8 +330,8 @@ SAVE_LANDSCAPE_MODELS = {
 NOISE_LEVELS = {
     # 5,
     # 10,
-    20,
-    # 50
+    # 20,
+    50,
 }
 
 N_STARTS = 100  # number of multi-starts
@@ -339,4 +339,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 6000
 N_EPOCHS_BFGS = 10000
 
-EXPERIMENT_NAME = "single_bfgs_LV_UDE_ls_noise_20_25032026"
+EXPERIMENT_NAME = "single_CL_LV_UDE_ls_noise_50_26032026"
