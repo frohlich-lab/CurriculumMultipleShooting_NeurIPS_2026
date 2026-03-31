@@ -337,8 +337,8 @@ NOISE_LEVELS = {
 TIME_SPAN = {
     # None,
     # 61,
-    91,
-    # 121,
+    # 91,
+    121,
 }
 
 N_STARTS = 100  # number of multi-starts
