@@ -1,12 +1,13 @@
+from typing import Tuple, Union
+
 import equinox as eqx
 import jax.numpy as jnp
+from jaxtyping import Array
 
-from src.model_training.base_losses import get_mse, get_masked_mse
-from src.model_training.model_util import process_mechanistic_params
 from src.model_examples.base_ude_function import BaseUDEFunction
 from src.model_examples.data_loading import load_training_validation_csv
-from jaxtyping import Array
-from typing import Tuple, Union
+from src.model_training.base_losses import get_masked_mse, get_mse
+from src.model_training.model_util import process_mechanistic_params
 
 
 class LotkaVolterraUDEFunction(BaseUDEFunction):
@@ -61,8 +62,17 @@ def lv_base_loss_masked(solution: jnp.ndarray, data, state_dimension: int, mask:
 
 
 # UTILS - DATA AND PLOTTING
-def get_training_validation_data(noise_level: int = 5):
+def get_training_validation_data(noise_level: int = 5, time_span: int = None):
     """Load Lotka-Volterra training and validation data from CSV files."""
+    if time_span is not None:
+        return load_training_validation_csv(
+            folder="lotka_volterra",
+            train_file=f"Train_data_time{time_span}.csv",
+            validation_file=f"Validation_data_time{time_span}.csv",
+            columns=["prey", "predator"],
+            time_col="time",
+        )
+
     return load_training_validation_csv(
         folder="lotka_volterra",
         train_file=f"Train_data_noise{noise_level}.csv",

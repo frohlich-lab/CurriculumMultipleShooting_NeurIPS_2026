@@ -1,14 +1,13 @@
 import dataclasses
 import re
-import jax.numpy as jnp
-import jax.nn as jnn
-import jax
-import numpy as np
-
 from pathlib import Path
-from jaxtyping import Array, PyTree
 from typing import List, Optional, Union
 
+import jax
+import jax.nn as jnn
+import jax.numpy as jnp
+import numpy as np
+from jaxtyping import Array, PyTree
 
 # TODO @GiacomoFabrini - review these based on experiments!
 unwanted_fields = [
@@ -100,6 +99,7 @@ class Conf(dict):
     save_landscape_models: bool = False
     experiment_name: str = None
     noise_level: Optional[int] = None
+    time_span: Optional[int] = None
     num_starts: int = 100
 
     def __str__(self) -> str:

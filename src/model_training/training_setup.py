@@ -1,35 +1,39 @@
+from functools import partial
+from pathlib import Path
+from typing import Optional, Tuple, Union
+
 import jax.numpy as jnp
 import jax.random as jr
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-
 from diffrax import SaveAt
-from functools import partial
 from jaxtyping import Array
-from pathlib import Path
+
 from src.common import (
-    activation_functions,
     Conf,
+    TrainValArgs,
+    activation_functions,
     default_out_sizes,
+    max_iters_diffrax,
     normalise,
     plots_dir,
     state_dims,
-    TrainValArgs,
     true_dynamic_parameters,
     u0s,
-    max_iters_diffrax,
 )
 from src.model_examples.lotka_volterra import setup_lotka_volterra_model as setup_lv
-from src.model_examples.sir import setup_sir_model as setup_sir
 from src.model_examples.pendulum import setup_pendulum_model as setup_pend
-from src.model_training.model_util import bounded_tanh_transform_params, set_weight_bias
+from src.model_examples.sir import setup_sir_model as setup_sir
 from src.model_training.losses import (
-    compute_validation_loss, compute_loss, compute_loss_grad,
-    compute_val_loss_optx, compute_loss_optx,
+    compute_loss,
+    compute_loss_grad,
+    compute_loss_optx,
+    compute_val_loss_optx,
+    compute_validation_loss,
 )
+from src.model_training.model_util import bounded_tanh_transform_params, set_weight_bias
 from src.ude_problem import build_mlp
-from typing import Optional, Tuple, Union
 
 
 def get_io_size(conf, u0):
@@ -47,10 +51,16 @@ def get_io_size(conf, u0):
 
 def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple, u0) -> tuple:
     if conf.dynamical_model == 'lotka_volterra':
-        (train_data, t_save_train, t_span_train,
-         validation_data, t_save_validation, t_span_validation) = setup_lv.get_training_validation_data(
-            noise_level=conf.noise_level if conf.noise_level is not None else 5  # default: 5% noise level
-        )
+        if conf.time_span is not None:
+            (train_data, t_save_train, t_span_train,
+                validation_data, t_save_validation, t_span_validation) = setup_lv.get_training_validation_data(
+                    time_span=conf.time_span
+            )
+        else:
+            (train_data, t_save_train, t_span_train,
+            validation_data, t_save_validation, t_span_validation) = setup_lv.get_training_validation_data(
+                noise_level=conf.noise_level if conf.noise_level is not None else 5  # default: 5% noise level
+            )
 
         optx_config = {
             "rtol": 1e-6,  # changed from 1e-3
