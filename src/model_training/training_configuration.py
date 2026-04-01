@@ -337,8 +337,8 @@ NOISE_LEVELS = {
 TIME_SPAN = {
     # None,
     # 61,
-    91,
-    # 121,
+    # 91,
+    121,
 }
 
 N_STARTS = 100  # number of multi-starts
@@ -346,4 +346,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 6000
 N_EPOCHS_BFGS = 10000
 
-EXPERIMENT_NAME = "single_CL_LV_UDE_ls_time_91_01042026"
+EXPERIMENT_NAME = "single_CL_LV_UDE_ls_time_121_01042026"
