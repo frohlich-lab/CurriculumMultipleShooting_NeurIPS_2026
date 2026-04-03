@@ -211,6 +211,7 @@ def make_step(
             get_hessian(params, static, args, conf, base_loss_fn, rescaling_args, max_steps_diffrax),
             return_eigs_svs=False,
             active_idx=active_idx,
+            state_dim=static.func.state_dimension,
         )
     updates, opt_state = opt.update(grads, opt_state, params)
     params = eqx.apply_updates(params, updates)

@@ -431,11 +431,11 @@ def update_hessian_index_mask_multiple_curriculum(
     return jnp.asarray(active_idx)
 
 
-
 def get_hessian_metrics(
         hessian: Array,
         return_eigs_svs: bool = False,
-        active_idx: Optional[Array] = None
+        active_idx: Optional[Array] = None,
+        state_dim: Optional[int] = None
 ) -> Union[tuple[dict, Array, Array], dict]:
     if active_idx is not None:
         unfrozen_hessian = hessian[jnp.ix_(active_idx, active_idx)]
@@ -443,6 +443,13 @@ def get_hessian_metrics(
         unfrozen_hessian = hessian
     # Compute metrics on the reduced Hessian
     hessian_trace = jnp.trace(unfrozen_hessian)
+    if state_dim is not None:
+        mechanistic_hessian_trace = jnp.trace(hessian[:state_dim, :state_dim])
+        # name is a bit ambiguous here: includes everything apart from mechanistic parameters (MLP, initial_values, ...)
+        mlp_hessian_trace = jnp.trace(hessian[state_dim:, state_dim:])
+    else:
+        mechanistic_hessian_trace = jnp.nan
+        mlp_hessian_trace = jnp.nan
     hessian_diag = unfrozen_hessian * jnp.eye(unfrozen_hessian.shape[0])
     max_abs_diag = jnp.max(jnp.abs(hessian_diag))
     frob_diag = jnp.linalg.norm(hessian_diag)
@@ -459,6 +466,8 @@ def get_hessian_metrics(
     eigenvalues, _ = jnp.linalg.eigh(unfrozen_hessian)
     hessian_metrics = {
         "hessian_trace": hessian_trace,
+        "mechanistic_hessian_trace": mechanistic_hessian_trace,
+        "mlp_hessian_trace": mlp_hessian_trace,
         "max_abs_diagonal_element": max_abs_diag,
         "max_abs_off_diagonal_element": max_abs_off_diag,
         "frobenius_norm_diagonal": frob_diag,
