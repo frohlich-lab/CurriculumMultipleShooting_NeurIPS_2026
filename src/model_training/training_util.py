@@ -435,7 +435,7 @@ def get_hessian_metrics(
         hessian: Array,
         return_eigs_svs: bool = False,
         active_idx: Optional[Array] = None,
-        state_dim: Optional[int] = None
+        num_dyn_params: Optional[int] = None
 ) -> Union[tuple[dict, Array, Array], dict]:
     if active_idx is not None:
         unfrozen_hessian = hessian[jnp.ix_(active_idx, active_idx)]
@@ -443,10 +443,11 @@ def get_hessian_metrics(
         unfrozen_hessian = hessian
     # Compute metrics on the reduced Hessian
     hessian_trace = jnp.trace(unfrozen_hessian)
-    if state_dim is not None:
-        mechanistic_hessian_trace = jnp.trace(hessian[:state_dim, :state_dim])
-        # name is a bit ambiguous here: includes everything apart from mechanistic parameters (MLP, initial_values, ...)
-        mlp_hessian_trace = jnp.trace(hessian[state_dim:, state_dim:])
+    if num_dyn_params is not None:
+        # Dynamic (mechanistic) parameters are always first in the flattened parameter vector
+        mechanistic_hessian_trace = jnp.trace(hessian[:num_dyn_params, :num_dyn_params])
+        # Name is a bit ambiguous here: includes everything apart from mechanistic parameters (MLP, initial_values, ...)
+        mlp_hessian_trace = jnp.trace(hessian[num_dyn_params:, num_dyn_params:])
     else:
         mechanistic_hessian_trace = jnp.nan
         mlp_hessian_trace = jnp.nan
