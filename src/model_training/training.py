@@ -211,6 +211,7 @@ def make_step(
             get_hessian(params, static, args, conf, base_loss_fn, rescaling_args, max_steps_diffrax),
             return_eigs_svs=False,
             active_idx=active_idx,
+            num_dyn_params=params.func.dynamic_parameters.shape[0] if conf.training_setting == "UDE" else None,
         )
     updates, opt_state = opt.update(grads, opt_state, params)
     params = eqx.apply_updates(params, updates)
