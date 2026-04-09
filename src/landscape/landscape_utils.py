@@ -1,3 +1,6 @@
+from pathlib import Path
+from typing import Callable, Optional, Union
+
 import equinox as eqx
 import jax
 import jax.numpy as jnp
@@ -6,16 +9,18 @@ import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-
 from jaxtyping import Array
+
 # from matplotlib.colors import LogNorm
 from scipy.stats import qmc
 from sklearn.decomposition import PCA
-from src.model_training.model_util import process_mechanistic_params
-from src.model_training.training_util import update_hessian_index_mask_multiple_curriculum
-from src.ude_problem import UDEProblem, CustomDropoutMLP
 from tqdm import tqdm
-from typing import Callable, Optional, Union
+
+from src.model_training.model_util import process_mechanistic_params
+from src.model_training.training_util import (
+    update_hessian_index_mask_multiple_curriculum,
+)
+from src.ude_problem import CustomDropoutMLP, UDEProblem
 
 
 def flatten_tensor_list(tensor_list: list[Array]) -> tuple[Array, list[tuple]]:
@@ -376,6 +381,16 @@ def evaluate_loss_on_hessian_grid(
     return losses, xmesh, ymesh
 
 
+def _save_or_show(fig, save_dir: Optional[Path], filename: str):
+    """Save figure to save_dir/filename if save_dir is given, otherwise show."""
+    if save_dir is not None:
+        save_dir.mkdir(parents=True, exist_ok=True)
+        fig.savefig(save_dir / filename, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+    else:
+        plt.show()
+
+
 def plot_loss_landscape(
     xmesh,
     ymesh,
@@ -389,6 +404,8 @@ def plot_loss_landscape(
     title="Loss Landscape",
     color_labels: list=None,
     cmap: str ='tab10',
+    save_dir: Optional[Path] = None,
+    filename: Optional[str] = None,
 ):
     fig, ax = plt.subplots(figsize=(8, 5))
     contour = ax.contourf(
@@ -447,7 +464,7 @@ def plot_loss_landscape(
 
     ax.legend(bbox_to_anchor=(1.30, 1), loc='upper left')
     plt.tight_layout()
-    plt.show()
+    _save_or_show(fig, save_dir, filename or f"{title.replace(' ', '_')}.png")
 
 
 def visualize_hessian_eigvec_landscape(
@@ -462,7 +479,8 @@ def visualize_hessian_eigvec_landscape(
     hessian_fn,
     which="full",
     num_points=20,
-    plot_pairs: bool = True
+    plot_pairs: bool = True,
+    save_dir: Optional[Path] = None,
 ):
     # Initialise variables
     xmesh_hess, ymesh_hess, losses_hess, final_model = None, None, None, None
@@ -518,7 +536,8 @@ def visualize_hessian_eigvec_landscape(
             ymesh_hess,
             losses_hess,
             mode="hessian",
-            title=f"Loss Landscape (Hessian Directions) - CL Stage {cl_stage}"
+            title=f"Loss Landscape (Hessian Directions) - CL Stage {cl_stage}",
+            save_dir=save_dir,
         )
 
         if plot_pairs:
@@ -541,7 +560,8 @@ def visualize_hessian_eigvec_landscape(
                 mode="hessian",
                 xcoords=df_proj["x"].tolist(),
                 ycoords=df_proj["y"].tolist(),
-                title=f"Loss Landscape (Model Checkpoints) - CL Stage {cl_stage}"
+                title=f"Loss Landscape (Model Checkpoints) - CL Stage {cl_stage}",
+                save_dir=save_dir,
             )
 
     # Sort by training epoch and get final model
@@ -585,7 +605,8 @@ def visualize_hessian_eigvec_landscape(
         xcoords=df_coords["x"].tolist(),
         ycoords=df_coords["y"].tolist(),
         color_labels=df_coords["cl_stage"].tolist(),
-        title="Loss Landscape (PCA Directions by CL Stage)"
+        title="Loss Landscape (PCA Directions by CL Stage)",
+        save_dir=save_dir,
     )
 
     # === Project all checkpoints onto final Hessian landscape ===
@@ -616,7 +637,8 @@ def visualize_hessian_eigvec_landscape(
         xcoords=df_proj["x"].tolist(),
         ycoords=df_proj["y"].tolist(),
         color_labels=df_proj["cl_stage"].tolist(),
-        title="Loss Landscape (Model Checkpoints by CL Stage)"
+        title="Loss Landscape (Model Checkpoints by CL Stage)",
+        save_dir=save_dir,
     )
 
 
@@ -759,7 +781,8 @@ def test_curriculum_stage_convexity(
 def plot_convexity_fractions(
     results_dict,
     title="Convexity Check per Curriculum Stage",
-    mode: str = "local"
+    mode: str = "local",
+    save_dir: Optional[Path] = None,
 ):
     cl_stages = list(results_dict.keys())
     fractions = list(results_dict.values())
@@ -782,7 +805,7 @@ def plot_convexity_fractions(
     ax.set_title(title + f" - {mode}")
     ax.grid(True, axis='y', linestyle='--', alpha=0.6)
     plt.tight_layout()
-    plt.show()
+    _save_or_show(fig, save_dir, f"convexity_fractions_{mode}.png")
 
 
 def plot_lotka_volterra_dynamic_param_trajectory(
@@ -790,6 +813,7 @@ def plot_lotka_volterra_dynamic_param_trajectory(
     ground_truth_dynamic_params: Array,
     rescaling_args: dict,
     title: str = "LV dynamic parameter trajectory",
+    save_dir: Optional[Path] = None,
 ):
     # Initialise variables to track dynamic parameters across curriculum stages and epochs
     records = []
@@ -887,7 +911,7 @@ def plot_lotka_volterra_dynamic_param_trajectory(
         )
 
     plt.tight_layout()
-    plt.show()
+    _save_or_show(fig, save_dir, "lv_dynamic_param_trajectory.png")
 
 
 def evaluate_lv_loss_on_param_grid(
@@ -1000,6 +1024,7 @@ def visualize_lv_loss_around_true_dyn_params(
     num_points: int = 21,
     plot_in_log: bool = False,
     title: str = "LV Loss Landscape around true dynamic parameters",
+    save_dir: Optional[Path] = None,
 ):
     """
     Builds a single 2D loss landscape along Lotka-Volterra parameters (alpha, delta)
@@ -1134,7 +1159,7 @@ def visualize_lv_loss_around_true_dyn_params(
     ax.legend(loc="best", fontsize=9)
     ax.grid(True, linestyle="--", alpha=0.3)
     plt.tight_layout()
-    plt.show()
+    _save_or_show(fig, save_dir, "lv_loss_around_true_dyn_params.png")
 
 
 def visualize_lv_loss_on_dyn_params_per_stage(
@@ -1150,6 +1175,7 @@ def visualize_lv_loss_on_dyn_params_per_stage(
     num_points: int = 21,
     plot_in_log: bool = False,
     title_prefix: str = "LV Loss Landscape (stage-centred)",
+    save_dir: Optional[Path] = None,
 ):
     """
     For each curriculum stage:
@@ -1288,4 +1314,4 @@ def visualize_lv_loss_on_dyn_params_per_stage(
         ax.legend(loc="best")
         ax.grid(True, linestyle="--", alpha=0.3)
         plt.tight_layout()
-        plt.show()
+        _save_or_show(fig, save_dir, f"lv_loss_dyn_params_stage_{cl_stage}.png")
