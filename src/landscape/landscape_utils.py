@@ -464,7 +464,7 @@ def plot_loss_landscape(
 
     ax.legend(bbox_to_anchor=(1.30, 1), loc='upper left')
     plt.tight_layout()
-    _save_or_show(fig, save_dir, filename or f"{title.replace(' ', '_')}.png")
+    _save_or_show(fig, save_dir, filename or f"{title.replace(' ', '_')}.svg")
 
 
 def visualize_hessian_eigvec_landscape(
@@ -805,7 +805,7 @@ def plot_convexity_fractions(
     ax.set_title(title + f" - {mode}")
     ax.grid(True, axis='y', linestyle='--', alpha=0.6)
     plt.tight_layout()
-    _save_or_show(fig, save_dir, f"convexity_fractions_{mode}.png")
+    _save_or_show(fig, save_dir, f"convexity_fractions_{mode}.svg")
 
 
 def plot_lotka_volterra_dynamic_param_trajectory(
@@ -911,7 +911,7 @@ def plot_lotka_volterra_dynamic_param_trajectory(
         )
 
     plt.tight_layout()
-    _save_or_show(fig, save_dir, "lv_dynamic_param_trajectory.png")
+    _save_or_show(fig, save_dir, "lv_dynamic_param_trajectory.svg")
 
 
 def evaluate_lv_loss_on_param_grid(
@@ -1159,7 +1159,7 @@ def visualize_lv_loss_around_true_dyn_params(
     ax.legend(loc="best", fontsize=9)
     ax.grid(True, linestyle="--", alpha=0.3)
     plt.tight_layout()
-    _save_or_show(fig, save_dir, "lv_loss_around_true_dyn_params.png")
+    _save_or_show(fig, save_dir, "lv_loss_around_true_dyn_params.svg")
 
 
 def visualize_lv_loss_on_dyn_params_per_stage(
@@ -1314,4 +1314,4 @@ def visualize_lv_loss_on_dyn_params_per_stage(
         ax.legend(loc="best")
         ax.grid(True, linestyle="--", alpha=0.3)
         plt.tight_layout()
-        _save_or_show(fig, save_dir, f"lv_loss_dyn_params_stage_{cl_stage}.png")
+        _save_or_show(fig, save_dir, f"lv_loss_dyn_params_stage_{cl_stage}.svg")
