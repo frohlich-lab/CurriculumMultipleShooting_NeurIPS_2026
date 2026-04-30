@@ -182,7 +182,7 @@ SHOOTING_WINDOW_LENGTHS =  {
         21,  # 8 windows
         30  # 6 windows
     ),
-    "central_value": 8,  # LV: optimal 5 for both multiple and multiple_CL
+    "central_value": 21,  # LV: optimal 5 for both multiple and multiple_CL
 }
 
 SHOOTING_IV_INITS = {
