@@ -1,20 +1,20 @@
 import dataclasses
-import jax.numpy as jnp
-import jax.nn as jnn
-import jax
-import numpy as np
-
+import re
 from pathlib import Path
-from jaxtyping import Array, PyTree
 from typing import List, Optional, Union
 
+import jax
+import jax.nn as jnn
+import jax.numpy as jnp
+import numpy as np
+from jaxtyping import Array, PyTree
 
 # TODO @GiacomoFabrini - review these based on experiments!
 unwanted_fields = [
     "dynamical_model",
     "init_scale", "use_bias", "use_final_bias", "final_activation_fn_name",
     "use_dropout", "input_dropout_rate", "hidden_dropout_rate",  # might need
-    "lrate_span", "lrate_decay", "warmup_fct", "opt_steps", "opt_mult", "opt_sched_type",
+    "lrate_span", "warmup_fct", "opt_steps", "opt_mult", "opt_sched_type",
     "restart_opt_curriculum",
     "dynamic_params_lb", "dynamic_params_ub",
     "freeze_mechanistic_params_adam", "freeze_mechanistic_params_optx",  # might need
@@ -99,6 +99,7 @@ class Conf(dict):
     save_landscape_models: bool = False
     experiment_name: str = None
     noise_level: Optional[int] = None
+    time_span: Optional[int] = None
     num_starts: int = 100
 
     def __str__(self) -> str:
@@ -127,6 +128,7 @@ scan_attributes = [
     "num_curriculum_steps",
     "max_curriculum_epochs",
     "node_augmentation",
+    "lrate_decay",
 ]
 
 
@@ -149,6 +151,13 @@ def flatten(v: PyTree):
 
     out, pullback = jax.vjp(f, v)
     return out, lambda x: pullback(x)[0]
+
+
+def reformat_filename(filename):
+    matches = re.search(r'__(\d+(?:\.\d+)?[eE][+-]?\d+)__', filename)
+    if matches:
+        filename = filename.replace(matches.group(1), f"{float(matches.group(1)):.6f}")
+    return filename
 
 
 basedir: Path = Path(__file__).resolve().parent.parent  # Test_UDE, outside src
@@ -279,3 +288,4 @@ def normalise(
                 val_array / jnp.max(train_array),
                 jnp.array(u0) / jnp.max(train_array),
                 jnp.max(train_array))
+

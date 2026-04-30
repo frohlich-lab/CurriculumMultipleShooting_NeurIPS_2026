@@ -1,50 +1,51 @@
+import time
+import warnings
+from dataclasses import replace
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
 import diffrax
 import equinox as eqx
 import jax.numpy as jnp
 import optax
 import pandas as pd
-import time
 import wandb
-import warnings
+from diffrax import SaveAt
+from jaxtyping import Array, Float, PyTree
 
 from src.common import (
+    TRAINING_RESULTS,
     Conf,
+    TrainValArgs,
     dynamic_param_labels,
     hessian_metrics_wandb,
     plots_dir,
+    reformat_filename,
     results_dir,
-    TrainValArgs
 )
-from dataclasses import replace
-from diffrax import SaveAt
-from jaxtyping import Array, Float, PyTree
-from pathlib import Path
-from src.common import TRAINING_RESULTS
+from src.model_training.fides_training import train_fides
 from src.model_training.losses import get_hessian
 from src.model_training.model_util import process_mechanistic_params
+from src.model_training.optimistix_training import train_optimistix
 from src.model_training.training_util import (
+    MetricHandler,
+    augment_u0,
+    build_hessian_index_mask,
     check_and_progress_curriculum,
-    get_save_epochs,
-    get_train_val_mse,
     generate_log_epochs,
     get_filter_spec,
+    get_hessian_metrics,
     get_opt_opt_state_params,
+    get_save_epochs,
     get_scheduler,
+    get_train_val_mse,
     initialise_wandb,
     make_grads_finite,
     max_grad_norm,
-    get_hessian_metrics,
-    build_hessian_index_mask,
     update_hessian_index_mask_multiple_curriculum,
-    MetricHandler,
-    augment_u0
 )
-from src.model_training.optimistix_training import train_optimistix
-from src.model_training.fides_training import train_fides
 from src.plotting import log_plots
 from src.ude_problem import UDEProblem
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-
 
 # Some FutureWarning with unhashable DynamicJaxprTracer object in the diffeq solve/call
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -213,6 +214,7 @@ def make_step(
             active_idx=active_idx,
             num_dyn_params=params.func.dynamic_parameters.shape[0] if conf.training_setting == "UDE" else None,
         )
+
     updates, opt_state = opt.update(grads, opt_state, params)
     params = eqx.apply_updates(params, updates)
     return params, opt_state, loss_value, reg_loss_dict, grads, hessian_metrics
@@ -724,7 +726,7 @@ def train(
                         "time_rescaling": rescaling_args["time_rescaling"],
                     }]
                 )
-            results_total.to_csv(TRAINING_RESULTS.format_map(conf.__dict__), index=False)
+            results_total.to_csv(reformat_filename(TRAINING_RESULTS.format_map(conf.__dict__)), index=False)
             if WANDB_LOG:
                 wandb.finish()
             return best_model
@@ -826,7 +828,7 @@ def train(
         adam_wall_duration=adam_wall_duration,
         adam_process_duration=adam_process_duration,
     )
-    train_results_filename = TRAINING_RESULTS.format_map(conf.__dict__)
+    train_results_filename = reformat_filename(TRAINING_RESULTS.format_map(conf.__dict__))
     print(f"Saving run results to {train_results_filename}...")
     results_total.to_csv(train_results_filename, index=False)
 

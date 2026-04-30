@@ -3,6 +3,7 @@
 from src.generate_run_configs import generate_param_combinations
 from src.common import (
     data_dir,
+    reformat_filename,
     # AGGREGATION_PLOTS,
     OUTPUT_HDF5,
     # PLOT_TYPES,
@@ -41,8 +42,8 @@ rule generate_multistarts:
     output:
         multistart_csvs
     resources:
-        mem="1GB",
-        runtime="30m",
+        mem="2GB",
+        runtime="1h",
         threads=1
     shell:
         "python3 {input.script}"
@@ -53,7 +54,7 @@ rule train_udes:
         script = 'src/model_training/train.py',
         multistarts=rules.generate_multistarts.output
     output:
-        csv = TRAINING_RESULTS
+        csv = reformat_filename(TRAINING_RESULTS)
     wildcard_constraints:
         dynamical_model =  "[a-zA-Z_]+",
         mlp_layer_width = "[0-9]+",
@@ -63,6 +64,7 @@ rule train_udes:
         optimiser = "[a-z]+|None",
         num_epochs_adam = "[0-9]+",
         max_lrate = "[0-9.]+",
+        lrate_decay = "[0-9.]+",
         mlp_reg_exp = "[0-9.]+",
         mlp_reg_strength = "[0-9.]+",
         output_reg = "[0-9.]+",
@@ -87,10 +89,11 @@ rule train_udes:
         mlpexp_target = "[a-zA-Z_]+",
         save_landscape_models = "True|False",
         noise_level = "[0-9]+|None",
+        time_span = "[0-9]+|None",
     retries: 1
     resources:
-        mem="8GB",
-        runtime="12h",
+        mem="32GB",
+        runtime="24h",
         nodes=1,
         threads=2
     shell:
@@ -105,6 +108,7 @@ rule train_udes:
                 "optimiser",
                 "num_epochs_adam",
                 "max_lrate",
+                "lrate_decay",
                 "mlp_reg_exp",
                 "mlp_reg_strength",
                 "output_reg",
@@ -129,6 +133,7 @@ rule train_udes:
                 "mlpexp_target",
                 "save_landscape_models",
                 "noise_level",
+                "time_span",
             )
         ) + ' --experiment_name={EXPERIMENT_NAME} --num_starts={N_STARTS}'
 
@@ -137,7 +142,7 @@ rule aggregate_results:
     input:
         script = 'src/aggregate_results.py',
         training = [
-            y
+            reformat_filename(y)
             for hyperparam_config in param_combos
             for y in expand(
                 rules.train_udes.output.csv,
@@ -168,7 +173,7 @@ rule aggregate_results:
     retries: 1
     resources:
         mem="64GB",
-        runtime="3h",
+        runtime="6h",
         nodes=1
     shell:
         "python3 {input.script}"

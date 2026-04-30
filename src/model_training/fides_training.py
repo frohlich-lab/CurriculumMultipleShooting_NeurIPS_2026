@@ -1,21 +1,21 @@
+import time
+from functools import partial
+from types import SimpleNamespace
+from typing import Callable, Optional
+
 import equinox as eqx
 import fides
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pandas as pd
-import time
 import wandb
-
-from functools import partial
 from jaxtyping import PyTree
+
 from src.common import Conf, dynamic_param_labels
 from src.model_training.model_util import process_mechanistic_params
 from src.model_training.training_util import prep_bfgs_training
 from src.ude_problem import UDEProblem
-from types import SimpleNamespace
-from typing import Callable, Optional
-
 
 
 def fides_loss_grad(
@@ -115,7 +115,7 @@ def train_fides(
         ub=np.asarray([jnp.inf for _ in flat_params]),
         lb=np.asarray([-jnp.inf for _ in flat_params]),
         hessian_update=fides.hessian_approximation.BFGS(),
-        options={"maxiter": max_iter},
+        options={"maxiter": max_iter, "maxtime": 2 * 3600}
     )
 
     try:

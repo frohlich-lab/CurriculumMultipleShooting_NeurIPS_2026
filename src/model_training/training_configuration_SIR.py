@@ -1,6 +1,6 @@
 DYNAMICAL_MODEL = {
-    # "sirKorea",
-    "sirUK",
+    "sirKorea",
+    # "sirUK",
 }
 
 # MLP
@@ -63,8 +63,8 @@ TRAINING_SCHEMES = {
     # "bfgs",
     # "single",
     # "single_bfgs",
-    # "single_CL",
-    "multiple",
+    "single_CL",
+    # "multiple",
     # "multiple_CL",
 }
 
@@ -79,11 +79,11 @@ MAX_LEARNING_RATES = {
         1e-3,
         5e-3,
         1e-2,
+        2e-2,
         5e-2,
-        1e-1,
         # 5e-1,
     ),
-    "central_value": 5e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
+    "central_value": 1e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
 }
 
 LEARNING_RATE_SPANS = {
@@ -92,7 +92,7 @@ LEARNING_RATE_SPANS = {
 
 # TODO check whether this parameter can actually be passed - probably needs to be added to scan_attributes and Snakefile
 LEARNING_RATE_DECAYS = {
-    0.9**0,  # 1.0  -> no decay
+    2.0,  # 1.0  -> no decay
     # 2.0,  # enables decay for SIR from start to max_curriculum_epochs or overall N_EPOCHS_ADAM
 }
 
@@ -153,21 +153,21 @@ MLP_REG_STRENGTHS = {
 OUTPUT_REG = {
     "range": (
         0,
-        # 1e-4,
-        # 1e-3,
-        # 1e-2,
+        1e-4,
+        1e-3,
+        1e-2,
         1e-1,
         1e0,
-        1e1,
-        1e2,
+        # 1e1,
+        # 1e2,
         # # 3e2,  # add more intermediate values after rescaling regularisation for time-normalisation runs
-        5e2,
-        1e3,
+        # 5e2,
+        # 1e3,
         # 3e3,
-        5e3,
-        1e4,
+        # 5e3,
+        # 1e4,
         # 3e4,
-        5e4,
+        # 5e4,
     ),
     "central_value": 0,  # use 1e0 for UDEs, 0 for NODEs // starting with 0 for SIR
     # LV: 1e3 for single_BFGS, single_CL & multiple; 5e3 for multiple_CL
@@ -197,15 +197,18 @@ SHOOTING_IV_INITS = {
 MULTIPLE_SHOOTING_PENALTIES =  {
     "range": (
         0,
+        1e-6,
+        1e-5,
+        1e-4,
         1e-3,  # note: 2e-3 used to work decently
         1e-2,
-        1e-1,
-        1e0,
-        1e1,
-        1e2,
-        1e3
+        # 1e-1,
+        # 1e0,
+        # 1e1,
+        # 1e2,
+        # 1e3
     ),
-    "central_value": 10,  # use 10 for everything apart from multiple_CL (tried 0; now use 1e-2)
+    "central_value": 1e-6,  # use 10 for everything apart from multiple_CL (tried 0; now use 1e-2)
     # LV: optimal 10 for multiple; 1.0 for multiple_CL
 }
 
@@ -319,8 +322,8 @@ NORMALISE_DATA = {
 }
 
 NORMALISE_TIMEPOINTS = {
-    True,
-    # False,
+    # True,
+    False,
 }
 
 SAVE_LANDSCAPE_MODELS = {
@@ -332,9 +335,13 @@ NOISE_LEVELS = {
     None,
 }
 
+TIME_SPAN = {
+    None,
+}
+
 N_STARTS = 100  # number of multi-starts
 
 N_EPOCHS_ADAM = 30000
 N_EPOCHS_BFGS = 30000  # same as ADAM epochs
 
-EXPERIMENT_NAME = "multiple_SIR_UDE_ls_03122025"
+EXPERIMENT_NAME = "single_CL_SIR_Korea_UDE_ls_13012026"

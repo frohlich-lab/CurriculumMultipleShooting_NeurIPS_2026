@@ -1,20 +1,26 @@
-import fire
 # import jax.random as jr
-
 from functools import partial
+
+import fire
 from jax import config
-from src.common import Conf, model_save_dir, true_dynamic_parameters, max_iters_diffrax
+
+from src.common import (
+    Conf,
+    max_iters_diffrax,
+    model_save_dir,
+    results_dir,
+    true_dynamic_parameters,
+)
 from src.landscape.landscape_utils import *
 from src.model_training.losses import compute_hess_array
 from src.model_training.training_setup import (
     get_data_and_funcs_for_train,
     get_initial_conditions,
     setup_mlp,
-    setup_time_masks_u0_curriculum
+    setup_time_masks_u0_curriculum,
 )
 from src.model_training.training_util import get_save_epochs
 from src.ude_problem import UDEProblem
-
 
 # ================================================================
 #            GET CONFIG, SET PRECISION, GET PRNG KEYS
@@ -104,6 +110,18 @@ model_dict = {
     for cl_stage in save_epochs.keys()
 }
 
+# ================================================================
+#                    SET UP SAVE DIRECTORY
+# ================================================================
+landscape_save_dir = (
+    results_dir /
+    str(conf.experiment_name) /
+    conf.dynamical_model /
+    "landscape" /
+    f"ms{conf.multistart_job}"
+)
+landscape_save_dir.mkdir(parents=True, exist_ok=True)
+
 for mode in ["local", "global"]:
     convexity_results = test_curriculum_stage_convexity(
         model_dict,
@@ -118,7 +136,7 @@ for mode in ["local", "global"]:
         mode=mode
     )
 
-    plot_convexity_fractions(convexity_results, mode=mode)
+    plot_convexity_fractions(convexity_results, mode=mode, save_dir=landscape_save_dir)
 
 visualize_hessian_eigvec_landscape(
     model_dict,
@@ -136,6 +154,7 @@ visualize_hessian_eigvec_landscape(
         rescaling_args=rescaling_args,
         max_steps=max_iters_diffrax[conf.dynamical_model]
     ),
+    save_dir=landscape_save_dir,
 )
 
 # Lotka-Volterra-specific analysis given ground truth dynamic parameters (alpha, delta)
@@ -144,6 +163,7 @@ if conf.dynamical_model == "lotka_volterra" and conf.training_setting == "UDE":
         model_dict,
         true_dynamic_parameters[conf.dynamical_model],
         rescaling_args,
+        save_dir=landscape_save_dir,
     )
 
     visualize_lv_loss_around_true_dyn_params(
@@ -156,7 +176,8 @@ if conf.dynamical_model == "lotka_volterra" and conf.training_setting == "UDE":
         loss_dict["loss_fn"],
         true_dynamic_parameters[conf.dynamical_model],
         rescaling_args,
-        plot_in_log=True
+        plot_in_log=True,
+        save_dir=landscape_save_dir,
     )
 
     visualize_lv_loss_on_dyn_params_per_stage(
@@ -169,7 +190,8 @@ if conf.dynamical_model == "lotka_volterra" and conf.training_setting == "UDE":
         loss_dict["loss_fn"],
         true_dynamic_parameters[conf.dynamical_model],
         rescaling_args,
-        plot_in_log=True
+        plot_in_log=True,
+        save_dir=landscape_save_dir,
     )
 
 print("Analysis complete.")
