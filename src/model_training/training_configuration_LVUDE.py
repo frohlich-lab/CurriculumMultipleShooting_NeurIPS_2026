@@ -334,6 +334,13 @@ NOISE_LEVELS = {
     # 50
 }
 
+TIME_SPAN = {
+    None,
+    # 61,
+    # 91,
+    # 121,
+}
+
 N_STARTS = 100  # number of multi-starts
 
 N_EPOCHS_ADAM = 6000

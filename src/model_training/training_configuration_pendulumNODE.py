@@ -177,7 +177,7 @@ SHOOTING_WINDOW_LENGTHS =  {
         4,  # 21 windows
         5,  # 16 windows
         6,  # 13 windows
-        7, 
+        7,
         # 8,  # 9 windows
         14,  # 5 windows
         21,  # third data length
@@ -328,6 +328,10 @@ SAVE_LANDSCAPE_MODELS = {
 }
 
 NOISE_LEVELS = {
+    None,
+}
+
+TIME_SPAN = {
     None,
 }
 
