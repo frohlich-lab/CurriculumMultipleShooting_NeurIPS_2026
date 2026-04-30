@@ -1,21 +1,22 @@
+import itertools as itt
+from functools import partial
+from typing import Callable, Dict, List, Optional, Tuple, Union
+
 import diffrax
 import equinox as eqx
 import git
-import itertools as itt
-import jax.numpy as jnp
 import jax
+import jax.numpy as jnp
 import numpy as np
 import optax
 import wandb
 from diffrax import SaveAt
-
-from functools import partial
 from jax.flatten_util import ravel_pytree
 from jaxtyping import Array, PyTree
+
 from src.common import Conf, dynamic_param_labels, hessian_metrics_wandb
 from src.model_training.model_util import set_weight_bias
 from src.ude_problem.ude_problem import UDEProblem
-from typing import Callable, Dict, List, Optional, Tuple, Union
 
 
 def augment_u0(u0):
@@ -578,7 +579,7 @@ def loss_multiple_shooting(
 ):
     losses = jnp.array([
         loss_fn(
-            solution=sol.ys[i, :, :prob.func.state_dimension],
+            solution=sol[i, :, :prob.func.state_dimension],
             data=data,
             mask=masks[i]
         )
@@ -600,6 +601,8 @@ def get_sol_and_loss_multiple_shooting(
     # Freeze state variables (first window) + network contribution regularisation (everywhere)
     ivs = freeze_ivs(prob.initial_values[:last_valid_index], prob.func.state_dimension)
 
+    ivs = prob.descale_initial_values(ivs)
+
     sol = prob.solve_multiple_shooting(
         diffrax.Tsit5(),
         ivs,
@@ -614,12 +617,13 @@ def get_sol_and_loss_multiple_shooting(
         loss_fn=loss_fn,
         last_valid_index=last_valid_index,
     )
+
     operand = dict(
-        sol=sol,
+        sol=sol.ys,
         data=data,
         masks=masks,
     )
-    return sol, jax.lax.cond(
+    return sol.ys, jax.lax.cond(
         any_max_steps,
         lambda _: jnp.nan,
         lambda op: loss_multiple_shooting_partial(**op),

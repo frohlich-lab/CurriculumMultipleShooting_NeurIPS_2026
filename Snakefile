@@ -90,6 +90,7 @@ rule train_udes:
         save_landscape_models = "True|False",
         noise_level = "[0-9]+|None",
         time_span = "[0-9]+|None",
+        scale_initial_values = "log10|None",
     retries: 1
     resources:
         mem="32GB",
@@ -134,6 +135,7 @@ rule train_udes:
                 "save_landscape_models",
                 "noise_level",
                 "time_span",
+                "scale_initial_values",
             )
         ) + ' --experiment_name={EXPERIMENT_NAME} --num_starts={N_STARTS}'
 

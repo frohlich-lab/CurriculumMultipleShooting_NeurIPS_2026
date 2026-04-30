@@ -39,10 +39,12 @@ class UDEProblem(eqx.Module):
     dynamical_model: str
     func: Union[LotkaVolterraUDEFunction, SIRUDEFunction]
     initial_values: Array
+    scale_initial_values: Callable
+    descale_initial_values: Callable
 
     def __init__(
             self, dynamical_model, dynamic_parameters, mlp, options, state_dimension,
-            initial_values: Array, regularise_network=None, **kwargs,
+            initial_values: Array, regularise_network=None, scale_initial_values=None, **kwargs,
     ):
         """
         Parameters
@@ -61,6 +63,8 @@ class UDEProblem(eqx.Module):
             The number of state variables in the dynamical model.
         regularise_network: bool
             If True, the network contribution to the dynamics will be regularised.
+        scale_initial_values: Callable, optional
+            Function to scale the initial values appropriately for the UDEFunction.
         initial_values: array-like
             Pre-computed initial values for the shooting windows.
         """
@@ -100,6 +104,76 @@ class UDEProblem(eqx.Module):
             else:
                 # Loading from serialised model with regularisation IV already present
                 self.initial_values = initial_values
+        if scale_initial_values is None:
+            self.scale_initial_values = lambda x: x
+            self.descale_initial_values = lambda x: x
+        else:
+            # Support named scaling methods (strings) for robust, numerically-stable transforms
+            def get_scale_descale(method: Union[str, Callable]):
+                # Safe log10 scaling: clip input to avoid log(0) and negatives
+                if method == "log10" or method is jnp.log10:
+                    def scale_fn(x):
+                        # Support 1D or 2D inputs: apply clipping then log10
+                        squeezed = False
+                        x_arr = jnp.asarray(x)
+                        if x_arr.ndim == 1:
+                            x_arr = x_arr[jnp.newaxis, :]
+                            squeezed = True
+                        out = jnp.log10(jnp.clip(x_arr, a_min=1e-12))
+                        return out[0] if squeezed else out
+
+                    def descale_fn(x):
+                        # Clip logits to avoid overflow when exponentiating
+                        x_arr = jnp.asarray(x)
+                        squeezed = False
+                        if x_arr.ndim == 1:
+                            x_arr = x_arr[jnp.newaxis, :]
+                            squeezed = True
+                        x_clip = jnp.clip(x_arr, a_min=-12.0, a_max=12.0)
+                        out = jnp.clip(10 ** x_clip, a_min=1e-12, a_max=1e12)
+                        return out[0] if squeezed else out
+
+                    return scale_fn, descale_fn
+                # If a callable was supplied without a matching descaler, assume user manages both
+                elif callable(method):
+                    return method, None
+                else:
+                    raise NotImplementedError(f"Descaling not implemented for method: {method}")
+
+            scale_fn, descale_fn = get_scale_descale(scale_initial_values)
+
+            if regularise_network:
+                # Only scale state/augmented columns, keep network-regularisation column unchanged
+                def scale_with_reg(x):
+                    x_arr = jnp.asarray(x)
+                    squeezed = False
+                    if x_arr.ndim == 1:
+                        x_arr = x_arr[jnp.newaxis, :]
+                        squeezed = True
+                    scaled = scale_fn(x_arr[:, :-1])
+                    out = jnp.concatenate([scaled, x_arr[:, -1:]], axis=1)
+                    return out[0] if squeezed else out
+
+                self.scale_initial_values = scale_with_reg
+                if descale_fn is not None:
+                    def descale_with_reg(x):
+                        x_arr = jnp.asarray(x)
+                        squeezed = False
+                        if x_arr.ndim == 1:
+                            x_arr = x_arr[jnp.newaxis, :]
+                            squeezed = True
+                        descaled = descale_fn(x_arr[:, :-1])
+                        out = jnp.concatenate([descaled, x_arr[:, -1:]], axis=1)
+                        return out[0] if squeezed else out
+
+                    self.descale_initial_values = descale_with_reg
+                else:
+                    self.descale_initial_values = lambda x: x
+            else:
+                self.scale_initial_values = scale_fn
+                self.descale_initial_values = descale_fn if descale_fn is not None else (lambda x: x)
+
+            self.initial_values = self.scale_initial_values(self.initial_values)
 
 
     def get_internal_augmented_vars(self):
@@ -212,7 +286,6 @@ class UDEProblem(eqx.Module):
         max_steps: int, optional
             Maximum number of steps for diffrax.diffeqsolve().
         """
-
         solution = diffrax.diffeqsolve(
             terms=diffrax.ODETerm(self.func),
             solver=solver,

@@ -274,7 +274,6 @@ def train(
     :param max_steps_diffrax:
         Maximum number of iterations for diffrax solve.
     """
-
     # Check training setting in configuration
     if conf.training_setting not in ["UDE", "NODE"]:
         # if not properly set, set to default value of UDE

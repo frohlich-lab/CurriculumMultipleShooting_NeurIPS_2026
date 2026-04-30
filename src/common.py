@@ -101,6 +101,7 @@ class Conf(dict):
     noise_level: Optional[int] = None
     time_span: Optional[int] = None
     num_starts: int = 100
+    scale_initial_values: Optional[str] = None  # options: "log10", None
 
     def __str__(self) -> str:
         """
