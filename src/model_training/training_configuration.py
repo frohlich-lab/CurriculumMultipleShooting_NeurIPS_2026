@@ -63,8 +63,8 @@ TRAINING_SCHEMES = {
     # "bfgs",
     # "single",
     # "single_bfgs",
-    "single_CL",
-    # "multiple",
+    # "single_CL",
+    "multiple",
     # "multiple_CL",
 }
 
@@ -78,12 +78,12 @@ MAX_LEARNING_RATES = {
     "range": (
         # 1e-3,
         # 5e-3,
-        1e-2,
-        # 5e-2,
+        # 1e-2,
+        5e-2,
         # 1e-1,
         # 5e-1,
     ),
-    "central_value": 1e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
+    "central_value": 5e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
 }
 
 LEARNING_RATE_SPANS = {
@@ -194,16 +194,16 @@ SHOOTING_IV_INITS = {
 
 MULTIPLE_SHOOTING_PENALTIES =  {
     "range": (
-        0,
+        # 0,
         # 1e-3,  # note: 2e-3 used to work decently
         # 1e-2,
         # 1e-1,
         # 1e0,
-        # 1e1,
+        1e1,
         # 1e2,
         # 1e3
     ),
-    "central_value": 0,  # use 10 for everything apart from multiple_CL (tried 0; now use 1e-2)
+    "central_value": 1e1,  # use 10 for everything apart from multiple_CL (tried 0; now use 1e-2)
     # LV: optimal 10 for multiple; 1.0 for multiple_CL
 }
 
@@ -346,4 +346,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 6000
 N_EPOCHS_BFGS = 10000
 
-EXPERIMENT_NAME = "single_CL_LV_UDE_ls_01052026"
+EXPERIMENT_NAME = "multiple_LV_UDE_ls_01052026"
