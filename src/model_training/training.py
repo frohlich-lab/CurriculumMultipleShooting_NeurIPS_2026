@@ -39,6 +39,7 @@ from src.model_training.training_util import (
     get_save_epochs,
     get_scheduler,
     get_train_val_mse,
+    grad_magnitude,
     initialise_wandb,
     make_grads_finite,
     max_grad_norm,
@@ -509,6 +510,7 @@ def train(
                         "num_train_samples": curriculum_params[cl_stage]["length"] if conf.curriculum_learning \
                             else len(training_data),
                         "max_grad_norm": max_grad_norm(grads),
+                        "grad_magnitude": grad_magnitude(grads),
                         # Dynamic parameters: raw and rescaled
                         **{
                             f"raw_{param}": process_mechanistic_params(
@@ -548,6 +550,7 @@ def train(
                             "num_train_samples": curriculum_params[cl_stage]["length"] if conf.curriculum_learning \
                                 else len(training_data),
                             "max_grad_norm": max_grad_norm(grads),
+                            "grad_magnitude": grad_magnitude(grads),
                         },
                         step=epoch+nn_epoch
                     )

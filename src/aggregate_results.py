@@ -1,11 +1,12 @@
 # import pandas as pd
 
-from src.common import (dynamic_param_labels, plots_dir, results_dir, scan_attributes, true_dynamic_parameters,
-                        OUTPUT_HDF5)
-from src.model_training.training_configuration import DYNAMICAL_MODEL, EXPERIMENT_NAME, N_EPOCHS_ADAM, N_STARTS
-from src.plotting import tiled_plot_plotnine
 from src.aggregation_utils import *
-
+from src.common import OUTPUT_HDF5, plots_dir, scan_attributes
+from src.model_training.training_configuration import (
+    DYNAMICAL_MODEL,
+    EXPERIMENT_NAME,
+    N_STARTS,
+)
 
 hyperparam_groups = [
     "mlp_layer_width", "mlp_depth",
@@ -30,7 +31,7 @@ expanded_hyperparam_groups = hyperparam_groups + ["multistart_job"]
 
 # Base training metrics
 metrics = [
-    "loss_train", "loss_val", "max_grad_norm",
+    "loss_train", "loss_val", "max_grad_norm", "grad_magnitude",
 ]
 # Hessian-derived metrics
 log_metrics = [

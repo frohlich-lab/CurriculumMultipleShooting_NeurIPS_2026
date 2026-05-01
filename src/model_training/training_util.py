@@ -231,6 +231,7 @@ def initialise_wandb(
     # Add UDE-only metrics
     if conf.training_setting == "UDE":
         metrics["max_grad_norm"] = "min"
+        metrics["grad_magnitude"] = "min"
         metrics["num_train_samples"] = None
 
         # neural network contribution/output regularisation
@@ -354,6 +355,14 @@ def max_grad_norm(grads: PyTree) -> Array:
     grad_norms = [jnp.linalg.norm(g) for g in grads_flat]
     # Return max norm
     return jnp.max(jnp.array(grad_norms))
+
+def grad_magnitude(grads: PyTree) -> Array:
+    # Flatten
+    grads_flat, _ = ravel_pytree(grads)
+    # Compute L2 norm
+    grad_magnitude = jnp.linalg.norm(grads_flat)
+    # Return max magnitude
+    return grad_magnitude
 
 
 def build_hessian_index_mask(model: UDEProblem, conf: Conf, filter_spec: PyTree):
