@@ -1,12 +1,11 @@
-
 DYNAMICAL_MODEL = {
-    # "sirKorea",
-    "sirUK",
+    "lotka_volterra",
 }
 
 # MLP
 MLP_WIDTHS = {
     "range": (
+        # 5,  # original UDE paper; activation: RBF, max_lrate: 1e-1
         10,
     ),
     "central_value": 10,
@@ -14,9 +13,9 @@ MLP_WIDTHS = {
 
 MLP_DEPTHS = {
     "range": (
-        1,
+        2,
     ),
-    "central_value": 1,  # from original SIR paper
+    "central_value": 2,  # from original UDE paper
 }
 
 INIT_SCALES = {
@@ -78,24 +77,21 @@ OPTIMISERS = {
 MAX_LEARNING_RATES = {
     "range": (
         # 1e-3,
-        5e-3,
+        # 5e-3,
         # 1e-2,
-        # 2e-2,
-        # 5e-2,
+        5e-2,
         # 1e-1,
         # 5e-1,
     ),
-    "central_value": 5e-3,  # 1e-2 for everything apart from MS, use 5e-2 for MS
+    "central_value": 5e-2,  # 1e-2 for everything apart from MS, use 5e-2 for MS
 }
 
 LEARNING_RATE_SPANS = {
     1e0,  # initial learning rate = max learning rate
 }
 
-# TODO check whether this parameter can actually be passed - probably needs to be added to scan_attributes and Snakefile
 LEARNING_RATE_DECAYS = {
     0.9**0,  # 1.0  -> no decay
-    # 2.0,  # enables decay for SIR from start to max_curriculum_epochs or overall N_EPOCHS_ADAM
 }
 
 WARMUP_FCTS = {
@@ -182,7 +178,6 @@ SHOOTING_WINDOW_LENGTHS =  {
         # 4,  # 21 windows
         5,  # 16 windows
         # 6,  # 13 windows
-        # 7,
         # 8,  # 9 windows
         # 14,  # 5 windows
         # 21,  # third data length
@@ -192,25 +187,21 @@ SHOOTING_WINDOW_LENGTHS =  {
 }
 
 SHOOTING_IV_INITS = {
-    # "z",  # zeros
-    "g",  # guess
+    "z",  # zeros
+    # "g",  # guess
     # "ru",  # random uniform
 }
 
 MULTIPLE_SHOOTING_PENALTIES =  {
     "range": (
         0,
-        # 1e-6,
-        # 1e-5,
-        # 1e-4,
         # 1e-3,  # note: 2e-3 used to work decently
         # 1e-2,
         # 1e-1,
         # 1e0,
         # 1e1,
         # 1e2,
-        # 1e3,
-        # 1e4,
+        # 1e3
     ),
     "central_value": 0,  # use 10 for everything apart from multiple_CL (tried 0; now use 1e-2)
     # LV: optimal 10 for multiple; 1.0 for multiple_CL
@@ -227,18 +218,16 @@ NUM_CURRICULUM_STEPS =  {
         # 3,
         # 5,   # matches Homotopy paper and corresponding multiple+CL
         # 9,
-        # 13,
+        13,
         # 16,
-        21,
+        # 21
     ),
-    "central_value": 21,  # LV: optimal 13 for single_CL
+    "central_value": 13,  # LV: optimal 13 for single_CL
 }
 
 MAX_CURRICULUM_EPOCHS = {
-    "range": (
-        5000,
-    ),
-    "central_value": 5000,  # 1/3 of total ADAM epochs
+    "range": (2000,),
+    "central_value": 2000
 }
 
 RESTART_OPT_CURRICULUM = {
@@ -247,13 +236,16 @@ RESTART_OPT_CURRICULUM = {
 }
 
 # Dynamic Parameters estimation settings
-# UDEs: estimate dynamic parameters on log10 scale; NODEs: set to 0 and use linear scale
+# UDEs: estimate dynamic parameters on log10 scale
 DYNAMIC_PARAMS_SCALES = {
+    # "linear",  # NODE
     "log10",  # UDE
 }
 
 MULTISTART_DEVIATIONS = {
-    2,  # run only 2 for SIR
+    0,
+    1,
+    2
 }
 
 DYNAMIC_PARAMS_PERTURB_METHODS = {
@@ -326,8 +318,8 @@ NORMALISE_DATA = {
 }
 
 NORMALISE_TIMEPOINTS = {
-    # True,
-    False,
+    True,
+    # False,
 }
 
 SAVE_LANDSCAPE_MODELS = {
@@ -336,21 +328,22 @@ SAVE_LANDSCAPE_MODELS = {
 }
 
 NOISE_LEVELS = {
-    None,
+    5,
+    # 10,
+    # 20,
+    # 50,
 }
 
 TIME_SPAN = {
     None,
-}
-
-SCALE_INITIAL_VALUES = {
-    None,
-    # "log10",
+    # 61,
+    # 91,
+    # 121,
 }
 
 N_STARTS = 100  # number of multi-starts
 
-N_EPOCHS_ADAM = 15000
-N_EPOCHS_BFGS = 15000  # same as ADAM epochs
+N_EPOCHS_ADAM = 6000
+N_EPOCHS_BFGS = 10000
 
-EXPERIMENT_NAME = "multiple_SIR_UDE_ls_01052026"
+EXPERIMENT_NAME = "single_LV_UDE_ls_01052026"
