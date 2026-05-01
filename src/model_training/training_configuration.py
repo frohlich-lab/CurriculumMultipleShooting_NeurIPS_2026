@@ -62,10 +62,10 @@ HIDDEN_DROPOUT_RATES = {
 TRAINING_SCHEMES = {
     # "bfgs",
     # "single",
-    # "single_bfgs",
+    "single_bfgs",
     # "single_CL",
     # "multiple",
-    "multiple_CL",
+    # "multiple_CL",
 }
 
 # Optimiser
@@ -194,16 +194,16 @@ SHOOTING_IV_INITS = {
 
 MULTIPLE_SHOOTING_PENALTIES =  {
     "range": (
-        # 0,
+        0,
         # 1e-3,  # note: 2e-3 used to work decently
         # 1e-2,
         # 1e-1,
-        1e0,
+        # 1e0,
         # 1e1,
         # 1e2,
         # 1e3
     ),
-    "central_value": 1e0,  # use 10 for everything apart from multiple_CL (tried 0; now use 1e-2)
+    "central_value": 0,  # use 10 for everything apart from multiple_CL (tried 0; now use 1e-2)
     # LV: optimal 10 for multiple; 1.0 for multiple_CL
 }
 
@@ -351,4 +351,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 6000
 N_EPOCHS_BFGS = 10000
 
-EXPERIMENT_NAME = "multiple_CL_LV_NODE_ls_01052026"
+EXPERIMENT_NAME = "single_bfgs_LV_NODE_ls_01052026"
