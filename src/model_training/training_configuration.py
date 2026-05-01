@@ -63,8 +63,8 @@ HIDDEN_DROPOUT_RATES = {
 TRAINING_SCHEMES = {
     # "bfgs",
     # "single",
-    "single_bfgs",
-    # "single_CL",
+    # "single_bfgs",
+    "single_CL",
     # "multiple",
     # "multiple_CL",
 }
@@ -154,9 +154,9 @@ MLP_REG_STRENGTHS = {
 
 OUTPUT_REG = {
     "range": (
-        # 0,
+        0,
         # 1e-4,
-        1e-3,
+        # 1e-3,
         # 1e-2,
         # 1e-1,
         # 1e0,
@@ -171,7 +171,7 @@ OUTPUT_REG = {
         # 3e4,
         # 5e4,
     ),
-    "central_value": 1e-3,  # use 1e0 for UDEs, 0 for NODEs // starting with 0 for SIR
+    "central_value": 0,  # use 1e0 for UDEs, 0 for NODEs // starting with 0 for SIR
     # LV: 1e3 for single_BFGS, single_CL & multiple; 5e3 for multiple_CL
 }
 
@@ -180,15 +180,15 @@ OUTPUT_REG = {
 SHOOTING_WINDOW_LENGTHS =  {
     "range": (
         4,  # 21 windows
-        5,  # 16 windows
-        6,  # 13 windows
-        7,
+        # 5,  # 16 windows
+        # 6,  # 13 windows
+        # 7,
         # 8,  # 9 windows
         # 14,  # 5 windows
         # 21,  # third data length
         # 30  # half data length approximately
     ),
-    "central_value": 5,  # LV: optimal 5 for both multiple and multiple_CL
+    "central_value": 4,  # LV: optimal 5 for both multiple and multiple_CL
 }
 
 SHOOTING_IV_INITS = {
@@ -353,4 +353,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 15000
 N_EPOCHS_BFGS = 15000  # same as ADAM epochs
 
-EXPERIMENT_NAME = "single_bfgs_SIR_UDE_ls_01052026"
+EXPERIMENT_NAME = "single_CL_SIR_UDE_ls_01052026"
