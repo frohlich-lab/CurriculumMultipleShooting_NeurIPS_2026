@@ -62,11 +62,11 @@ HIDDEN_DROPOUT_RATES = {
 
 TRAINING_SCHEMES = {
     # "bfgs",
-    # "single",
+    "single",
     # "single_bfgs",
     # "single_CL",
     # "multiple",
-    "multiple_CL",
+    # "multiple_CL",
 }
 
 # Optimiser
@@ -154,7 +154,7 @@ MLP_REG_STRENGTHS = {
 
 OUTPUT_REG = {
     "range": (
-        0,
+        # 0,
         # 1e-4,
         # 1e-3,
         # 1e-2,
@@ -164,14 +164,14 @@ OUTPUT_REG = {
         # 1e2,
         # # 3e2,  # add more intermediate values after rescaling regularisation for time-normalisation runs
         # 5e2,
-        # 1e3,
+        1e3,
         # 3e3,
         # 5e3,
         # 1e4,
         # 3e4,
         # 5e4,
     ),
-    "central_value": 0,  # use 1e0 for UDEs, 0 for NODEs // starting with 0 for SIR
+    "central_value": 1e3,  # use 1e0 for UDEs, 0 for NODEs // starting with 0 for SIR
     # LV: 1e3 for single_BFGS, single_CL & multiple; 5e3 for multiple_CL
 }
 
@@ -353,4 +353,4 @@ N_STARTS = 100  # number of multi-starts
 N_EPOCHS_ADAM = 15000
 N_EPOCHS_BFGS = 15000  # same as ADAM epochs
 
-EXPERIMENT_NAME = "multiple_CL_SIR_UDE_ls_01052026"
+EXPERIMENT_NAME = "multiple_SIR_UDE_ls_01052026"
