@@ -634,6 +634,19 @@ def train(
                     partial_results_df["final_mse_train"] = final_mse_train
                     partial_results_df["final_mse_val"] = final_mse_val
 
+                    model_pca_traj_dir = model_save_dir / "checkpoints"
+                    model_pca_traj_dir.mkdir(exist_ok=True, parents=True)
+                    epoch_save_path = (
+                        model_pca_traj_dir /
+                        (conf.__str__() + f"_ep{nn_epoch}_CL{cl_stage}.eqx")
+                    )
+                    print(f"Saving model at epoch {nn_epoch}, CL stage {cl_stage} to {epoch_save_path}")
+                    inference_model = model.replace_mlp(
+                        new_mlp=model.func.mlp,
+                        switch_to_inference=True,
+                    ) if conf.use_dropout else model
+                    inference_model.save(epoch_save_path)
+
                     if WANDB_LOG:
                         wandb.log(
                             {
