@@ -268,6 +268,36 @@ max_iters_diffrax = {
     "pendulum": 20000,
 }
 
+# --- Reaction-diffusion (FitzHugh-Nagumo / APHYNITY) registration -----------------------------
+# Registered as size- and variant-suffixed model names so the state-space-size scan (N in {8,16,32})
+# falls out of the existing DYNAMICAL_MODEL product expansion. Grid size is parsed from the name
+# (int(name.rsplit("_", 1)[1])); the variant is "ude" or "node".
+from src.model_examples.reaction_diffusion.setup_reaction_diffusion_model import (  # noqa: E402
+    DIFF_A as _RD_DIFF_A,
+    DIFF_B as _RD_DIFF_B,
+    REACTION_DIFFUSION_SIZES as _RD_SIZES,
+    make_random_field as _rd_make_ic,
+)
+
+for _rd_N in _RD_SIZES:
+    _rd_state_dim = 2 * _rd_N * _rd_N
+    # Placeholder only: this is the raw t=-0.5 field, NOT the observed X0. The training IC is loaded
+    # at runtime from the npz via get_X0 (state at t=0, post burn-in) in get_initial_conditions.
+    _rd_u0 = _rd_make_ic(_rd_N).astype(jnp.float64)
+    for _rd_variant in ("ude", "node"):
+        _rd_name = f"reaction_diffusion_{_rd_variant}_{_rd_N}"
+        state_dims[_rd_name] = _rd_state_dim
+        default_out_sizes[_rd_name] = _rd_state_dim
+        max_iters_diffrax[_rd_name] = 200000
+        u0s[_rd_name] = _rd_u0
+        if _rd_variant == "ude":
+            dynamic_param_labels[_rd_name] = ["a", "b"]
+            true_dynamic_parameters[_rd_name] = jnp.array([_RD_DIFF_A, _RD_DIFF_B])
+        else:
+            dynamic_param_labels[_rd_name] = []
+            true_dynamic_parameters[_rd_name] = jnp.array([])
+
+
 def normalise(
         train_array: Union[Array, jnp.ndarray, np.array],
         val_array: Union[Array, jnp.ndarray, np.array],

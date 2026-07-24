@@ -24,3 +24,9 @@ src/models/*
 *.sh
 *.hdf5
 /results/data
+
+# Reaction-diffusion generated ground-truth + multistart CSVs (regenerate via generate_data.py / generate_multistarts.py)
+src/data_dir/reaction_diffusion_*/
+# scratch / validation workspace (container image, backups, logs, plots)
+.rd_validation/
+wandb_offline/

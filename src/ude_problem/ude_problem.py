@@ -13,6 +13,11 @@ from src.common import activation_functions
 from src.model_examples.lotka_volterra.setup_lotka_volterra_model import LotkaVolterraUDEFunction
 from src.model_examples.sir.setup_sir_model import SIRUDEFunction
 from src.model_examples.pendulum.setup_pendulum_model import PendulumNODEFunction
+from src.model_examples.reaction_diffusion.setup_reaction_diffusion_model import (
+    REACTION_DIFFUSION_SIZES,
+    ReactionDiffusionNODEFunction,
+    ReactionDiffusionUDEFunction,
+)
 from src.ude_problem import CustomDropoutMLP
 from typing import Any, Callable, List, Optional, Union
 
@@ -23,6 +28,9 @@ UDE_funcs = {
     'sirUK': SIRUDEFunction,
     'pendulum': PendulumNODEFunction,
 }
+for _rd_N in REACTION_DIFFUSION_SIZES:
+    UDE_funcs[f"reaction_diffusion_ude_{_rd_N}"] = ReactionDiffusionUDEFunction
+    UDE_funcs[f"reaction_diffusion_node_{_rd_N}"] = ReactionDiffusionNODEFunction
 
 
 class UDEProblem(eqx.Module):
@@ -78,6 +86,11 @@ class UDEProblem(eqx.Module):
             state_delimiter = mlp.layers[0].in_features + 1
         elif self.dynamical_model == "pendulum":
             state_delimiter = mlp.layers[0].in_features
+        elif self.dynamical_model.startswith("reaction_diffusion"):
+            # ConvNet (no `.layers[0].in_features`): the NN consumes `mlp.out_size` grid channels
+            # (2 observed + node_augmentation), each of size N*N.
+            _rd_N = int(self.dynamical_model.rsplit("_", 1)[1])
+            state_delimiter = mlp.out_size * _rd_N * _rd_N
         else:
             raise ValueError(f"Unsupported dynamical model: {dynamical_model}!")
         self.func = UDE_funcs[self.dynamical_model](
@@ -95,6 +108,9 @@ class UDEProblem(eqx.Module):
             ) or (
                 (dynamical_model == "pendulum")
                 and (initial_values.shape[1] == self.func.mlp.layers[0].in_features)
+            ) or (
+                (dynamical_model.startswith("reaction_diffusion"))
+                and (initial_values.shape[1] == self.func.state_delimiter)
             ):
                 # Add zero initial value for neural network contribution regularisation
                 self.initial_values = jnp.concatenate(

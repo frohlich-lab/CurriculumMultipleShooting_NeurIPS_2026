@@ -1,3 +1,4 @@
+import os
 import time
 import warnings
 from dataclasses import replace
@@ -137,6 +138,11 @@ def log_fit_plots(
         plot_name: str,
         plot_subdir: str,
 ):
+    # Per-state fit-trajectory plots are not meaningful for the reaction-diffusion grid field
+    # (2*N**2 states); skip them. Scalar metrics (loss/MSE/etc.) are still logged to W&B separately,
+    # and field snapshots can be rendered offline from the ground-truth / saved models.
+    if conf.dynamical_model.startswith("reaction_diffusion"):
+        return
     # Log plots again after further training with optimistix/BFGS
     for dataset, t_save, t_span, data in zip(
             ["train", "validation"],
@@ -279,7 +285,10 @@ def train(
         # if not properly set, set to default value of UDE
         conf = replace(conf, training_setting="UDE")
 
-    WANDB_LOG = False
+    # Enable W&B logging via the WANDB_LOG env var (e.g. `WANDB_LOG=true`). Runs init in offline
+    # mode (see initialise_wandb), so no network/login is needed on compute nodes; sync later with
+    # `wandb sync` from a machine that has internet + `wandb login`.
+    WANDB_LOG = os.environ.get("WANDB_LOG", "false").lower() in ("1", "true", "yes")
 
     if WANDB_LOG:
         # Initialise wandb and define metrics
@@ -328,6 +337,8 @@ def train(
     # TODO check pendulum!
     elif conf.dynamical_model == "pendulum":
         colors = ['red', 'black', 'blue', 'purple']
+    elif conf.dynamical_model.startswith("reaction_diffusion"):
+        colors = ['red', 'black']  # only used for (WANDB-gated) plotting
     else:
         raise ValueError(f"Undefined dynamical model {conf.dynamical_model}.")
 
@@ -356,8 +367,14 @@ def train(
         else:
             active_hessian_idx = None
 
-        # Generate regularly log-spaced epochs for model stat logging - from DMMs
-        log_epochs = generate_log_epochs(n_epochs=n_epochs, num_samples=100, min_dist=5)
+        # Epochs at which to log stats / compute validation MSE / write to W&B.
+        # Default: ~100 log-spaced points (dense early). Set LOG_EVERY_N_EPOCHS=<N> to log on a fixed
+        # linear cadence (every N epochs) instead - fewer points and uniform coverage.
+        _log_every = os.environ.get("LOG_EVERY_N_EPOCHS")
+        if _log_every:
+            log_epochs = jnp.arange(0, n_epochs, max(1, int(_log_every)))
+        else:
+            log_epochs = generate_log_epochs(n_epochs=n_epochs, num_samples=100, min_dist=5)
         # Add first and final epochs
         log_epochs = jnp.unique(
             jnp.sort(

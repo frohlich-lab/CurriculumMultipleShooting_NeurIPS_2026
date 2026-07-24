@@ -1,4 +1,5 @@
 import itertools as itt
+import os
 from functools import partial
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
@@ -211,7 +212,8 @@ def initialise_wandb(
             git_commit=repo.head.object.hexsha,
             git_remote_url=repo.remotes.origin.url,
         ),
-        mode="offline"
+        # Default offline (safe on compute nodes without internet); set WANDB_MODE=online to stream live.
+        mode=os.environ.get("WANDB_MODE", "offline"),
     )
 
     # Define shared metrics

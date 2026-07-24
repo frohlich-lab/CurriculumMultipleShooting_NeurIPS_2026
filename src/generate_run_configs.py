@@ -180,6 +180,22 @@ def prune_config(run_config: dict):
     #     run_config["activation_fn_name"] = "rbf"
     #     run_config["max_lrate"] = 1e-1
 
+    # Reaction-diffusion: the UDE/NODE variant is encoded in the model name, so force the matching
+    # training_setting (redundant TRAINING_SETTINGS product entries are dropped by the dedup below).
+    _dm = run_config.get("dynamical_model", "")
+    if _dm.startswith("reaction_diffusion"):
+        if "node" in _dm:
+            run_config["training_setting"] = "NODE"
+            run_config["output_reg"] = 0.0  # penalising a pure NODE's whole RHS is counter-productive
+        elif "ude" in _dm:
+            run_config["training_setting"] = "UDE"
+            run_config["node_augmentation"] = 0  # augmentation is only meaningful for the NODE variant
+        # Continuity penalty is method-dependent: plain MS keeps the configured value
+        # (MULTIPLE_SHOOTING_PENALTIES, ~10) for a fair baseline; CMS is forced to 0 since its
+        # selling point is robustness to lambda_cont.
+        if run_config.get("shooting_mode") == "multiple" and run_config.get("curriculum_learning"):
+            run_config["multiple_shooting_penalty"] = 0.1
+
     if run_config.get("training_setting") == "UDE":
         run_config["mlpexp_target"] = "None"
     elif run_config.get("training_setting") == "NODE":

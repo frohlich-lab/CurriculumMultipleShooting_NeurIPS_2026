@@ -24,6 +24,7 @@ from src.common import (
 )
 from src.model_examples.lotka_volterra import setup_lotka_volterra_model as setup_lv
 from src.model_examples.pendulum import setup_pendulum_model as setup_pend
+from src.model_examples.reaction_diffusion import setup_reaction_diffusion_model as setup_rd
 from src.model_examples.sir import setup_sir_model as setup_sir
 from src.model_training.losses import (
     compute_loss,
@@ -33,10 +34,16 @@ from src.model_training.losses import (
     compute_validation_loss,
 )
 from src.model_training.model_util import bounded_tanh_transform_params, set_weight_bias
-from src.ude_problem import build_mlp
+from src.ude_problem import build_conv_net, build_mlp
 
 
 def get_io_size(conf, u0):
+    if conf.dynamical_model.startswith('reaction_diffusion'):
+        # ConvNet channel counts (grid geometry handled inside the model __call__)
+        if "ude" in conf.dynamical_model:
+            return 2, 2                                  # 2 channels in/out (reaction term)
+        n_channels = 2 + conf.node_augmentation          # observed + augmented channels
+        return n_channels, n_channels
     if conf.dynamical_model == 'lotka_volterra':
         in_size = len(u0)
     elif conf.dynamical_model.startswith('sir'):
@@ -99,6 +106,26 @@ def get_data_and_funcs_for_train(conf: Conf, dynamic_params_shape: tuple, u0) ->
             state_dimension=state_dims[conf.dynamical_model]
         )
         extra_args = {}
+    elif conf.dynamical_model.startswith("reaction_diffusion"):
+        N = int(conf.dynamical_model.rsplit("_", 1)[1])
+        (train_data, t_save_train, t_span_train,
+         validation_data, t_save_validation, t_span_validation) = setup_rd.get_training_validation_data(
+            grid_size=N
+        )
+
+        optx_config = {
+            "rtol": 1e-6,
+            "atol": 1e-6,
+        }
+        base_loss_fn = partial(
+            setup_rd.reaction_diffusion_base_loss,
+            state_dimension=state_dims[conf.dynamical_model]
+        )
+        base_loss_fn_masked = partial(
+            setup_rd.reaction_diffusion_base_loss_masked,
+            state_dimension=state_dims[conf.dynamical_model]
+        )
+        extra_args = {"grid_size": N, "dx": setup_rd.DOMAIN_L / N}
     else:
         raise ValueError(f"Unknown dynamical model: {conf.dynamical_model}!")
 
@@ -184,10 +211,18 @@ def broadcast_bounds(bounds, shape):
 
 
 def get_initial_conditions(conf: Conf):
-    u0 = u0s[conf.dynamical_model]
-    # Apply NODE-like augmentation
-    if conf.node_augmentation > 0:
-        u0 = jnp.concatenate([u0, jnp.zeros(conf.node_augmentation)])
+    if conf.dynamical_model.startswith("reaction_diffusion"):
+        # Observed X0 = state at t=0 (post burn-in), read from the ground-truth npz so it exactly
+        # equals data[0]. Augmentation adds extra CHANNELS (each N*N), not scalar states.
+        # (node_augmentation is forced to 0 for the UDE variant in prune_config.)
+        N = int(conf.dynamical_model.rsplit("_", 1)[1])
+        u0 = setup_rd.get_X0(N)
+        if conf.node_augmentation > 0:
+            u0 = jnp.concatenate([u0, jnp.zeros(conf.node_augmentation * N * N)])
+    else:
+        u0 = u0s[conf.dynamical_model]
+        if conf.node_augmentation > 0:
+            u0 = jnp.concatenate([u0, jnp.zeros(conf.node_augmentation)])
     # Ensure 64-bit precision
     u0 = u0.astype(jnp.float64)
     return u0
@@ -200,6 +235,21 @@ def setup_mlp(conf: Conf, u0: jnp.ndarray, key_mlp, key_init):
     # Check activation function is valid
     if conf.activation_fn_name not in activation_functions:
         raise ValueError(f"Unknown activation function: {conf.activation_fn_name}!")
+
+    # Reaction-diffusion (APHYNITY) uses a ConvNet over the grid instead of a dense MLP.
+    # `set_weight_bias` (Linear-specific) is not applied; Conv2d uses its default init.
+    if conf.dynamical_model.startswith('reaction_diffusion'):
+        return build_conv_net(
+            in_channels=in_size,
+            out_channels=out_size,
+            hidden_channels=conf.mlp_layer_width,
+            n_layers=conf.mlp_depth,
+            key=key_mlp,
+            use_bias=conf.use_bias,
+            use_final_bias=conf.use_final_bias,
+            activation=activation_functions[conf.activation_fn_name],
+            final_activation=activation_functions[conf.final_activation_fn_name],
+        )
 
     # Build the MLP, initialise its weights and biases
     mlp = set_weight_bias(
