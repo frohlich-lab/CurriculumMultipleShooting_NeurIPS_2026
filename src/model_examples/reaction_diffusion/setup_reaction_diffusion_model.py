@@ -172,8 +172,9 @@ class ReactionDiffusionNODEFunction(BaseUDEFunction):
         derivatives = nn_out.ravel()
 
         if self.regularise_network:
-            # regularise only the observed channels (first 2 * N**2 outputs)
-            d_nn_reg = jnp.array([jnp.linalg.norm(derivatives[:self.state_dimension])])
+            # regularise the AUGMENTED channels' dynamics (dz/dt), not the observed (u, v) RHS - to
+            # keep the augmentation minimal. Empty (norm 0) when node_augmentation == 0.
+            d_nn_reg = jnp.array([jnp.linalg.norm(derivatives[self.state_dimension:self.state_delimiter])])
             derivatives = jnp.concatenate([derivatives, d_nn_reg])
         return derivatives
 
