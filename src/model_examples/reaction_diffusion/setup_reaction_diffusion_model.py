@@ -24,8 +24,9 @@ dimension; it is NOT a reproduction of their forecasting numbers. Deliberate dif
 * Data regime: a SINGLE trajectory (one fixed IC) with a temporal interpolation/extrapolation
   split, vs their 1600 train / 320 test trajectories over many ICs (multi-IC generalisation).
 * Training: full-batch fit with the CMS strategies (single/CL/MS/CMS) for 5000 epochs, vs their
-  minibatch Adam for 50000 epochs with the APHYNITY min-norm objective (min ||F_a||). We use no
-  output regularisation here.
+  minibatch Adam for 50000 epochs with the APHYNITY min-norm objective (min ||F_a||). In place of
+  that min-norm constraint we use output regularisation on the NN reaction output (UDE variant) to
+  curb it from absorbing the known diffusion; NODE keeps output_reg=0.
 * Metric: our variance/uncertainty is over 10 multistart seeds (median-reported); their reported
   +/- std is over the 320-trajectory test set from a single training run (no seed loop).
 * Diffusion coefficients (a, b): estimated on log10 scale via multistart (numerically stable for
