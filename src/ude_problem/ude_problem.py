@@ -87,10 +87,10 @@ class UDEProblem(eqx.Module):
         elif self.dynamical_model == "pendulum":
             state_delimiter = mlp.layers[0].in_features
         elif self.dynamical_model.startswith("reaction_diffusion"):
-            # ConvNet (no `.layers[0].in_features`): the NN consumes `mlp.out_size` grid channels
-            # (2 observed + node_augmentation), each of size N*N.
+            # ConvNet (no `.layers[0].in_features`): the NN consumes `mlp.in_size` grid channels
+            # (2 observed + node_augmentation) from the state, each of size N*N.
             _rd_N = int(self.dynamical_model.rsplit("_", 1)[1])
-            state_delimiter = mlp.out_size * _rd_N * _rd_N
+            state_delimiter = mlp.in_size * _rd_N * _rd_N
         else:
             raise ValueError(f"Unsupported dynamical model: {dynamical_model}!")
         self.func = UDE_funcs[self.dynamical_model](

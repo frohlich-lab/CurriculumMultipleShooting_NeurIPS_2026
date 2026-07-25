@@ -191,8 +191,8 @@ def prune_config(run_config: dict):
             run_config["training_setting"] = "UDE"
             run_config["node_augmentation"] = 0  # augmentation is only meaningful for the NODE variant
         # Continuity penalty is method-dependent: plain MS keeps the configured value
-        # (MULTIPLE_SHOOTING_PENALTIES, ~10) for a fair baseline; CMS is forced to 0 since its
-        # selling point is robustness to lambda_cont.
+        # (MULTIPLE_SHOOTING_PENALTIES) for a fair baseline; CMS uses a small fixed penalty (0.1),
+        # reflecting its robustness to lambda_cont.
         if run_config.get("shooting_mode") == "multiple" and run_config.get("curriculum_learning"):
             run_config["multiple_shooting_penalty"] = 0.1
 
