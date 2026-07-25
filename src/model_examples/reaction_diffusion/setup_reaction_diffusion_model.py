@@ -67,7 +67,7 @@ NOISE_STD_FRAC = 0.0  # APHYNITY data are clean; set > 0 to add Gaussian noise (
 IC_SEED = 0         # fixed seed -> data identical across training seeds
 
 # Grid sizes registered as separate dynamical models (state-space-size scan)
-REACTION_DIFFUSION_SIZES = (8, 16, 32)
+REACTION_DIFFUSION_SIZES = (4, 8, 16, 32)
 
 
 def periodic_laplacian(f: Array, dx: float) -> Array:

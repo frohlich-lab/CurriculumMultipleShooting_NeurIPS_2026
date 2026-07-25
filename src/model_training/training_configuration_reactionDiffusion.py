@@ -7,9 +7,11 @@
 # To activate: copy this file over src/model_training/training_configuration.py.
 
 DYNAMICAL_MODEL = {
+    "reaction_diffusion_ude_4",
     "reaction_diffusion_ude_8",
     "reaction_diffusion_ude_16",
     "reaction_diffusion_ude_32",
+    "reaction_diffusion_node_4",
     "reaction_diffusion_node_8",
     "reaction_diffusion_node_16",
     "reaction_diffusion_node_32",
@@ -113,8 +115,8 @@ MLP_REG_STRENGTHS = {
 OUTPUT_REG = {
     # Output regularisation on the NN (reaction) output. Curbs the ConvNet from absorbing the known
     # diffusion -> improves (a, b) identifiability/recovery. UDE only; NODE forced to 0 in prune_config.
-    "range": (1000.0,),
-    "central_value": 1000.0,
+    "range": (10.0,),
+    "central_value": 10.0,
 }
 
 # Shooting parameters (shooting mode is decided by TRAINING_SCHEMES)
