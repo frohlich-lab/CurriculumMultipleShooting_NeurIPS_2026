@@ -2,6 +2,14 @@ import itertools as itt
 from typing import Dict, List
 
 from src.common import scan_attributes
+try:  # opt-in, per-config: axes to enumerate as a full factorial instead of one-at-a-time
+    from src.model_training.training_configuration import FACTORIAL_SCAN_PARAMS
+except ImportError:
+    FACTORIAL_SCAN_PARAMS = frozenset()
+try:  # opt-in: apply the tuned per-method reaction-diffusion hyperparameters
+    from src.model_training.training_configuration import RD_USE_METHOD_CONFIG
+except ImportError:
+    RD_USE_METHOD_CONFIG = False
 from src.model_training.training_configuration import (
     COMPUTE_HESSIAN_METRICS,
     DYNAMIC_PARAMS_PERTURB_METHODS,
@@ -120,6 +128,28 @@ product_hyperparameters = {
     "scale_initial_values": SCALE_INITIAL_VALUES,
 }
 
+# Per-method reaction-diffusion hyperparameters, selected on the 8x8 factorial scan (5 seeds).
+#   output_reg  : highest value whose fit degradation vs the best is NOT significant
+#                 (paired Wilcoxon on final train MSE); 100 degrades significantly everywhere.
+#   window len / lambda_cont : best cell on train MSE, chosen JOINTLY with output_reg -- they
+#                 interact (UDE-MS flips from wl=7,lambda=0.1 to wl=5,lambda=1 once oreg=10).
+#   stages      : num_curriculum_steps, for single+CL only (CL has no shooting windows).
+# Keys are (variant, shooting_mode, curriculum_learning). NODE output_reg stays forced to 0.
+# Applied only when the active config sets RD_USE_METHOD_CONFIG.
+RD_METHOD_CONFIG = {
+    ("ude",  "single",   False): {"output_reg": 10.0},
+    ("ude",  "single",   True):  {"output_reg": 10.0, "num_curriculum_steps": 5},
+    ("ude",  "multiple", False): {"output_reg": 10.0, "shooting_window_length": 5,
+                                  "multiple_shooting_penalty": 1.0},
+    ("ude",  "multiple", True):  {"output_reg": 10.0, "shooting_window_length": 7,
+                                  "multiple_shooting_penalty": 1.0},
+    ("node", "single",   True):  {"num_curriculum_steps": 5},
+    ("node", "multiple", False): {"shooting_window_length": 7,
+                                  "multiple_shooting_penalty": 0.1},
+    ("node", "multiple", True):  {"shooting_window_length": 5,
+                                  "multiple_shooting_penalty": 0.1},
+}
+
 
 def prune_config(run_config: dict):
     # --- FILTER irrelevant params per conditions ---
@@ -190,11 +220,14 @@ def prune_config(run_config: dict):
         elif "ude" in _dm:
             run_config["training_setting"] = "UDE"
             run_config["node_augmentation"] = 0  # augmentation is only meaningful for the NODE variant
-        # Continuity penalty is method-dependent: plain MS keeps the configured value
-        # (MULTIPLE_SHOOTING_PENALTIES) for a fair baseline; CMS uses a small fixed penalty (0.1),
-        # reflecting its robustness to lambda_cont.
-        if run_config.get("shooting_mode") == "multiple" and run_config.get("curriculum_learning"):
-            run_config["multiple_shooting_penalty"] = 0.1
+        # Per-method hyperparameters, tuned on the 8x8 factorial scan. Applied last so these win
+        # over the generic forcing above; keys absent from an entry keep the configured value.
+        # Set RD_USE_METHOD_CONFIG = False in the config to scan these axes instead.
+        if RD_USE_METHOD_CONFIG:
+            _variant = "node" if "node" in _dm else "ude"
+            _key = (_variant, run_config.get("shooting_mode"),
+                    bool(run_config.get("curriculum_learning")))
+            run_config.update(RD_METHOD_CONFIG.get(_key, {}))
 
     if run_config.get("training_setting") == "UDE":
         run_config["mlpexp_target"] = "None"
@@ -231,6 +264,16 @@ def prune_config(run_config: dict):
     #     run_config["normalise_timepoints"] = True
 
     return run_config
+
+
+# Opt-in full-factorial axes. By default every entry of linear_hyperparameters is scanned
+# one-at-a-time (each value varied alone off its central value). A config may set
+# FACTORIAL_SCAN_PARAMS to promote selected axes to product_hyperparameters, so that all of
+# their combinations are enumerated instead -- needed when axes are expected to interact
+# (e.g. lambda_cont x shooting window length). Absent/empty => unchanged one-at-a-time behaviour.
+for _param in FACTORIAL_SCAN_PARAMS:
+    if _param in linear_hyperparameters:
+        product_hyperparameters[_param] = linear_hyperparameters.pop(_param)["range"]
 
 
 def generate_param_combinations(n_starts: int) -> List[Dict]:

@@ -74,8 +74,11 @@ OPTIMISERS = {
 }
 
 MAX_LEARNING_RATES = {
-    "range": (1e-3,),    # CMS guidance: single-shooting learning rates (~1e-3) are sufficient
-    "central_value": 1e-3,
+    # Tuned on the 8x8 LR sweep (5 seeds, {1e-4,3e-4,1e-3,3e-3,1e-2}), selected on TRAIN MSE:
+    # 3e-3 is best or statistically tied for 7 of 8 method x variant cells.
+    # (Only NODE-MS prefers 1e-2, but it diverges at every LR, so it is not a real optimum.)
+    "range": (3e-3,),
+    "central_value": 3e-3,
 }
 
 LEARNING_RATE_SPANS = {
@@ -238,4 +241,10 @@ N_STARTS = 10  # number of multi-starts (seeds)
 N_EPOCHS_ADAM = 5000
 N_EPOCHS_BFGS = 1000  # unused (single_bfgs removed from TRAINING_SCHEMES)
 
-EXPERIMENT_NAME = "reaction_diffusion_scan_24072026"
+EXPERIMENT_NAME = "reaction_diffusion_tuned_25072026"
+
+# Apply the per-method hyperparameters tuned on the 8x8 factorial scan (see RD_METHOD_CONFIG in
+# src/generate_run_configs.py). With this on, output_reg / shooting_window_length /
+# multiple_shooting_penalty / num_curriculum_steps are set per method and the single global
+# values above are ignored for reaction-diffusion models.
+RD_USE_METHOD_CONFIG = True
