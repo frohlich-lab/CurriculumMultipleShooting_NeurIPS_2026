@@ -349,11 +349,17 @@ def setup_curriculum_learning(
             elif num_curriculum_steps <= 0:
                 raise ValueError("Number of steps must be positive!")
 
-            # Compute curriculum stage metrics
+            # Compute curriculum stage metrics.
+            # The stage *starts* are spread over [0, switch_epoch], so the final stage -- the one
+            # trained on the full data -- begins exactly at switch_epoch. Dividing by
+            # num_curriculum_steps instead would place it at (N-1)/N * switch_epoch, i.e. the
+            # curriculum would finish early and single+CL would get more full-data epochs than
+            # multiple+CL, which uses the convention below. Guarded for the single-stage case.
+            interval = switch_epoch / max(num_curriculum_steps - 1, 1)
             for step in range(1, num_curriculum_steps + 1):
                 length = int(len(data) * (step / num_curriculum_steps))
-                start_epoch = int((step - 1) * (switch_epoch / num_curriculum_steps))
-                end_epoch = int(step * (switch_epoch / num_curriculum_steps)) if step < num_curriculum_steps \
+                start_epoch = int((step - 1) * interval)
+                end_epoch = int(step * interval) if step < num_curriculum_steps \
                     else n_epoch  # last CL stage lasts until final NN training epoch
                 stage_dict[step] = {
                     "start": start_epoch,
@@ -372,11 +378,14 @@ def setup_curriculum_learning(
                   f"overridden with {num_windows}.")
             new_num_curriculum_steps = num_windows
             time, mask = None, None
+            # Same convention as the single-shooting branch: the final stage (all windows) starts
+            # exactly at switch_epoch. max(..., 1) guards the single-window case.
+            interval = switch_epoch / max(new_num_curriculum_steps - 1, 1)
             # Fill the incremental data list with the incremental data
             for step in range(1, new_num_curriculum_steps + 1):
-                start_epoch = int((step - 1) * (switch_epoch / (new_num_curriculum_steps-1)))
+                start_epoch = int((step - 1) * interval)
                 end_epoch = int(
-                    step * (switch_epoch / (new_num_curriculum_steps-1))
+                    step * interval
                 ) if step < new_num_curriculum_steps else n_epoch  # last CL stage lasts until final NN training epoch
                 if step == 1:
                     time, mask = generate_ms_time_and_mask(
