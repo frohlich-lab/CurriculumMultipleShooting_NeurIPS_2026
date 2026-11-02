@@ -15,7 +15,7 @@ from diffrax import SaveAt
 from jax.flatten_util import ravel_pytree
 from jaxtyping import Array, PyTree
 
-from src.common import Conf, dynamic_param_labels, hessian_metrics_wandb
+from src.common import Conf, GRAD_CLIP_NORM, dynamic_param_labels, hessian_metrics_wandb
 from src.model_training.model_util import set_weight_bias
 from src.ude_problem.ude_problem import UDEProblem
 
@@ -234,6 +234,13 @@ def initialise_wandb(
     if conf.training_setting == "UDE":
         metrics["max_grad_norm"] = "min"
         metrics["num_train_samples"] = None
+        # Gradient health, measured BEFORE sanitise+clip (see raw_grad_stats/make_grads_finite).
+        # `grad_clip_scale` < 1 means the clip bit; a non-zero `n_nonfinite_grads` means parameters
+        # would have been silently frozen under the old "zero" strategy.
+        metrics["n_nonfinite_grads"] = "max"
+        metrics["frac_nonfinite_grads"] = "max"
+        metrics["raw_max_abs_grad"] = "max"
+        metrics["grad_clip_scale"] = "min"
 
         # neural network contribution/output regularisation
         if conf.output_reg > 0:
@@ -316,35 +323,77 @@ def get_save_epochs(num_epochs, num_models):
 
 
 # Utilities to make training step or compute gradient and hessian metrics
-def make_grads_finite(grads, strategy: str = "zero", threshold: float = 1e10):
+def raw_grad_stats(grads) -> dict:
+    """Diagnostics on the gradient BEFORE any sanitisation or clipping.
+
+    These have to be taken pre-treatment: the logged `max_grad_norm` is computed on the gradient
+    that is actually applied, so on its own it cannot distinguish "the gradient was healthy" from
+    "the gradient was 1e254 and got clipped back into range".
+
+    `raw_max_abs_grad` deliberately ignores non-finite entries and uses max|.| rather than an L2
+    norm, because the sum of squares itself overflows once single entries reach ~1e154 -- which is
+    how the original symptom presented (an `inf` in a column whose inputs were all finite).
     """
-    Clean or norm-clip gradients depending on the strategy.
+    flat, _ = jax.flatten_util.ravel_pytree(grads)
+    finite = jnp.isfinite(flat)
+    return {
+        "n_nonfinite_grads": jnp.sum(~finite),
+        "frac_nonfinite_grads": jnp.mean(jnp.where(finite, 0.0, 1.0)),
+        "raw_max_abs_grad": jnp.max(jnp.where(finite, jnp.abs(flat), 0.0)),
+    }
+
+
+def make_grads_finite(grads, strategy: str = "clip", threshold: float = GRAD_CLIP_NORM):
+    """
+    Sanitise non-finite gradients and (by default) clip the global gradient norm.
 
     Args:
         grads: PyTree of gradients.
-        strategy (str): Either "zero" (replace non-finite values with zero)
-                        or "clip" (clip gradient norms to the given threshold).
-        threshold (float): Norm threshold for clipping.
+        strategy (str): "clip"  -- sanitise, then scale so ||g||_2 <= threshold (default), or
+                        "zero"  -- replace non-finite values with zero and nothing else.
+        threshold (float): Global L2-norm ceiling. Ignored by the "zero" strategy.
 
     Returns:
-        PyTree of processed gradients.
+        (grads, scale) -- the processed PyTree and the scalar factor that was applied
+        (1.0 when no clipping was needed), so callers can log when the clip actually bit.
+
+    Notes
+    -----
+    Why "zero" is NOT the default any more: it silently freezes every parameter whose gradient
+    came back non-finite, and if the cause is structural those parameters then never move, so the
+    next step reproduces exactly the same non-finite gradient. Observed on the 64x64 spiral, where
+    the 32768 multiple-shooting window initial values sat at their 1e-6 initialisation for all
+    3000 epochs while the loss quietly plateaued ~2x above the healthy runs.
+
+    Sanitisation therefore maps +/-inf to +/-threshold rather than to zero -- the magnitude is
+    meaningless but the SIGN is usable, so the parameter still moves and can escape. NaN carries no
+    direction at all and still maps to zero.
     """
     if strategy == "zero":
-        # Replace non-finite gradients with zeros
+        # Legacy behaviour, kept for callers that opt into it explicitly.
         return jax.tree.map(
             lambda x: jnp.where(jnp.isfinite(x), x, jnp.zeros_like(x)),
             grads,
-        )
+        ), jnp.array(1.0)
     elif strategy == "clip":
-        # Compute global L2 norm of all finite gradients
+        grads = jax.tree.map(
+            lambda x: jnp.nan_to_num(
+                x, nan=0.0, posinf=float(threshold), neginf=-float(threshold)
+            ),
+            grads,
+        )
         grads_flat, _ = jax.flatten_util.ravel_pytree(grads)
-        grad_norm = jnp.linalg.norm(grads_flat)
-
-        # Compute scaling factor if norm exceeds threshold
-        scale = jnp.minimum(1.0, threshold / (grad_norm + 1e-12))
-
-        # Scale all gradients proportionally
-        return jax.tree.map(lambda x: x * scale, grads)
+        # Normalise by the peak entry before summing squares. Entries can legitimately be ~1e254
+        # here (finite, but their square is not), and a naive jnp.linalg.norm would overflow to inf
+        # -> scale 0 -> the whole update silently zeroed, i.e. the exact failure this replaces.
+        peak = jnp.max(jnp.abs(grads_flat))
+        unit_norm = jnp.linalg.norm(jnp.where(peak > 0, grads_flat / peak, grads_flat))
+        scale = jnp.where(
+            peak > 0,
+            jnp.minimum(1.0, (threshold / peak) / jnp.maximum(unit_norm, 1e-12)),
+            1.0,
+        )
+        return jax.tree.map(lambda x: x * scale, grads), scale
     else:
         raise ValueError(f"Unknown strategy '{strategy}'. Use 'zero' or 'clip'.")
 
@@ -541,6 +590,24 @@ def get_sol_and_loss_validation(
         data=data,
     )
     return sol, loss
+
+
+def get_solver_steps(model, u0, t_save, max_steps: int = 20000) -> int:
+    """Number of integrator steps a plain forward solve of `model` currently needs.
+
+    Worth tracking during training because the step count is NOT constant: it reflects how stiff
+    the learned vector field is, and that changes as the network trains (at initialisation a NODE
+    can need ~18x fewer steps than the true system and grows towards it). Per-epoch cost therefore
+    drifts, and logging this makes it visible rather than inferred from wall time.
+
+    Reuses the model's own single-shooting solve so the solver/controller settings match training
+    exactly; no adjoint, so this is one extra forward solve per log.
+    """
+    ts = t_save.subs.ts if hasattr(t_save, "subs") else t_save
+    sol = model.solve_single_shooting(
+        diffrax.Tsit5(), u0, ts, diffrax.DirectAdjoint(), max_steps
+    )
+    return int(jnp.sum(sol.stats["num_steps"]))
 
 
 def get_sol_and_loss_single_shooting(

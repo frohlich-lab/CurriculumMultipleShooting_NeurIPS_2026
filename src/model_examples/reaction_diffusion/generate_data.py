@@ -25,6 +25,8 @@ from src.model_examples.reaction_diffusion.setup_reaction_diffusion_model import
     REACTION_DIFFUSION_SIZES,
     T_INIT,
     T_VAL,
+    N_TRAIN_POINTS,
+    N_FORECAST_POINTS,
     make_random_field,
     true_rhs,
 )
@@ -34,8 +36,9 @@ def generate_for_size(N: int) -> None:
     dx = DOMAIN_L / N
     # APHYNITY: raw uniform field at t=T_INIT (-0.5); integrate through the 0.5-unit burn-in and only
     # SAVE from t=0 onward. data[0] = X0 = state at t=0 (smoothed), matching get_X0().
-    n_steps = int(round(T_VAL / DT)) + 1          # e.g. 51 points for T_VAL=5.0, DT=0.1
-    ts = jnp.linspace(0.0, T_VAL, n_steps)        # save at t = 0 .. T_VAL
+    # Exactly DT-spaced so the training split lands on N_TRAIN_POINTS by construction.
+    n_steps = N_TRAIN_POINTS + N_FORECAST_POINTS
+    ts = DT * jnp.arange(n_steps)                 # t = 0 .. T_VAL, step DT
     y0 = make_random_field(N)                     # the field at t=T_INIT
 
     sol = diffrax.diffeqsolve(

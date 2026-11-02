@@ -238,7 +238,10 @@ def setup_mlp(conf: Conf, u0: jnp.ndarray, key_mlp, key_init):
 
     # Reaction-diffusion (APHYNITY) uses a ConvNet over the grid instead of a dense MLP.
     # `set_weight_bias` (Linear-specific) is not applied; Conv2d uses its default init.
+    # The ConvNet's padding must match the PDE's boundary condition, otherwise the learned
+    # reaction assumes different boundaries from the mechanistic diffusion it is added to.
     if conf.dynamical_model.startswith('reaction_diffusion'):
+        from src.model_examples.reaction_diffusion import setup_reaction_diffusion_model as _setup_rd
         return build_conv_net(
             in_channels=in_size,
             out_channels=out_size,
@@ -249,6 +252,8 @@ def setup_mlp(conf: Conf, u0: jnp.ndarray, key_mlp, key_init):
             use_final_bias=conf.use_final_bias,
             activation=activation_functions[conf.activation_fn_name],
             final_activation=activation_functions[conf.final_activation_fn_name],
+            padding_mode=_setup_rd.CONV_PADDING[_setup_rd.RD_BC],
+            init_scale=conf.init_scale,
         )
 
     # Build the MLP, initialise its weights and biases
@@ -373,7 +378,10 @@ def setup_curriculum_learning(
                 }
         elif shooting_mode == "multiple":
             # The number of curriculum steps is automatically defined by the number of shooting windows
-            num_windows = int(np.ceil(len(data) / (shooting_window_length - 1)))
+            # windows overlap by one point, so each advances by (L-1) and covers the
+            # (n-1) intervals between the n timepoints. Using n instead of (n-1) adds a
+            # spurious extra window holding a single point whenever the windows tile exactly.
+            num_windows = int(np.ceil((len(data) - 1) / (shooting_window_length - 1)))
             print(f"Multiple shooting + curriculum learning selected. Number of curriculum steps will be "
                   f"overridden with {num_windows}.")
             new_num_curriculum_steps = num_windows
@@ -515,7 +523,8 @@ def initialize_multiple_shooting(
         Small value used to initialize initial values in strategy "z".
     """
     # Pre-compute the number of windows
-    num_windows = int(np.ceil(training_horizon / (shooting_window_length - 1)))
+    # see note in setup_curriculum_learning: (n-1) intervals, each window advancing (L-1)
+    num_windows = int(np.ceil((training_horizon - 1) / (shooting_window_length - 1)))
 
     if curriculum_learning and (curriculum_params is not None):
         # pre-computed

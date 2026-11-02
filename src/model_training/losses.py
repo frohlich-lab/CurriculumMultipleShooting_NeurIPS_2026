@@ -5,7 +5,7 @@ import jax.numpy as jnp
 
 from functools import partial
 from jaxtyping import PyTree
-from src.common import Conf
+from src.common import Conf, default_adjoint
 from src.model_training.regularisation import (
     compute_discontinuity_penalty,
     regularise_mlp,
@@ -33,7 +33,7 @@ def compute_loss(
         shooting_mode: str,
         loss_fn: Callable,
         rescaling_args: dict[str, float],
-        adjoint: diffrax.AbstractAdjoint = diffrax.RecursiveCheckpointAdjoint(), # default for everything apart from Hessian (DirectAdjoint)
+        adjoint: diffrax.AbstractAdjoint = default_adjoint(), # default for everything apart from Hessian (DirectAdjoint)
         max_steps: int = 20000,
 ):
     # Get full UDEProblem
@@ -119,7 +119,7 @@ def compute_loss_grad(
         shooting_mode,
         loss_fn: Callable,
         rescaling_args: dict[str, float],
-        adjoint: diffrax.AbstractAdjoint = diffrax.RecursiveCheckpointAdjoint(),
+        adjoint: diffrax.AbstractAdjoint = default_adjoint(),
         max_steps: int = 20000,
 ):
     return eqx.filter_value_and_grad(compute_loss, has_aux=True)(
@@ -137,7 +137,7 @@ def compute_validation_loss(
         u0, t_save, t_span,
         data,
         loss_fn: Callable,
-        adjoint: diffrax.AbstractAdjoint = diffrax.RecursiveCheckpointAdjoint(),  # default for everything apart from Hessian (DirectAdjoint),
+        adjoint: diffrax.AbstractAdjoint = default_adjoint(),  # default for everything apart from Hessian (DirectAdjoint),
         max_steps: int = 40000  # 2x as long for 2x the timecourse
 ):
     # Get full UDEProblem
