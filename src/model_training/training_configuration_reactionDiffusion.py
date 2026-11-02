@@ -1,14 +1,12 @@
-# Reaction-diffusion (FitzHugh-Nagumo) benchmark, based on APHYNITY (arXiv:2010.04456).
+# Reaction-diffusion (FitzHugh-Nagumo) benchmark, adapted from APHYNITY (arXiv:2010.04456).
 # Two variants: hybrid UDE (known diffusion + ConvNet reaction) and vanilla augmented NODE.
 #
-# CURRENT MODE: shooting-geometry scan, post-regscan narrowing (19/08/2026).
-#   - learning rate FIXED per method from the 08/08/2026 sweep (RD_METHOD_CONFIG)
-#   - continuity penalty now ALSO fixed per method, from the 12-19/08/2026 regscan (RD_METHOD_CONFIG)
-#   - all remaining axes scanned LINEARLY (one at a time off the central value), no factorial:
-#       output_reg 3 values, rescaled to 1e3-1e5 (UDE only -- NODE forces 0)
-#       shooting_window_length 2 values, L=4 and L=13 dropped (see that block)
-#   - 500 Adam epochs; curriculum ramp is 80% of the budget for single+CL, and derived from the
-#     window count for multiple+CL so its stages stay equal (see prune_config)
+# CURRENT MODE: final benchmark run (reaction_diffusion_final_19102026), seeds 10..109.
+#   - every axis is a single value; per-method learning rate, continuity penalty and single_CL
+#     stage count come from RD_METHOD_CONFIG in generate_run_configs.py (evidence recorded there)
+#   - output_reg 1e4 (UDE only -- NODE forces 0), shooting window length 8 (5 windows)
+#   - 500 Adam epochs; equal-length curriculum stages (max_curriculum_epochs co-varies with the
+#     stage count, see prune_config)
 #   - both channels observed (u+v) -- set RD_OBSERVED=uv in the launcher; do NOT run the u-only arm
 #
 # To activate: copy this file over src/model_training/training_configuration.py.

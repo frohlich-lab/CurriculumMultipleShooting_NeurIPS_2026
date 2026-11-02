@@ -1,9 +1,9 @@
 """Generate ground-truth reaction-diffusion (FitzHugh-Nagumo) trajectories, one per grid size.
 
-Solves the *true* PDE with a fine adaptive solver (matching APHYNITY's RK45), samples at the
-APHYNITY effective step dt=0.1 over [0, T_VAL], and saves a flattened trajectory to
+Solves the *true* PDE with Tsit5 (rtol = atol = 1e-8), samples every DT over [0, T_VAL]
+(N_TRAIN_POINTS + N_FORECAST_POINTS points), and saves a flattened trajectory to
 ``src/data_dir/reaction_diffusion_<N>/ground_truth.npz`` (keys: ``t``, ``data``). The UDE and NODE
-variants at a given N share the same npz; the loader slices train (t <= 2.5) / val (t > 2.5).
+variants at a given N share the same npz; the loader slices train (t <= T_TRAIN) / val (t > T_TRAIN).
 """
 from pathlib import Path
 
@@ -32,8 +32,8 @@ from src.model_examples.reaction_diffusion.setup_reaction_diffusion_model import
 
 def generate_for_size(N: int) -> None:
     dx = DOMAIN_L / N
-    # APHYNITY: raw uniform field at t=T_INIT (-0.5); integrate through the 0.5-unit burn-in and only
-    # SAVE from t=0 onward. data[0] = X0 = state at t=0 (smoothed), matching get_X0().
+    # The deterministic gradient field is the state at t = T_INIT = 0 (no burn-in), so
+    # data[0] = X0, matching get_X0().
     # Exactly DT-spaced so the training split lands on N_TRAIN_POINTS by construction.
     n_steps = N_TRAIN_POINTS + N_FORECAST_POINTS
     ts = DT * jnp.arange(n_steps)                 # t = 0 .. T_VAL, step DT
@@ -42,7 +42,7 @@ def generate_for_size(N: int) -> None:
     sol = diffrax.diffeqsolve(
         diffrax.ODETerm(true_rhs),
         diffrax.Tsit5(),
-        t0=float(T_INIT),                         # start integrating at t=-0.5
+        t0=float(T_INIT),                         # = 0: no burn-in
         t1=float(T_VAL),
         dt0=1e-3,
         y0=y0,

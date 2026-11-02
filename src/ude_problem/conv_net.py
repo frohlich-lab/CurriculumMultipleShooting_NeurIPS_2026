@@ -2,7 +2,8 @@
 
 The repo otherwise builds only dense MLPs (see ``build_mlp``). The reaction-diffusion example
 (APHYNITY) needs a translation-equivariant network over the grid, so this module provides a compact
-ConvNet with periodic (circular) padding, matching APHYNITY's 3-layer 3x3 ConvNet.
+ConvNet after APHYNITY's 3-layer 3x3 ConvNet. Its padding mode is configurable and is set to match
+the PDE's boundary condition (edge padding for the Neumann benchmark).
 
 ``ConvNet`` deliberately exposes the same metadata attributes as ``eqx.nn.MLP``
 (``in_size``, ``out_size``, ``width_size``, ``depth``, ``use_bias``, ``use_final_bias``,
@@ -11,7 +12,7 @@ unchanged. (Re-loading a serialised ConvNet via ``UDEProblem.load`` is currently
 MLP skeleton - but that path is only used by post-hoc analysis tools, not the training pipeline.)
 
 NOTE on APHYNITY parity: for the reaction-diffusion example we keep this ConvNet as a biased,
-circular-padded, BatchNorm-free 3-layer 3x3 net (hidden=16). This intentionally differs from
+BatchNorm-free 3-layer 3x3 net (hidden=16) with boundary-matched padding. This intentionally differs from
 APHYNITY's ``ConvNetEstimator`` (BatchNorm2d after conv 1-2, ``bias=False`` on those convs, zero
 padding on the NN convs). BatchNorm is omitted on purpose: inside an adaptive diffrax ODE RHS it
 would renormalise the vector field on every evaluation, which can destabilise the solve. See the

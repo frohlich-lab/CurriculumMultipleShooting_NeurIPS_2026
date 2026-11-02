@@ -1,20 +1,22 @@
-"""Reaction-diffusion (FitzHugh-Nagumo) benchmark, based on APHYNITY (arXiv:2010.04456).
+"""Reaction-diffusion (FitzHugh-Nagumo) benchmark, adapted from APHYNITY (arXiv:2010.04456).
 
-Two channels ``(u, v)`` evolve on an ``N x N`` periodic grid:
+Two channels ``(u, v)`` evolve on an ``N x N`` grid with Neumann (zero-flux) boundaries, in the
+oscillatory spiral-wave regime of the FitzHugh-Nagumo model:
 
-    du/dt = a * Laplacian(u) + (u - u**3 - k - v)
-    dv/dt = b * Laplacian(v) + (u - v)
+    du/dt = Du * Laplacian(u) + u - u**3 / 3 - v
+    dv/dt = Dv * Laplacian(v) + eps * (u + a - b * v)
 
-The state is stored flattened as ``[u.ravel(), v.ravel()]`` (length ``2 * N**2``). Scanning the
-grid resolution ``N`` therefore scans the state-space size (``2 * N**2``). Two model variants are
-provided (mirroring the Lotka-Volterra UDE/NODE pair):
+with Du = Dv = 1, a = 0.1, b = 1, eps = 0.005 on a domain of side 100 (constants below). The state is
+stored flattened as ``[u.ravel(), v.ravel()]`` (length ``2 * N**2``; 8192 at the benchmark's
+N = 64). Two model variants are provided (mirroring the Lotka-Volterra UDE/NODE pair):
 
-* ``ReactionDiffusionUDEFunction`` - hybrid UDE: known diffusion + a ConvNet learning the reaction.
+* ``ReactionDiffusionUDEFunction`` - hybrid UDE: known diffusion with unknown coefficients
+  (Du, Dv) + a ConvNet learning the reaction.
 * ``ReactionDiffusionNODEFunction`` - vanilla augmented NODE: a ConvNet models the full RHS, with
   ``node_augmentation`` extra latent channels (Dupont et al. augmentation, as channels).
 
-Simulation/data parameters follow the APHYNITY paper (domain [-1, 1]^2, a=1e-3, b=5e-3, k=5e-3,
-effective dt=0.1, train horizon 2.5 = 25 steps, forecast/validation over the next 25 steps).
+Data: a single noise-free trajectory from a deterministic gradient initial condition; two spiral
+rotations (36 points) for training and the next rotation (18 points) for validation.
 
 Divergences from APHYNITY (arXiv:2010.04456; github.com/yuan-yin/APHYNITY)
 -------------------------------------------------------------------------
@@ -23,15 +25,17 @@ dimension; it is NOT a reproduction of their forecasting numbers. Deliberate dif
 
 * Data regime: a SINGLE trajectory (one fixed IC) with a temporal interpolation/extrapolation
   split, vs their 1600 train / 320 test trajectories over many ICs (multi-IC generalisation).
-* Training: full-batch fit with the CMS strategies (single/CL/MS/CMS) for 5000 epochs, vs their
+* Training: full-batch fit with the CMS strategies (single/CL/MS/CMS) for 500 epochs, vs their
   minibatch Adam for 50000 epochs with the APHYNITY min-norm objective (min ||F_a||). In place of
   that min-norm constraint we use output regularisation on the NN reaction output (UDE variant) to
   curb it from absorbing the known diffusion; NODE keeps output_reg=0.
-* Metric: our variance/uncertainty is over 10 multistart seeds (median-reported); their reported
+* Metric: our variance/uncertainty is over 100 multistart seeds (median-reported); their reported
   +/- std is over the 320-trajectory test set from a single training run (no seed loop).
-* Diffusion coefficients (a, b): estimated on log10 scale via multistart (numerically stable for
-  the small O(1e-3) coefficients), vs their bounded-linear ``sigmoid(theta) * 1e-2``.
-* ConvNet (see ``src/ude_problem/conv_net.py``): kept intentionally as a biased, circular-padded,
+* Diffusion coefficients (Du, Dv): estimated on log10 scale via multistart, vs their bounded-linear
+  ``sigmoid(theta) * 1e-2``.
+* Regime: oscillatory spiral waves (eps = 0.005, Neumann boundaries, 64x64) instead of their
+  APHYNITY parameterisation (a=1e-3, b=5e-3, k=5e-3, periodic 32x32).
+* ConvNet (see ``src/ude_problem/conv_net.py``): kept intentionally as a biased,
   BatchNorm-free 3-layer 3x3 ConvNet (hidden=16). APHYNITY's ``ConvNetEstimator`` instead uses
   ``BatchNorm2d(track_running_stats=False)`` after conv layers 1-2, ``bias=False`` on those two
   convs, and ZERO padding on the NN convs (circular padding only in the physics Laplacian). We do
@@ -68,8 +72,8 @@ FHN_B = 1.0         # inhibitor decay b
 RD_EPSILON = 0.005  # time-scale separation on the recovery equation
 RD_NORMALISE_CHANNELS = os.environ.get("RD_NORMALISE_CHANNELS", "false").lower() in ("1","true","yes")
                     # Weight each channel's contribution to the loss by 1/std(channel).
-                    # The activator and inhibitor live on very different scales (std 1.63 vs 0.32
-                    # on the spiral dataset), so an unweighted MSE is ~96% determined by u and
+                    # The activator and inhibitor live on very different scales (std 1.65 vs 0.375
+                    # on the spiral dataset), so an unweighted MSE is ~95% determined by u and
                     # barely constrains v -- even though v is the inhibitor that drives the
                     # oscillation. Weighting equalises them. The MODEL stays in physical units;
                     # only the objective changes, so (a, b) remain directly interpretable.
@@ -205,7 +209,7 @@ make_random_field = make_initial_field
 
 
 def get_X0(grid_size: int) -> jnp.ndarray:
-    """Observed initial condition X0 = state at t=0 (post 0.5-unit burn-in), read from the npz.
+    """Observed initial condition X0 = state at t=0 (no burn-in: T_INIT = 0), read from the npz.
 
     Guarantees the training IC equals the data's t=0 state exactly (both come from the same file).
     """
@@ -215,15 +219,13 @@ def get_X0(grid_size: int) -> jnp.ndarray:
 def _reaction(u_ch: Array, v_ch: Array, epsilon: float = RD_EPSILON) -> Tuple[Array, Array]:
     """True FitzHugh-Nagumo reaction terms (used only for ground-truth data generation).
 
-    ``epsilon`` is the canonical FHN time-scale separation, placed on the recovery (inhibitor)
-    equation in the usual way:
+    ``epsilon`` is the time-scale separation on the recovery (inhibitor) equation:
 
-        du/dt = a Lap(u) + u - u^3 - k - v
-        dv/dt = b Lap(v) + eps * (u - v)
+        r_u = u - u^3 / 3 - v
+        r_v = eps * (u + a - b v)
 
-    eps = 1 recovers the APHYNITY parameterisation exactly, so existing data is unchanged.
-    Decreasing eps slows the inhibitor relative to the activator, which is what makes the system
-    excitable rather than simply relaxing.
+    Small eps (RD_EPSILON = 0.005) makes the inhibitor slow, giving relaxation oscillations; with
+    the fixed point on the middle branch of the cubic the medium oscillates and supports spirals.
     """
     r_u = u_ch - u_ch ** 3 / 3.0 - v_ch
     r_v = epsilon * (u_ch + FHN_A - FHN_B * v_ch)
@@ -233,8 +235,8 @@ def _reaction(u_ch: Array, v_ch: Array, epsilon: float = RD_EPSILON) -> Tuple[Ar
 def true_rhs(t, y, args):
     """Right-hand side of the *true* reaction-diffusion PDE (for data generation).
 
-    ``args`` may carry an ``epsilon`` entry; it defaults to RD_EPSILON (= 1) so that callers which
-    do not set it reproduce the original APHYNITY system bit-for-bit.
+    ``args`` may carry an ``epsilon`` entry; it defaults to RD_EPSILON (= 0.005), the value the
+    benchmark data were generated with.
     """
     N, dx = args["grid_size"], args["dx"]
     u_ch = y[:N * N].reshape(N, N)
