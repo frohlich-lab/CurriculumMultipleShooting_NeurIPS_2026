@@ -4,8 +4,6 @@ Solves the *true* PDE with a fine adaptive solver (matching APHYNITY's RK45), sa
 APHYNITY effective step dt=0.1 over [0, T_VAL], and saves a flattened trajectory to
 ``src/data_dir/reaction_diffusion_<N>/ground_truth.npz`` (keys: ``t``, ``data``). The UDE and NODE
 variants at a given N share the same npz; the loader slices train (t <= 2.5) / val (t > 2.5).
-
-Run on a COMPUTE NODE (not the login node), e.g. ``srun ... python3 <this file>``.
 """
 from pathlib import Path
 

@@ -7,14 +7,14 @@ ConvNet with periodic (circular) padding, matching APHYNITY's 3-layer 3x3 ConvNe
 ``ConvNet`` deliberately exposes the same metadata attributes as ``eqx.nn.MLP``
 (``in_size``, ``out_size``, ``width_size``, ``depth``, ``use_bias``, ``use_final_bias``,
 ``activation``, ``final_activation``) so that ``UDEProblem.get_hyperparams`` / ``save`` keep working
-unchanged. (Re-loading a serialised ConvNet via ``UDEProblem.load`` is not supported - it rebuilds an
+unchanged. (Re-loading a serialised ConvNet via ``UDEProblem.load`` is currently not supported - it rebuilds an
 MLP skeleton - but that path is only used by post-hoc analysis tools, not the training pipeline.)
 
 NOTE on APHYNITY parity: for the reaction-diffusion example we keep this ConvNet as a biased,
 circular-padded, BatchNorm-free 3-layer 3x3 net (hidden=16). This intentionally differs from
 APHYNITY's ``ConvNetEstimator`` (BatchNorm2d after conv 1-2, ``bias=False`` on those convs, zero
 padding on the NN convs). BatchNorm is omitted on purpose: inside an adaptive diffrax ODE RHS it
-would renormalise the vector field on every evaluation and can destabilise the solve. See the
+would renormalise the vector field on every evaluation, which can destabilise the solve. See the
 "Divergences from APHYNITY" note in
 ``src/model_examples/reaction_diffusion/setup_reaction_diffusion_model.py``.
 """

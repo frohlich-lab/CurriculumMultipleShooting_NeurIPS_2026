@@ -1,8 +1,9 @@
 # Reaction-diffusion (FitzHugh-Nagumo) benchmark, based on APHYNITY (arXiv:2010.04456).
-# State-space-size scan: N in {8, 16, 32} -> state dim 2*N**2 in {128, 512, 2048}.
-# Two variants per size: hybrid UDE (known diffusion + ConvNet reaction) and vanilla augmented NODE.
-# NO hyperparameter scan - every option is a single committed value (best guesses from the CMS paper).
-# Only axes: 6 model names x 5 training schemes x N_STARTS seeds.
+# Hyperparameter scan on the 8x8 grid (state dim 128).
+# Two variants: hybrid UDE (known diffusion + ConvNet reaction) and vanilla augmented NODE.
+# Full factorial over output_reg x shooting_window_length x multiple_shooting_penalty x
+# num_curriculum_steps (FACTORIAL_SCAN_PARAMS); all other options are single committed values.
+# Axes: 2 model names x 4 training schemes (single_bfgs disabled) x factorial grid x N_STARTS seeds.
 #
 # To activate: copy this file over src/model_training/training_configuration.py.
 

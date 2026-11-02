@@ -36,7 +36,7 @@ dimension; it is NOT a reproduction of their forecasting numbers. Deliberate dif
   ``BatchNorm2d(track_running_stats=False)`` after conv layers 1-2, ``bias=False`` on those two
   convs, and ZERO padding on the NN convs (circular padding only in the physics Laplacian). We do
   NOT replicate BatchNorm: inside an adaptive diffrax ODE right-hand side it would renormalise the
-  vector field every evaluation using batch/spatial statistics and can destabilise the solve
+  vector field every evaluation using batch/spatial statistics, which can destabilise the solve
   (APHYNITY integrates with a discrete fixed-step RK solver, where this is benign).
 """
 import os
