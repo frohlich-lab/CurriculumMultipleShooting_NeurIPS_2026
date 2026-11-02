@@ -1,6 +1,6 @@
-# Manuscript figures for the reaction-diffusion benchmark (final 100-seed run).
+# Manuscript figure for the reaction-diffusion benchmark (final 100-seed run): rd_benchmark.pdf.
 #
-# Matches the submitted manuscript (Fig. 1-2 and App. A.7) and the R code its figures were made
+# Matches the submitted manuscript (Fig. 2) and the R code its figures were made
 # with (sciml_ode_training/rsrc, parse_best_new):
 #   * strategies Adam, CL, CMS, MS in alphabetical order (no Adam+BFGS arm in this benchmark), with
 #     the manuscript's Okabe-Ito colours;
@@ -8,10 +8,8 @@
 #   * main figure = one column per model, interpolation on top and extrapolation below, panel title
 #     = model name, brackets comparing CMS with every other strategy;
 #   * Wilcoxon rank-sum tests, Holm-corrected per model, shown as ns / * / ** / ***;
-#   * runs with MSE >= 1e2 are dropped from the boxplots (as parse_best_new's loss_filter_val) and
-#     counted in the bad-run figures instead; the tests use all 100 runs.
-# Supplementary: median + IQR traces over epochs (curriculum end dashed, per facet: CL ends at epoch
-# 458 with 12 stages, CMS at 400 with 5) and bad-run counts.
+#   * runs with MSE >= 1e2 are dropped from the boxplots (as parse_best_new's loss_filter_val); the
+#     tests use all 100 runs.
 #
 # Input: plots/<experiment>/data/rd_final_traces.csv from export_final_for_r.py.
 # Usage (from the repo root, R with ggplot2 / ggsignif / patchwork, e.g. R/4.2.2-foss-2022b):
@@ -53,11 +51,9 @@ df_end <- df |>
   ungroup()
 
 save_fig <- function(p, dir_save, name, width, height) {
-  if (!dir.exists(dir_save)) dir.create(dir_save, recursive = TRUE)
-  for (ext in c("svg", "pdf")) ggsave(file.path(dir_save, str_c(name, ".", ext)), p,
-                                      width = width, height = height)
-  ggsave(file.path(dir_save, str_c(name, ".png")), p, width = width, height = height, dpi = 150)
-  message("SAVED ", file.path(dir_save, str_c(name, ".svg")))
+  path <- file.path(dir_save, str_c(name, ".pdf"))
+  ggsave(path, p, width = width, height = height)
+  message("SAVED ", path)
 }
 
 stars <- function(p) {
@@ -106,77 +102,10 @@ model_column <- function(m) {
     box_panel(m, "loss_val", "Extrapolation MSE")
 }
 
-# --- main figure (Fig. 2 layout) and the per-model panels ---
+# --- main figure (Fig. 2 layout) ---
 main <- wrap_elements(model_column("UDE")) | wrap_elements(model_column("NODE"))
 main <- main + plot_annotation(tag_levels = "a")
 save_fig(main, plot_root, "rd_benchmark", BASE_WIDTH * 1.6, BASE_HEIGHT * 1.6)
-for (m in c("UDE", "NODE")) {
-  save_fig(box_panel(m, "loss_train", "Interpolation MSE", model_title[[m]]),
-           file.path(plot_root, m), "box_interpolation", BASE_WIDTH, BASE_HEIGHT)
-  save_fig(box_panel(m, "loss_val", "Extrapolation MSE", model_title[[m]]),
-           file.path(plot_root, m), "box_extrapolation", BASE_WIDTH, BASE_HEIGHT)
-}
-
-# --- supplementary: traces and bad runs per model ---
-for (m in c("UDE", "NODE")) {
-  d <- filter(df, model == m)
-  dir_save <- file.path(plot_root, m)
-  n_starts <- n_distinct(d$start_guess)
-  multistarts <- str_c(model_title[[m]], " (", n_starts, " multistarts)")
-  df_traces <- d |>
-    group_by(tag, epoch) |>
-    summarise(across(c(loss_train, loss_val),
-                     list(median = median,
-                          q25 = ~ quantile(.x, 0.25, na.rm = TRUE),
-                          q75 = ~ quantile(.x, 0.75, na.rm = TRUE))),
-              .groups = "drop")
-  df_cl_end <- d |> filter(tag %in% c("CL", "CMS")) |> distinct(tag, n_cl_epochs)
-
-  trace_plot <- function(metric, ylab) {
-    med <- str_c(metric, "_median")
-    q25 <- str_c(metric, "_q25")
-    q75 <- str_c(metric, "_q75")
-    y_max <- ifelse(max(df_traces[[q75]]) > 1e9, 1e9, NaN)
-    ggplot(df_traces, aes(x = epoch, y = .data[[med]], color = tag, fill = tag)) +
-      geom_line(linewidth = 1.5) +
-      geom_ribbon(aes(ymin = .data[[q25]], ymax = .data[[q75]]), alpha = 0.2) +
-      geom_vline(data = df_cl_end, aes(xintercept = n_cl_epochs), linetype = "dashed",
-                 color = "grey20") +
-      facet_wrap(~ tag, ncol = 4) +
-      scale_y_log10(limits = c(NaN, y_max)) +
-      scale_fill_manual(values = col_use) +
-      scale_color_manual(values = col_use) +
-      labs(x = "Epoch", y = ylab, title = multistarts) +
-      my_theme +
-      theme(legend.position = "none")
-  }
-  save_fig(trace_plot("loss_train", "Interpolation MSE"), dir_save, "trace_interpolation",
-           BASE_WIDTH * 1.5, BASE_HEIGHT * 0.75)
-  save_fig(trace_plot("loss_val", "Extrapolation MSE"), dir_save, "trace_extrapolation",
-           BASE_WIDTH * 1.5, BASE_HEIGHT * 0.75)
-
-  df_bad <- df_end |>
-    filter(model == m) |>
-    group_by(tag) |>
-    summarise(bad_train = sum(loss_train >= 1e2), bad_val = sum(loss_val >= 1e2))
-  bad_plot <- function(col, ylab, title) {
-    ggplot(df_bad, aes(tag, .data[[col]], fill = tag)) +
-      geom_bar(stat = "identity") +
-      geom_text(aes(label = .data[[col]]), vjust = -0.5, size = 6, color = "grey20") +
-      scale_fill_manual(values = col_use) +
-      labs(x = "", y = ylab, title = title) +
-      scale_y_continuous(breaks = seq(0, 100, by = 10), limits = c(0, 100),
-                         expand = c(0, 0, 0.01, 0.01)) +
-      my_theme +
-      theme(legend.position = "none")
-  }
-  save_fig(bad_plot("bad_train", "Number of bad runs",
-                    "Runs with interpolation MSE > 1e2"), dir_save, "bad_interpolation",
-           BASE_WIDTH, BASE_HEIGHT)
-  save_fig(bad_plot("bad_val", "Number of bad runs",
-                    "Runs with extrapolation MSE > 1e2"), dir_save, "bad_extrapolation",
-           BASE_WIDTH, BASE_HEIGHT)
-}
 
 # --- tables: medians (as in App. A) and the tests behind the brackets ---
 write_csv(df_end |>
