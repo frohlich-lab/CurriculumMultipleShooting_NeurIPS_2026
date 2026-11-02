@@ -33,14 +33,26 @@ tag_levels <- c("Adam", "CL", "CMS", "MS")
 model_title <- c("UDE" = "Reaction-diffusion UDE model",
                  "NODE" = "Reaction-diffusion NeuralODE")
 
-BASE_HEIGHT <- 5
-BASE_WIDTH <- 7.0
+# Printed size: Fig. 2 is placed at 5.45 x 2.6 in for three model columns (~1.8 in per column), so
+# two columns at the same scale are ~3.7 x 2.6 in. Everything below is set for that size, so the
+# PDF goes in at 100% and its text matches Fig. 2 (~5 pt ticks, ~6.5 pt axis and panel titles).
+FIG_WIDTH <- 3.7
+FIG_HEIGHT <- 2.6
+BASE_SIZE <- 6.3
 loss_filter_val <- 1e2
 
-my_theme <- theme_bw(base_size = 14) +
+my_theme <- theme_bw(base_size = BASE_SIZE) +
   theme(legend.position = "bottom",
         axis.title = element_text(color = "grey10"),
-        plot.title = element_text(color = "grey10", size = 14),
+        plot.title = element_text(color = "grey10", size = BASE_SIZE + 0.5,
+                                  margin = margin(0, 0, 2, 0)),
+        plot.title.position = "plot",
+        plot.tag = element_text(size = BASE_SIZE + 1),
+        axis.title.x = element_blank(),
+        plot.margin = margin(2, 2, 0, 0),
+        panel.grid = element_line(linewidth = 0.2),
+        axis.ticks = element_line(linewidth = 0.2),
+        panel.border = element_rect(linewidth = 0.3),
         plot.subtitle = element_text(color = "grey30"))
 
 df <- read_csv(file.path(plot_root, "data", "rd_final_traces.csv"), show_col_types = FALSE) |>
@@ -78,7 +90,7 @@ tests <- bind_rows(lapply(c("UDE", "NODE"), function(m) {
   mutate(p_holm = p.adjust(p, method = "holm"), label = stars(p_holm)) |>
   ungroup()
 
-box_panel <- function(m, metric, ylab, title = NULL) {
+box_panel <- function(m, metric, ylab, title = NULL, tag = NULL) {
   d <- filter(df_end, model == m, .data[[metric]] < loss_filter_val)
   t <- filter(tests, model == m, metric == !!metric)
   # flat brackets stacked above the data, Adam (furthest from CMS) on top, as in Fig. 2
@@ -87,25 +99,24 @@ box_panel <- function(m, metric, ylab, title = NULL) {
   comparisons <- lapply(t$other, function(o) c(o, "CMS"))
   y_pos <- top + step * rev(seq_along(comparisons))
   ggplot(d, aes(x = tag, y = .data[[metric]], fill = tag)) +
-    geom_boxplot() +
+    geom_boxplot(linewidth = 0.25, outlier.size = 0.35) +
     geom_signif(comparisons = comparisons, annotations = t$label, y_position = y_pos,
-                tip_length = 0, textsize = 4.5, vjust = 0.2, color = "grey20") +
+                tip_length = 0, textsize = 1.9, vjust = 0.3, size = 0.2, color = "grey20") +
     scale_fill_manual(values = col_use) +
     scale_y_log10(expand = expansion(mult = c(0.05, 0.10))) +  # headroom for the top label
-    labs(x = "", y = ylab, title = title) +
+    labs(x = "", y = ylab, title = title, tag = tag) +
     my_theme +
     theme(legend.position = "none")
 }
 
-model_column <- function(m) {
-  box_panel(m, "loss_train", "Interpolation MSE", model_title[[m]]) /
+model_column <- function(m, tag) {
+  box_panel(m, "loss_train", "Interpolation MSE", model_title[[m]], tag) /
     box_panel(m, "loss_val", "Extrapolation MSE")
 }
 
-# --- main figure (Fig. 2 layout) ---
-main <- wrap_elements(model_column("UDE")) | wrap_elements(model_column("NODE"))
-main <- main + plot_annotation(tag_levels = "a")
-save_fig(main, plot_root, "rd_benchmark", BASE_WIDTH * 1.6, BASE_HEIGHT * 1.6)
+# --- main figure (Fig. 2 layout): panel letters on the top row only, one per model ---
+main <- model_column("UDE", "a") | model_column("NODE", "b")
+save_fig(main, plot_root, "rd_benchmark", FIG_WIDTH, FIG_HEIGHT)
 
 # --- tables: medians (as in App. A) and the tests behind the brackets ---
 write_csv(df_end |>
