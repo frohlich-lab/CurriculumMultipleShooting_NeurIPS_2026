@@ -16,7 +16,7 @@ def get_version(rel_path):
 
 # TODO @GiacomoFabrini have no clue what to put here!
 setup(
-   name='Test_UDE',
+   name='CurriculumMultipleShooting_NeurIPS_2026',
    version=get_version("__init__.py"),
    description='Benchmarking diffrax and PEtab.jl on UDE models',
    author='Giacomo Fabrini, Sebastian Persson',

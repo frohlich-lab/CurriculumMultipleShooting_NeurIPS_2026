@@ -161,7 +161,7 @@ def reformat_filename(filename):
     return filename
 
 
-basedir: Path = Path(__file__).resolve().parent.parent  # Test_UDE, outside src
+basedir: Path = Path(__file__).resolve().parent.parent  # repository root, outside src
 plots_dir = basedir / "plots"
 # Reverse-mode differentiation through the ODE solve. `checkpoints` must be set EXPLICITLY:
 # left as None, equinox derives it as O(sqrt(max_steps)) (~631 for max_steps=200000), which forces
