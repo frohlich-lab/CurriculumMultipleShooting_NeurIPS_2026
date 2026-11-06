@@ -78,12 +78,20 @@ mlp = setup_mlp(conf, u0, key_mlp, key_init)
     )
 optx_config, options = option_args
 
+# Effective state dimension (state + augmentation) used for shooting initial-value shapes.
+# For the reaction-diffusion grid PDE, augmentation adds extra CHANNELS (each N*N), not scalars.
+if conf.dynamical_model.startswith("reaction_diffusion") and conf.node_augmentation > 0:
+    _rd_N = int(conf.dynamical_model.rsplit("_", 1)[1])
+    effective_state_dimension = state_dims[conf.dynamical_model] + conf.node_augmentation * _rd_N * _rd_N
+else:
+    effective_state_dimension = state_dims[conf.dynamical_model] + conf.node_augmentation
+
 # Set up SaveAt windows, binary masks and initial values
 t_save_windows, masks, initial_values, curriculum_stage_dict = setup_time_masks_u0_curriculum(
     conf=conf,
     train_args=train_args,
     u0_guess=train_args.u0,
-    effective_state_dimension=state_dims[conf.dynamical_model] + conf.node_augmentation,
+    effective_state_dimension=effective_state_dimension,
 )
 # Update plot args
 plot_args["t_save_windows"] = t_save_windows

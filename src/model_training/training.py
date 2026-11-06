@@ -1,3 +1,4 @@
+import os
 import time
 import warnings
 from dataclasses import replace
@@ -15,6 +16,7 @@ from jaxtyping import Array, Float, PyTree
 
 from src.common import (
     TRAINING_RESULTS,
+    max_iters_diffrax,
     Conf,
     TrainValArgs,
     dynamic_param_labels,
@@ -34,6 +36,7 @@ from src.model_training.training_util import (
     check_and_progress_curriculum,
     generate_log_epochs,
     get_filter_spec,
+    get_solver_steps,
     get_hessian_metrics,
     get_opt_opt_state_params,
     get_save_epochs,
@@ -42,6 +45,7 @@ from src.model_training.training_util import (
     initialise_wandb,
     make_grads_finite,
     max_grad_norm,
+    raw_grad_stats,
     update_hessian_index_mask_multiple_curriculum,
 )
 from src.plotting import log_plots
@@ -137,6 +141,11 @@ def log_fit_plots(
         plot_name: str,
         plot_subdir: str,
 ):
+    # Per-state fit-trajectory plots are not meaningful for the reaction-diffusion grid field
+    # (2*N**2 states); skip them. Scalar metrics (loss/MSE/etc.) are still logged to W&B separately,
+    # and field snapshots can be rendered offline from the ground-truth / saved models.
+    if conf.dynamical_model.startswith("reaction_diffusion"):
+        return
     # Log plots again after further training with optimistix/BFGS
     for dataset, t_save, t_span, data in zip(
             ["train", "validation"],
@@ -200,7 +209,11 @@ def make_step(
         multiple_shooting_penalty=conf.multiple_shooting_penalty,
         shooting_mode=conf.shooting_mode,
     )
-    grads = make_grads_finite(grads)
+    # Diagnostics on the RAW gradient, before it is touched -- `max_grad_norm` below is computed on
+    # the gradient that is actually applied and so cannot report what was cleaned away.
+    grad_diagnostics = raw_grad_stats(grads)
+    grads, clip_scale = make_grads_finite(grads)
+    grad_diagnostics["grad_clip_scale"] = clip_scale
     # Initialise hessian metrics with NaNs
     hessian_metrics = {
         metric: jnp.nan
@@ -217,7 +230,7 @@ def make_step(
 
     updates, opt_state = opt.update(grads, opt_state, params)
     params = eqx.apply_updates(params, updates)
-    return params, opt_state, loss_value, reg_loss_dict, grads, hessian_metrics
+    return params, opt_state, loss_value, reg_loss_dict, grads, hessian_metrics, grad_diagnostics
 
 
 # MAIN TRAINING FUNCTION
@@ -279,7 +292,12 @@ def train(
         # if not properly set, set to default value of UDE
         conf = replace(conf, training_setting="UDE")
 
-    WANDB_LOG = False
+    # Enable W&B logging via the WANDB_LOG env var (e.g. `WANDB_LOG=true`). Runs init in offline
+    # mode (see initialise_wandb), so no network/login is needed on compute nodes; sync later with
+    # `wandb sync` from a machine that has internet + `wandb login`.
+    WANDB_LOG = os.environ.get("WANDB_LOG", "false").lower() in ("1", "true", "yes")
+    # Diagnostic only: one extra forward solve per log event (see num_solver_steps below).
+    TRACK_SOLVER_STEPS = os.environ.get("RD_TRACK_SOLVER_STEPS", "false").lower() in ("1", "true", "yes")
 
     if WANDB_LOG:
         # Initialise wandb and define metrics
@@ -328,6 +346,8 @@ def train(
     # TODO check pendulum!
     elif conf.dynamical_model == "pendulum":
         colors = ['red', 'black', 'blue', 'purple']
+    elif conf.dynamical_model.startswith("reaction_diffusion"):
+        colors = ['red', 'black']  # only used for (WANDB-gated) plotting
     else:
         raise ValueError(f"Undefined dynamical model {conf.dynamical_model}.")
 
@@ -356,8 +376,14 @@ def train(
         else:
             active_hessian_idx = None
 
-        # Generate regularly log-spaced epochs for model stat logging - from DMMs
-        log_epochs = generate_log_epochs(n_epochs=n_epochs, num_samples=100, min_dist=5)
+        # Epochs at which to log stats / compute validation MSE / write to W&B.
+        # Default: ~100 log-spaced points (dense early). Set LOG_EVERY_N_EPOCHS=<N> to log on a fixed
+        # linear cadence (every N epochs) instead - fewer points and uniform coverage.
+        _log_every = os.environ.get("LOG_EVERY_N_EPOCHS")
+        if _log_every:
+            log_epochs = jnp.arange(0, n_epochs, max(1, int(_log_every)))
+        else:
+            log_epochs = generate_log_epochs(n_epochs=n_epochs, num_samples=100, min_dist=5)
         # Add first and final epochs
         log_epochs = jnp.unique(
             jnp.sort(
@@ -424,7 +450,7 @@ def train(
             wall_t0, process_t0 = time.perf_counter(), time.process_time()
 
             # Take step
-            params, opt_state, loss_train, reg_loss_dict, grads, hessian_metrics = make_step(
+            params, opt_state, loss_train, reg_loss_dict, grads, hessian_metrics, grad_diagnostics = make_step(
                 params=params,
                 static=static,
                 opt=opt,
@@ -477,6 +503,15 @@ def train(
                     loss_dict=loss_dict,
                 )
 
+                # Integrator steps for the current model: tracks how stiff the learned vector
+                # field has become, which drives per-epoch cost and drifts during training.
+                # Costs one extra forward solve per log event, which is significant while the
+                # log schedule is dense early on -> opt in with RD_TRACK_SOLVER_STEPS=true.
+                # Logged as -1 when disabled so the column is always present.
+                num_solver_steps = get_solver_steps(
+                    inference_model, u0_train, t_save_train, max_iters_diffrax[conf.dynamical_model]
+                ) if TRACK_SOLVER_STEPS else -1
+
                 # inference_params, inference_static = eqx.partition(inference_model, adam_filter_spec)
 
                 # mse_val, _ = loss_dict["val_loss_fn"](
@@ -508,7 +543,11 @@ def train(
                         "learning_rate": schedule(nn_epoch),
                         "num_train_samples": curriculum_params[cl_stage]["length"] if conf.curriculum_learning \
                             else len(training_data),
+                        # max_grad_norm is measured on the APPLIED gradient (post sanitise+clip);
+                        # grad_diagnostics carries the pre-treatment picture.
                         "max_grad_norm": max_grad_norm(grads),
+                        **grad_diagnostics,
+                        "num_solver_steps": num_solver_steps,
                         # Dynamic parameters: raw and rescaled
                         **{
                             f"raw_{param}": process_mechanistic_params(
@@ -548,6 +587,8 @@ def train(
                             "num_train_samples": curriculum_params[cl_stage]["length"] if conf.curriculum_learning \
                                 else len(training_data),
                             "max_grad_norm": max_grad_norm(grads),
+                            **grad_diagnostics,
+                            "num_solver_steps": num_solver_steps,
                         },
                         step=epoch+nn_epoch
                     )

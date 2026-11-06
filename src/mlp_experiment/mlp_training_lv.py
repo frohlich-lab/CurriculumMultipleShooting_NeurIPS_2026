@@ -57,7 +57,7 @@ def mlp_training_step(
         conf.mlp_reg_exp,
         conf.mlp_reg_strength,
     )
-    grads = make_grads_finite(grads)
+    grads, _ = make_grads_finite(grads)
     updates, opt_state = opt.update(grads, opt_state, params)
     params = eqx.apply_updates(params, updates)
     return params, opt_state, loss_value, grads

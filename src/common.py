@@ -163,6 +163,29 @@ def reformat_filename(filename):
 
 basedir: Path = Path(__file__).resolve().parent.parent  # Test_UDE, outside src
 plots_dir = basedir / "plots"
+# Reverse-mode differentiation through the ODE solve. `checkpoints` must be set EXPLICITLY:
+# left as None, equinox derives it as O(sqrt(max_steps)) (~631 for max_steps=200000), which forces
+# repeated recomputation of the forward pass. Setting it at/above the number of steps a solve
+# actually takes removes the recomputation entirely. Measured on the 64x64 spiral problem
+# (~2048 forward steps): 2.7 s/epoch at 4096 checkpoints vs 7.7-8.3 s at the derived default, and
+# 4.9 s if over-allocated to 8192 -- so the optimum sits near the actual step count, not higher.
+DIFFRAX_CHECKPOINTS = 4096
+
+
+def default_adjoint():
+    """Reverse-mode adjoint used everywhere except the Hessian path (which needs DirectAdjoint)."""
+    import diffrax
+    return diffrax.RecursiveCheckpointAdjoint(checkpoints=DIFFRAX_CHECKPOINTS)
+
+
+# Global L2-norm ceiling applied to the gradient before every optimiser step
+# (see make_grads_finite). This is a numerical BACKSTOP, not a tuning knob: it is set above the
+# largest gradient norm seen in healthy runs so that it does not silently reshape normal training,
+# and only bites when something has gone wrong. Watch `grad_clip_scale` in the results CSV -- if it
+# is regularly below 1 the value wants revisiting (or the run wants investigating).
+GRAD_CLIP_NORM = 1e6
+
+
 results_dir = basedir / "results"
 model_save_dir = basedir / "models"
 data_dir = basedir / "src" / "data_dir"
@@ -267,6 +290,38 @@ max_iters_diffrax = {
     "sirUK": 100000,
     "pendulum": 20000,
 }
+
+# --- Reaction-diffusion (FitzHugh-Nagumo / APHYNITY) registration -----------------------------
+# Registered as size- and variant-suffixed model names so the state-space-size scan (N in {8,16,32})
+# falls out of the existing DYNAMICAL_MODEL product expansion. Grid size is parsed from the name
+# (int(name.rsplit("_", 1)[1])); the variant is "ude" or "node".
+from src.model_examples.reaction_diffusion.setup_reaction_diffusion_model import (  # noqa: E402
+    DIFF_A as _RD_DIFF_A,
+    DIFF_B as _RD_DIFF_B,
+    REACTION_DIFFUSION_SIZES as _RD_SIZES,
+    make_random_field as _rd_make_ic,
+)
+
+for _rd_N in _RD_SIZES:
+    _rd_state_dim = 2 * _rd_N * _rd_N
+    # Placeholder only: this is the raw t=-0.5 field, NOT the observed X0. The training IC is loaded
+    # at runtime from the npz via get_X0 (state at t=0, post burn-in) in get_initial_conditions.
+    _rd_u0 = _rd_make_ic(_rd_N).astype(jnp.float64)
+    for _rd_variant in ("ude", "node"):
+        _rd_name = f"reaction_diffusion_{_rd_variant}_{_rd_N}"
+        state_dims[_rd_name] = _rd_state_dim
+        default_out_sizes[_rd_name] = _rd_state_dim
+        # 32768 leaves ~7x headroom over the ~4650 steps the tightest tolerance needs.
+        # Beyond ~32768 the solve slows again (+23% at 65536) even with checkpoints pinned.
+        max_iters_diffrax[_rd_name] = 32768
+        u0s[_rd_name] = _rd_u0
+        if _rd_variant == "ude":
+            dynamic_param_labels[_rd_name] = ["a", "b"]
+            true_dynamic_parameters[_rd_name] = jnp.array([_RD_DIFF_A, _RD_DIFF_B])
+        else:
+            dynamic_param_labels[_rd_name] = []
+            true_dynamic_parameters[_rd_name] = jnp.array([])
+
 
 def normalise(
         train_array: Union[Array, jnp.ndarray, np.array],

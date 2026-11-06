@@ -35,6 +35,17 @@ multistart_csvs = [
     for model, deviation, method in unique_multistart_settings
 ]
 
+# Reaction-diffusion ground-truth data (only if any reaction_diffusion model is selected)
+reaction_diffusion_sizes = sorted({
+    int(p["dynamical_model"].rsplit("_", 1)[1])
+    for p in param_combos
+    if p["dynamical_model"].startswith("reaction_diffusion")
+})
+reaction_diffusion_npzs = [
+    data_dir / f"reaction_diffusion_{n}/ground_truth.npz"
+    for n in reaction_diffusion_sizes
+]
+
 
 rule generate_multistarts:
     input:
@@ -49,14 +60,29 @@ rule generate_multistarts:
         "python3 {input.script}"
 
 
+if reaction_diffusion_npzs:
+    rule generate_reaction_diffusion_data:
+        input:
+            script="src/model_examples/reaction_diffusion/generate_data.py"
+        output:
+            reaction_diffusion_npzs
+        resources:
+            mem="16GB",
+            runtime="2h",
+            threads=1
+        shell:
+            "python3 {input.script}"
+
+
 rule train_udes:
     input:
         script = 'src/model_training/train.py',
-        multistarts=rules.generate_multistarts.output
+        multistarts=rules.generate_multistarts.output,
+        reaction_diffusion_data=reaction_diffusion_npzs
     output:
         csv = reformat_filename(TRAINING_RESULTS)
     wildcard_constraints:
-        dynamical_model =  "[a-zA-Z_]+",
+        dynamical_model =  "[a-zA-Z0-9_]+",
         mlp_layer_width = "[0-9]+",
         mlp_depth = "[0-9]+",
         activation_fn_name = "[a-z]+",
@@ -93,7 +119,7 @@ rule train_udes:
         scale_initial_values = "log10|None",
     retries: 1
     resources:
-        mem="32GB",
+        mem="64GB",  # reaction-diffusion at N=32 integrates a ~2048-dim adjoint (x num_windows for MS)
         runtime="24h",
         nodes=1,
         threads=2
