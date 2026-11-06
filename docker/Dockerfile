@@ -24,7 +24,7 @@ RUN pip wheel --wheel-dir /usr/wheels -r requirements.txt
 # Stage 2: Create final image
 FROM python:3.12-slim
 LABEL authors="giacomo.fabrini@crick.ac.uk" \
-    description="Docker image containing requirements for Test_UDE"
+    description="Docker image containing requirements for CurriculumMultipleShooting_NeurIPS_2026"
 
 # Install build dependencies for fully functional requirements.txt install
 RUN apt-get update --yes && \
