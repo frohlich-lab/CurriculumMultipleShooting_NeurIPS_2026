@@ -1,4 +1,4 @@
-name: Test_UDE
+name: CurriculumMultipleShooting_NeurIPS_2026
 channels:
   - defaults
 dependencies:
@@ -55,4 +55,4 @@ dependencies:
     - typeguard==2.13.3
     - typing-extensions==4.10.0
     - tzdata==2024.1
-prefix: /home/sebpe/anaconda3/envs/Test_UDE
+prefix: /home/sebpe/anaconda3/envs/CurriculumMultipleShooting_NeurIPS_2026
