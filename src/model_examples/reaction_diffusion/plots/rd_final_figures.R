@@ -46,7 +46,7 @@ my_theme <- theme_bw(base_size = BASE_SIZE) +
         axis.title = element_text(color = "grey10"),
         plot.title = element_text(color = "grey10", size = BASE_SIZE + 0.5,
                                   margin = margin(0, 0, 2, 0)),
-        plot.title.position = "plot",
+        plot.title.position = "panel",  # title flush with the plot canvas
         plot.tag = element_text(size = BASE_SIZE + 1),
         axis.title.x = element_blank(),
         plot.margin = margin(2, 2, 0, 0),
